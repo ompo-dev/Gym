@@ -1,56 +1,81 @@
-# Welcome to your Expo app 👋
+# Gym — AI notes for Diet & Workout
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A fast, interactive "smart notes" app for iPhone. Type a line in plain language
+and the AI structures it inline: food → calories + macros, a set → normalized
+`kg × reps`. Optimistic, offline-tolerant, with real Liquid Glass on iOS 26.
 
-## Get started
+Built with **Expo SDK 54** (RN 0.81, React 19.1) — compatible with the App Store
+Expo Go — with Expo Router **native glass tabs**, `expo-glass-effect`,
+`expo-sqlite`, `zustand`, `zod`, and **DeepSeek** behind a server-side proxy.
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Setup
 
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Then add your DeepSeek key. It lives **only on the server** (never in the app
+bundle):
 
-### Other setup steps
+1. Get a key at https://platform.deepseek.com
+2. Put it in `.env` (gitignored):
+   ```
+   DEEPSEEK_API_KEY=sk-...
+   ```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+> ⚠️ If you shared a key in plaintext anywhere, **rotate it** — treat it as public.
 
-## Learn more
+**Language:** the app ships pt-BR + en-US. Set `EXPO_PUBLIC_LANG=pt-BR` (default)
+or `en-US` in `.env` — it drives the UI strings, date labels, and the language
+the AI replies in.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Run
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npx expo start
+```
 
-## Join the community
+Open in **Expo Go on an iPhone running iOS 26** (scan the QR). The `/api/enrich`
+route is served by the Metro dev server, so the app and proxy share one origin
+in dev — nothing else to start. Below iOS 26 the glass gracefully falls back to
+a translucent panel.
 
-Join our community of developers creating universal apps.
+## Scripts
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+| Command | What |
+|---|---|
+| `npm start` | Expo dev server |
+| `npm test` | Jest (core logic: cache, command bus, schemas, totals) |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | `expo lint` |
+
+## Architecture
+
+- **Atomic design** — `src/components/{atoms,molecules,organisms,templates}`.
+- **One engine, two verticals** — `DayTemplate` is driven by a `DomainConfig`
+  (`src/domains/food.ts`, `workout.ts`); Diet and Workout reuse it.
+- **Command pattern** — `src/core/command/CommandBus.ts`: optimistic add,
+  undo stack, offline retry queue, in-flight dedup.
+- **Cache/memory** — LRU (`src/core/cache/lru.ts`) keyed by text hash + SQLite
+  querying only the visible day (`src/data/EntryRepository.ts`).
+- **AI proxy** — `src/app/api/enrich+api.ts` holds the key and calls DeepSeek
+  (`deepseek-v4-flash`, JSON mode), validating output with zod both server- and
+  client-side.
+
+## Deploy the proxy (production)
+
+The `+api.ts` route needs a server. Deploy to EAS Hosting:
+
+```bash
+npx expo export
+eas deploy            # or: npx eas-cli deploy
+eas env:create --name DEEPSEEK_API_KEY --value sk-... --environment production
+```
+
+Then set `EXPO_PUBLIC_API_URL` to the deployed origin so the app calls the
+hosted proxy instead of the dev server.
+
+## Deferred (phase 2)
+
+Voice input, streak counter, web-search ("sources") entries, exercise grouping,
+cloud sync, proxy rate limiting, FlashList. See the plan for the full list.
