@@ -1,8 +1,9 @@
 import * as Haptics from 'expo-haptics';
 
 import { enrich } from '@/core/enrich/client';
+import { buildOnboardingPromptContext } from '@/core/onboarding';
 import { EntryRepository } from '@/data/EntryRepository';
-import { locale } from '@/i18n';
+import { getLang } from '@/i18n';
 import { useAppStore } from '@/store/useAppStore';
 
 import { CommandBus } from './CommandBus';
@@ -11,7 +12,9 @@ import { CommandBus } from './CommandBus';
 export const bus = new CommandBus({
   repo: EntryRepository,
   enrichFn: enrich,
-  locale,
+  getLocale: getLang,
+  getUserContext: () =>
+    buildOnboardingPromptContext(useAppStore.getState().onboardingProfile, getLang()),
   store: {
     getDay: (domain) => useAppStore.getState()[domain],
     upsert: (domain, entry) => useAppStore.getState().upsertEntry(domain, entry),

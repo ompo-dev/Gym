@@ -1,23 +1,44 @@
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText } from '@/components/atoms/AppText';
+import { AppIcon } from '@/components/atoms/AppIcon';
+import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { DateNav } from '@/components/molecules/DateNav';
-import { Spacing } from '@/constants/theme';
+import { Metrics, Radii, Spacing } from '@/constants/theme';
+import { useColors } from '@/hooks/use-colors';
+import { t } from '@/i18n';
 
 interface DayHeaderProps {
-  title: string;
   date: string;
   canNext: boolean;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
+  onOpenSettings: () => void;
 }
 
-export function DayHeader({ title, date, canNext, onPrev, onNext, onToday }: DayHeaderProps) {
+export function DayHeader({
+  date,
+  canNext,
+  onPrev,
+  onNext,
+  onToday,
+  onOpenSettings,
+}: DayHeaderProps) {
+  const colors = useColors();
+
   return (
     <View style={styles.header}>
-      <AppText variant="title">{title}</AppText>
+      <View style={styles.sideSpacer} />
       <DateNav date={date} canNext={canNext} onPrev={onPrev} onNext={onNext} onToday={onToday} />
+      <Pressable
+        onPress={onOpenSettings}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={t('settings.title')}>
+        <GlassSurface glass="regular" isInteractive style={styles.settingsButton}>
+          <AppIcon name="settings" color={colors.textSecondary} size={18} />
+        </GlassSurface>
+      </Pressable>
     </View>
   );
 }
@@ -28,5 +49,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingBottom: Spacing.three,
+  },
+  sideSpacer: {
+    width: Metrics.iconButton,
+  },
+  settingsButton: {
+    width: Metrics.iconButton,
+    height: Metrics.iconButton,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
 });

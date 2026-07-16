@@ -2,25 +2,23 @@ import { z } from 'zod';
 
 import type { Domain } from '@/core/types';
 
-/**
- * Schemas for the structured data the AI extracts from a free-text entry.
- * The AI only PARSES/estimates atomic values — it never sums. Food returns one
- * object per component (burger + fries = 2 items); we do all the arithmetic.
- * Numbers use `coerce` because the model sometimes returns them as strings.
- * Shared by client and proxy — keep this file free of RN/UI imports.
- */
-
 export const foodItemSchema = z.object({
   label: z.string().min(1),
   calories: z.coerce.number().nonnegative(),
   protein: z.coerce.number().nonnegative(),
   carbs: z.coerce.number().nonnegative(),
   fat: z.coerce.number().nonnegative(),
+  waterMl: z.coerce.number().nonnegative().default(0),
 });
 export type FoodItem = z.infer<typeof foodItemSchema>;
 
 export const foodSchema = z.object({
   items: z.array(foodItemSchema).min(1),
+  // AI-provided explanation + certainty for the detail sheet. Optional +
+  // `.catch` so a missing/garbled field never fails the whole enrich, and old
+  // rows saved before this existed still validate.
+  reasoning: z.string().max(2000).optional().catch(undefined),
+  confidence: z.coerce.number().optional().catch(undefined),
 });
 export type FoodData = z.infer<typeof foodSchema>;
 
@@ -33,7 +31,9 @@ export type WorkoutSet = z.infer<typeof setSchema>;
 
 export const workoutSchema = z.object({
   exercise: z.string().nullable(),
-  sets: z.array(setSchema).min(1),
+  // Zero sets is valid: the outliner creates an exercise first, then you add
+  // sets line by line, so a set-less exercise is a normal transient state.
+  sets: z.array(setSchema),
 });
 export type WorkoutData = z.infer<typeof workoutSchema>;
 

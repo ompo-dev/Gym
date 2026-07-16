@@ -1,26 +1,53 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
-import '@/global.css';
-
 import { Platform } from 'react-native';
+
+if (Platform.OS === 'web') {
+  void import('@/global.css');
+}
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#151312',
+    textSecondary: '#6F685F',
+    textTertiary: '#9B9387',
+    background: '#F7F4EF',
+    backgroundElement: '#EFEBE4',
+    backgroundSelected: '#E6E0D7',
+    surface: '#FFFFFF',
+    surfaceMuted: '#F3EEE7',
+    surfaceStrong: '#ECE5DB',
+    border: 'rgba(21,19,18,0.08)',
+    overlay: 'rgba(21,19,18,0.18)',
+    accent: '#E6A117',
+    accentStrong: '#C88400',
+    calories: '#E86F1D',
+    carbs: '#7C3AED',
+    protein: '#16A34A',
+    fat: '#D99A00',
+    water: '#0284C7',
+    danger: '#E45858',
+    success: '#3BA55D',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#F2F2F2',
+    textSecondary: '#C8C8C8',
+    textTertiary: '#9E9E9E',
+    background: '#242424',
+    backgroundElement: '#303030',
+    backgroundSelected: '#3A3A3A',
+    surface: '#2B2B2B',
+    surfaceMuted: '#333333',
+    surfaceStrong: '#404040',
+    border: 'rgba(255,255,255,0.09)',
+    overlay: 'rgba(0,0,0,0.24)',
+    accent: '#F0B648',
+    accentStrong: '#D69A27',
+    calories: '#FF8A2A',
+    carbs: '#A78BFA',
+    protein: '#4ADE80',
+    fat: '#FFD43B',
+    water: '#38BDF8',
+    danger: '#FF7A7A',
+    success: '#4ADE80',
   },
 } as const;
 
@@ -28,13 +55,9 @@ export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {
@@ -55,10 +78,27 @@ export const Spacing = {
   half: 2,
   one: 4,
   two: 8,
-  three: 16,
-  four: 24,
-  five: 32,
-  six: 64,
+  three: 12,
+  four: 16,
+  five: 20,
+  six: 24,
+  seven: 32,
+  eight: 48,
+} as const;
+
+export const Radii = {
+  sm: 14,
+  md: 18,
+  lg: 22,
+  xl: 28,
+  pill: 999,
+} as const;
+
+export const Metrics = {
+  iconButton: 44,
+  control: 48,
+  dock: 56,
+  rowMinHeight: 56,
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;

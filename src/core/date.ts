@@ -24,9 +24,26 @@ export function dayLabel(iso: string): string {
   if (iso === today) return t('date.today');
   if (iso === addDays(today, -1)) return t('date.yesterday');
   const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(locale, {
+  return new Date(y, m - 1, d).toLocaleDateString(locale(), {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
   });
+}
+
+export function timeLabel(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString(locale(), {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+export function nearbyGapLabel(current: number, previous?: number): string | null {
+  if (!previous) return null;
+  const deltaSeconds = Math.round((current - previous) / 1000);
+  if (deltaSeconds <= 0 || deltaSeconds > 300) return null;
+  if (deltaSeconds < 60) return `+${deltaSeconds}s`;
+  const minutes = Math.floor(deltaSeconds / 60);
+  const seconds = deltaSeconds % 60;
+  return seconds === 0 ? `+${minutes}m` : `+${minutes}m ${seconds}s`;
 }

@@ -1,24 +1,37 @@
 import type { Domain } from '@/core/types';
 
-/**
- * System prompts sent to DeepSeek by the proxy. The AI only PARSES/estimates —
- * it must never sum or calculate; the app does all arithmetic. The word "JSON"
- * must appear for the API's json_object format. Server-only — no UI imports.
- */
 export const promptByDomain: Record<Domain, string> = {
   food: [
     'You are a nutrition parser. The user writes a food entry in natural language.',
     'Return ONLY a JSON object of the shape',
-    '{ "items": [ { "label": string, "calories": number, "protein": number, "carbs": number, "fat": number } ] }.',
-    'List ONE object per distinct food or drink component (a burger and fries are two items).',
-    'Do NOT sum or total anything — the app does all the math. Estimate a typical serving per item.',
-    'Macros are in grams. Respond with JSON only, no prose.',
+    '{ "items": [ { "label": string, "calories": number, "protein": number, "carbs": number, "fat": number, "waterMl": number } ], "reasoning": string, "confidence": number }.',
+    'List ONE object per distinct food or drink component.',
+    'Users may write with typos, shorthand, mixed languages, arithmetic, and messy separators.',
+    'Expand common pt-BR and en-US food abbreviations into clear full labels whenever the meaning is obvious.',
+    'Resolve arithmetic such as "2 vezes 150", "100 + 50", or "300 - 50" before returning JSON.',
+    'Do NOT sum or total anything - the app does all the math.',
+    'Estimate a typical serving per item.',
+    'Set waterMl to the estimated water amount in milliliters for water or drinks, otherwise 0.',
+    'Macros are in grams.',
+    'If user nutrition context is provided, use it to adjust serving assumptions and respect restrictions, diet preferences, allergies, goals, and notes.',
+    'Set "reasoning" to 2-4 sentences explaining how you identified the items and estimated their nutrition, mentioning the sources or assumptions you used.',
+    'Set "confidence" to an integer from 0 to 100 for how certain you are of the estimate.',
+    'Respond with JSON only, no prose.',
   ].join(' '),
   workout: [
-    'You are a workout-log parser. The user writes a set in shorthand like "95x7" or "bench 100kg x 8".',
+    'You are a workout-log parser.',
     'Return ONLY a JSON object of the shape',
     '{ "exercise": string | null, "sets": [ { "weight": number, "unit": "kg" | "lb", "reps": number } ] }.',
-    'Only parse — never calculate volume or totals. If no unit is given assume kg.',
-    'If the entry names no exercise, set exercise to null. Respond with JSON only, no prose.',
+    'Users may write with typos, shorthand, commas, repeated weights, arithmetic, line breaks, and omitted fields.',
+    'Correct obvious exercise-name typos to the closest common gym exercise name.',
+    'Expand common pt-BR and en-US exercise abbreviations into full exercise names, for example "bp" -> "bench press" and "sup" -> "supino".',
+    'If the first line is the exercise name and later lines are sets, keep that structure.',
+    'Keep "95x7" as one set with weight 95 and reps 7.',
+    'If the entry lists several weights for one exercise like "leg press 50, 100kg e 150", create one set per weight mention.',
+    'Carry forward the last explicit unit to later sets; if no unit is ever given assume kg.',
+    'If reps are omitted, set reps to 0.',
+    'Resolve arithmetic before returning JSON, but never calculate totals or volume.',
+    'If the entry names no exercise, set exercise to null.',
+    'Respond with JSON only, no prose.',
   ].join(' '),
 };

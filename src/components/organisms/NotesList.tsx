@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { FlatList, StyleSheet, TextInput } from 'react-native';
+import { type RefObject, useEffect, useRef, useState } from 'react';
+import { FlatList, Keyboard, StyleSheet, TextInput, View } from 'react-native';
 
+import { AppText } from '@/components/atoms/AppText';
 import { NoteRow } from '@/components/molecules/NoteRow';
 import { Spacing } from '@/constants/theme';
 import type { Entry } from '@/core/types';
@@ -10,72 +11,269 @@ import { useColors } from '@/hooks/use-colors';
 interface NotesListProps<TData, TTotals> {
   entries: Entry[];
   config: DomainConfig<TData, TTotals>;
+  keyboardVisible?: boolean;
   onAdd: (text: string) => void;
   onEdit: (entry: Entry, text: string) => void;
   onDelete: (entry: Entry) => void;
   onRetry: (entry: Entry) => void;
+  onOpenFoodDetails?: (entry: Entry) => void;
 }
 
-/** The trailing "new line" of the notes block — type and hit return to add. */
-function NewNoteInput({ placeholder, onAdd }: { placeholder: string; onAdd: (text: string) => void }) {
+function getPreviousWorkoutEntryId(entries: Entry[], index: number): string | null {
+  if (index <= 0) return null;
+  return entries[index - 1]?.id ?? null;
+}
+
+function NewNoteInput({
+  placeholder,
+  onAdd,
+  showBullet = false,
+  inputRef,
+}: {
+  placeholder: string;
+  onAdd: (text: string) => void;
+  showBullet?: boolean;
+  inputRef?: RefObject<TextInput | null>;
+}) {
   const colors = useColors();
   const [text, setText] = useState('');
+
   const submit = () => {
     const trimmed = text.trim();
     if (!trimmed) return;
     onAdd(trimmed);
     setText('');
   };
+
   return (
-    <TextInput
-      value={text}
-      onChangeText={setText}
-      onSubmitEditing={submit}
-      placeholder={placeholder}
-      placeholderTextColor={colors.textSecondary}
-      returnKeyType="done"
-      submitBehavior="submit"
-      style={[styles.newInput, { color: colors.text }]}
-      accessibilityLabel={placeholder}
-    />
+    <View style={styles.newRow}>
+      {showBullet ? (
+        <AppText variant="value" color={colors.textSecondary} style={styles.newMarker}>
+          {'\u2022'}
+        </AppText>
+      ) : null}
+      <TextInput
+        ref={inputRef}
+        value={text}
+        onChangeText={setText}
+        onSubmitEditing={submit}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textSecondary}
+        returnKeyType="done"
+        submitBehavior="submit"
+        style={[styles.newInput, { color: colors.text }]}
+        accessibilityLabel={placeholder}
+      />
+    </View>
   );
 }
 
-/** Editable notes block: each line is a note; the last line adds a new one. */
 export function NotesList<TData, TTotals>({
   entries,
   config,
+  keyboardVisible,
   onAdd,
   onEdit,
   onDelete,
   onRetry,
+  onOpenFoodDetails,
 }: NotesListProps<TData, TTotals>) {
+  const containerRef = useRef<View | null>(null);
+  const listRef = useRef<FlatList<Entry> | null>(null);
+  const newInputRef = useRef<TextInput | null>(null);
+  const [pendingWorkoutExerciseFocusId, setPendingWorkoutExerciseFocusId] = useState<string | null>(
+    null,
+  );
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollY = useRef(0);
+  const listHeight = useRef(0);
+  const listWindowY = useRef(0);
+  const keyboardTop = useRef<number | null>(null);
+  const focusedLine = useRef<{ index: number; screenY: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', ({ endCoordinates }) => {
+      keyboardTop.current = endCoordinates.screenY;
+      if (focusedLine.current) measureViewport(() => scrollLineToCenter(focusedLine.current!, false));
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      keyboardTop.current = null;
+      if (focusedLine.current) measureViewport(() => scrollLineToCenter(focusedLine.current!, false));
+    });
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  const measureViewport = (afterMeasure?: () => void) => {
+    const container = containerRef.current;
+    if (!container) {
+      afterMeasure?.();
+      return;
+    }
+    container.measureInWindow((_x, y, _width, height) => {
+      listWindowY.current = y;
+      listHeight.current = height;
+      afterMeasure?.();
+    });
+  };
+
+  const scrollLineToCenter = (
+    target: { index: number; screenY: number; height: number },
+    animated: boolean,
+  ) => {
+    if (!listHeight.current) return;
+    const visibleTop = listWindowY.current + Spacing.four;
+    const visibleBottom = keyboardTop.current
+      ? Math.min(listWindowY.current + listHeight.current, keyboardTop.current - Spacing.four)
+      : listWindowY.current + listHeight.current;
+    const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+    if (visibleHeight <= 0) return;
+    const desiredCenter = visibleTop + visibleHeight / 2;
+    const lineCenter = target.screenY + target.height / 2;
+    const delta = lineCenter - desiredCenter;
+    if (Math.abs(delta) < 8) return;
+    const offset = Math.max(0, scrollY.current + delta);
+    scrollY.current = offset;
+    listRef.current?.scrollToOffset({ offset, animated });
+  };
+
+  const centerLine = (index: number, layout: { screenY: number; height: number }) => {
+    const target = { index, ...layout };
+    focusedLine.current = target;
+    measureViewport(() => scrollLineToCenter(target, true));
+  };
+
+  const focusNewExercise = () => {
+    let attempts = 0;
+
+    const focusInput = () => {
+      const input = newInputRef.current;
+      if (input) {
+        input.focus();
+        return;
+      }
+      if (attempts >= 4) return;
+      attempts += 1;
+      focusTimer.current = setTimeout(focusInput, 16);
+    };
+
+    if (focusTimer.current) clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(focusInput, 16);
+  };
+
+  const focusWorkoutExercise = (entryId: string | null) => {
+    if (!entryId) {
+      setPendingWorkoutExerciseFocusId(null);
+      focusNewExercise();
+      return;
+    }
+    setPendingWorkoutExerciseFocusId(entryId);
+  };
+
   return (
-    <FlatList
-      style={styles.list}
-      data={entries}
-      keyExtractor={(e) => e.id}
-      renderItem={({ item }) => (
-        <NoteRow
-          entry={item}
-          config={config}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          onRetry={onRetry}
-        />
-      )}
-      ListFooterComponent={<NewNoteInput placeholder={config.placeholder} onAdd={onAdd} />}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      automaticallyAdjustKeyboardInsets
-      showsVerticalScrollIndicator={false}
-    />
+    <View
+      ref={containerRef}
+      style={styles.container}
+      onLayout={() => {
+        measureViewport(() => {
+          if (focusedLine.current) scrollLineToCenter(focusedLine.current, false);
+        });
+      }}>
+      <FlatList
+        ref={listRef}
+        style={styles.list}
+        data={entries}
+        keyExtractor={(entry) => entry.id}
+        onScroll={({ nativeEvent }) => {
+          scrollY.current = nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        renderItem={({ item, index }) => (
+          <View>
+            <NoteRow
+              entry={item}
+              previousEntry={index > 0 ? entries[index - 1] : undefined}
+              config={config}
+              keyboardVisible={keyboardVisible}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onRetry={onRetry}
+              onOpenFoodDetails={onOpenFoodDetails}
+              onFocusNewWorkoutExercise={config.id === 'workout' ? focusNewExercise : undefined}
+              onDeleteWorkoutExercise={
+                config.id === 'workout'
+                  ? () => focusWorkoutExercise(getPreviousWorkoutEntryId(entries, index))
+                  : undefined
+              }
+              onFocusWorkoutLine={
+                config.id === 'workout' ? (layout) => centerLine(index, layout) : undefined
+              }
+              autoFocusWorkoutExercise={
+                config.id === 'workout' && item.id === pendingWorkoutExerciseFocusId
+              }
+              onWorkoutExerciseAutoFocused={
+                config.id === 'workout'
+                  ? () =>
+                      setPendingWorkoutExerciseFocusId((current) =>
+                        current === item.id ? null : current,
+                      )
+                  : undefined
+              }
+            />
+          </View>
+        )}
+        onScrollToIndexFailed={({ averageItemLength, index }) => {
+          listRef.current?.scrollToOffset({ offset: averageItemLength * index, animated: true });
+          setTimeout(() => {
+            if (focusedLine.current?.index === index) {
+              measureViewport(() => scrollLineToCenter(focusedLine.current!, true));
+            }
+          }, 32);
+        }}
+        ListFooterComponent={
+          <NewNoteInput
+            placeholder={config.placeholder}
+            onAdd={onAdd}
+            showBullet={config.id === 'workout'}
+            inputRef={newInputRef}
+          />
+        }
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1 },
-  content: { paddingBottom: Spacing.four },
-  newInput: { fontSize: 17, lineHeight: 24, paddingVertical: Spacing.two },
+  container: {
+    flex: 1,
+  },
+  list: {
+    flex: 1,
+  },
+  content: {
+    paddingBottom: Spacing.four,
+  },
+  newRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  newMarker: {
+    width: 16,
+    textAlign: 'center',
+  },
+  newInput: {
+    flex: 1,
+    fontSize: 17,
+    lineHeight: 24,
+    paddingVertical: Spacing.two,
+  },
 });

@@ -24,6 +24,12 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
           key TEXT PRIMARY KEY NOT NULL,
           value TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS saved_meals (
+          id TEXT PRIMARY KEY NOT NULL,
+          name TEXT NOT NULL,
+          data TEXT NOT NULL,
+          createdAt INTEGER NOT NULL
+        );
       `);
       return db;
     })();

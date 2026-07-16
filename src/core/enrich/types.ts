@@ -5,6 +5,8 @@ export interface EnrichRequest {
   domain: Domain;
   /** e.g. the day's current exercise, to help the workout parser. */
   context?: string;
+  /** Nutrition/profile context derived locally from onboarding. */
+  userContext?: string;
   /** UI locale so the AI returns labels in the right language. */
   locale: string;
 }

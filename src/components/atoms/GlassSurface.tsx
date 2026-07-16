@@ -1,5 +1,7 @@
 import { GlassView, type GlassStyle, isLiquidGlassAvailable } from 'expo-glass-effect';
-import { useColorScheme, View, type ViewProps } from 'react-native';
+import { View, type ViewProps } from 'react-native';
+
+import { useColors } from '@/hooks/use-colors';
 
 interface GlassSurfaceProps extends ViewProps {
   glass?: GlassStyle;
@@ -19,7 +21,7 @@ export function GlassSurface({
   children,
   ...rest
 }: GlassSurfaceProps) {
-  const scheme = useColorScheme();
+  const colors = useColors();
 
   if (isLiquidGlassAvailable()) {
     return (
@@ -34,10 +36,17 @@ export function GlassSurface({
     );
   }
 
-  const backgroundColor =
-    scheme === 'dark' ? 'rgba(28,28,30,0.92)' : 'rgba(245,245,247,0.92)';
   return (
-    <View style={[{ backgroundColor }, style]} {...rest}>
+    <View
+      style={[
+        {
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        style,
+      ]}
+      {...rest}>
       {children}
     </View>
   );

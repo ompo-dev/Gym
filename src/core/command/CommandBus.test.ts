@@ -11,7 +11,10 @@ const foodOk = (): EnrichResponse => ({
   data: { items: [{ label: 'burger', calories: 620, protein: 30, carbs: 40, fat: 35 }] },
 });
 
-function harness(enrichFn: (req: EnrichRequest) => Promise<EnrichResponse>) {
+function harness(
+  enrichFn: (req: EnrichRequest) => Promise<EnrichResponse>,
+  extraDeps: Partial<Pick<BusDeps, 'getUserContext'>> = {},
+) {
   const day: Record<Domain, { date: string; entries: Entry[] }> = {
     food: { date: TODAY, entries: [] },
     workout: { date: TODAY, entries: [] },
@@ -44,6 +47,7 @@ function harness(enrichFn: (req: EnrichRequest) => Promise<EnrichResponse>) {
     repo,
     store,
     enrichFn,
+    ...extraDeps,
     now: () => 1,
     schedule: (fn, ms) => scheduled.push({ fn, ms }),
   });
@@ -87,6 +91,37 @@ test('identical text is enriched only once (cache / in-flight dedup)', async () 
   expect(enrichFn).toHaveBeenCalledTimes(1);
 });
 
+test('food enrich includes the local user nutrition context', async () => {
+  const enrichFn = jest.fn(async () => foodOk());
+  const { bus } = harness(enrichFn, {
+    getUserContext: () => 'targets=2518 kcal, water 3450ml\nconsiderations=vegetarian',
+  });
+
+  await bus.addEntry('burger', 'food');
+  await flush();
+
+  expect(enrichFn).toHaveBeenCalledWith(
+    expect.objectContaining({
+      domain: 'food',
+      userContext: 'targets=2518 kcal, water 3450ml\nconsiderations=vegetarian',
+    }),
+  );
+});
+
+test('food enrich preserves hydration returned by the AI', async () => {
+  const { bus, day } = harness(async () => ({
+    ok: true,
+    data: {
+      items: [{ label: 'agua', calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 500 }],
+    },
+  }));
+
+  await bus.addEntry('500ml de agua', 'food');
+  await flush();
+
+  expect((day.food.entries[0].data as { items: { waterMl: number }[] }).items[0].waterMl).toBe(500);
+});
+
 test('undo removes the added entry from store and repo', async () => {
   const { bus, day, rows } = harness(async () => foodOk());
   await bus.addEntry('burger', 'food');
@@ -120,4 +155,38 @@ test('AI data that fails schema validation marks the entry errored', async () =>
   await bus.addEntry('burger', 'food');
   await flush();
   expect(day.food.entries[0].status).toBe('error');
+});
+
+test('workout entries are parsed locally without calling the AI', async () => {
+  const enrichFn = jest.fn(async () => foodOk());
+  const { bus, day } = harness(enrichFn);
+
+  await bus.addEntry('8x100\n95', 'workout');
+  await flush();
+
+  expect(enrichFn).not.toHaveBeenCalled();
+  expect(day.workout.entries[0].status).toBe('done');
+  expect(day.workout.entries[0].data).toEqual({
+    exercise: null,
+    sets: [{ weight: 100, unit: 'kg', reps: 8 }],
+  });
+});
+
+test('workout entries use AI to correct the exercise name but keep local set parsing', async () => {
+  const enrichFn = jest.fn(async () => ({
+    ok: true,
+    data: { exercise: 'Supino reto', sets: [] },
+  }));
+  const { bus, day } = harness(enrichFn);
+
+  await bus.addEntry('sipino reto\n8x100', 'workout');
+  await flush();
+
+  expect(enrichFn).toHaveBeenCalledWith(
+    expect.objectContaining({ text: 'sipino reto', domain: 'workout' }),
+  );
+  expect(day.workout.entries[0].data).toEqual({
+    exercise: 'Supino reto',
+    sets: [{ weight: 100, unit: 'kg', reps: 8 }],
+  });
 });

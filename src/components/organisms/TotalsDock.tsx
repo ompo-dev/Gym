@@ -1,36 +1,119 @@
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
+import { AnimatedValueText } from '@/components/atoms/AnimatedValueText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
-import { Spacing } from '@/constants/theme';
+import { Metrics, Radii, Spacing } from '@/constants/theme';
 import type { TotalItem } from '@/domains/types';
+import { useColors } from '@/hooks/use-colors';
 
-export function TotalsDock({ items }: { items: TotalItem[] }) {
-  return (
-    <GlassSurface glass="regular" style={styles.dock}>
-      {items.map((item) => (
-        <View key={item.key} style={styles.item}>
-          <AppText variant="label" color={item.color}>
-            {item.label}
-          </AppText>
-          <AppText variant="value" color={item.color}>
-            {item.value}
-          </AppText>
+const iconByKey: Record<string, AppIconName> = {
+  cal: 'flame',
+  sets: 'squareStack',
+  vol: 'dumbbell',
+};
+
+const macroKeys = new Set(['c', 'p', 'f', 'h']);
+
+interface TotalsDockProps {
+  items: TotalItem[];
+  compact?: boolean;
+  onPress?: () => void;
+  attachedTop?: boolean;
+}
+
+export function TotalsDock({
+  items,
+  compact = false,
+  onPress,
+  attachedTop = false,
+}: TotalsDockProps) {
+  const colors = useColors();
+  const visibleItems = compact ? items.slice(0, 2) : items;
+  const body = (
+    <GlassSurface
+      glass="regular"
+      style={[
+        styles.dock,
+        compact && styles.dockCompact,
+        attachedTop && styles.attachedTop,
+      ]}>
+      {visibleItems.map((item, index) => (
+        <View key={item.key} style={styles.itemGroup}>
+          {index > 0 ? (
+            <AppText variant="label" color={colors.textTertiary} style={styles.separator}>
+              •
+            </AppText>
+          ) : null}
+          <View style={styles.item}>
+            <TotalMarker item={item} />
+            <AnimatedValueText value={item.value} variant="value" color={colors.text} />
+          </View>
         </View>
       ))}
     </GlassSurface>
   );
+
+  return onPress ? (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="Open totals details">
+      {body}
+    </Pressable>
+  ) : (
+    body
+  );
+}
+
+function TotalMarker({ item }: { item: TotalItem }) {
+  if (macroKeys.has(item.key)) {
+    return (
+      <AppText variant="label" color={item.color} style={styles.macroLetter}>
+        {item.label.slice(0, 1)}
+      </AppText>
+    );
+  }
+
+  return <AppIcon name={iconByKey[item.key] ?? 'circleDot'} color={item.color} size={15} />;
 }
 
 const styles = StyleSheet.create({
   dock: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    minHeight: Metrics.dock,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
-    borderRadius: 26,
+    borderRadius: Radii.pill,
     overflow: 'hidden',
   },
-  item: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  dockCompact: {
+    minHeight: Metrics.control,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Radii.pill,
+    gap: Spacing.two,
+  },
+  attachedTop: {
+    borderTopLeftRadius: Radii.md,
+    borderTopRightRadius: Radii.md,
+  },
+  item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  itemGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  macroLetter: {
+    minWidth: 10,
+    textAlign: 'center',
+  },
+  separator: {
+    opacity: 0.75,
+  },
 });

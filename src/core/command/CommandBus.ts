@@ -3,6 +3,7 @@ import type { EnrichRequest, EnrichResponse } from '@/core/enrich/types';
 import type { Domain, Entry } from '@/core/types';
 import { hashKey, newId, normalizeText } from '@/core/utils';
 import { type EnrichData, schemaByDomain, type WorkoutData } from '@/domains/schemas';
+import { getWorkoutExerciseLine, parseWorkoutText } from '@/domains/workout';
 
 import type { Command } from './Command';
 
@@ -29,6 +30,8 @@ export interface BusDeps {
   enrichFn: (req: EnrichRequest) => Promise<EnrichResponse>;
   store: StorePort;
   locale?: string;
+  getLocale?: () => string;
+  getUserContext?: () => string | undefined;
   onResolved?: () => void; // e.g. success haptic
   now?: () => number;
   schedule?: (fn: () => void, ms: number) => void;
@@ -128,7 +131,9 @@ export class CommandBus {
   // ---- enrichment engine --------------------------------------------------
 
   private async runEnrich(entry: Entry): Promise<void> {
-    const key = hashKey(entry.domain, normalizeText(entry.text));
+    const locale = this.deps.getLocale ? this.deps.getLocale() : this.deps.locale ?? 'pt-BR';
+    const userContext = entry.domain === 'food' ? this.deps.getUserContext?.() : undefined;
+    const key = hashKey(entry.domain, `${locale}:${userContext ?? ''}:${normalizeText(entry.text)}`);
 
     const cached = this.cache.get(key);
     if (cached) {
@@ -136,16 +141,74 @@ export class CommandBus {
       return;
     }
 
-    const context =
-      entry.domain === 'workout' ? this.lastExercise(entry.domain) : undefined;
+    if (entry.domain === 'workout') {
+      const fallbackExercise = this.lastExercise(entry.domain);
+      const localData = parseWorkoutText(entry.text, {
+        locale,
+        fallbackExercise,
+      });
+      const exerciseText = getWorkoutExerciseLine(entry.text);
+
+      if (!exerciseText) {
+        this.cache.set(key, localData);
+        await this.applyResolved(entry, localData);
+        return;
+      }
+
+      let promise = this.inflight.get(key);
+      if (!promise) {
+        promise = this.deps.enrichFn({
+          text: exerciseText,
+          domain: entry.domain,
+          context: fallbackExercise,
+          userContext: undefined,
+          locale,
+        });
+        this.inflight.set(key, promise);
+      }
+
+      try {
+        const res = await promise;
+        this.inflight.delete(key);
+        if (this.cancelled.has(entry.id)) return;
+
+        if (!res.ok) {
+          this.cache.set(key, localData);
+          await this.applyResolved(entry, localData);
+          return;
+        }
+
+        const parsed = schemaByDomain.workout.safeParse(res.data);
+        if (!parsed.success) {
+          this.cache.set(key, localData);
+          await this.applyResolved(entry, localData);
+          return;
+        }
+
+        const aiData = parsed.data as WorkoutData;
+        const data: WorkoutData = {
+          ...localData,
+          exercise: aiData.exercise ?? localData.exercise,
+        };
+        this.cache.set(key, data);
+        await this.applyResolved(entry, data);
+      } catch {
+        this.inflight.delete(key);
+        if (this.cancelled.has(entry.id)) return;
+        this.cache.set(key, localData);
+        await this.applyResolved(entry, localData);
+      }
+      return;
+    }
 
     let promise = this.inflight.get(key);
     if (!promise) {
       promise = this.deps.enrichFn({
         text: entry.text,
         domain: entry.domain,
-        context,
-        locale: this.deps.locale ?? 'pt-BR',
+        context: undefined,
+        userContext,
+        locale,
       });
       this.inflight.set(key, promise);
     }
@@ -164,10 +227,7 @@ export class CommandBus {
         await this.setError(entry.domain, entry.id, 'Could not read the AI response');
         return;
       }
-      let data = parsed.data as EnrichData;
-      if (entry.domain === 'workout') {
-        data = this.fillExercise(entry.domain, data as WorkoutData);
-      }
+      const data = parsed.data as EnrichData;
       this.cache.set(key, data);
       await this.applyResolved(entry, data);
     } catch {
@@ -222,12 +282,6 @@ export class CommandBus {
       if (d && 'sets' in d && d.exercise) return d.exercise;
     }
     return undefined;
-  }
-
-  private fillExercise(domain: Domain, data: WorkoutData): WorkoutData {
-    if (data.exercise) return data;
-    const inherited = this.lastExercise(domain);
-    return inherited ? { ...data, exercise: inherited } : data;
   }
 }
 
