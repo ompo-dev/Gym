@@ -5,14 +5,20 @@ import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Radii, Spacing } from '@/constants/theme';
+import type { EntryMediaAttachment } from '@/core/types';
+import { formatFoodQuantity } from '@/domains/food';
 import type { FoodData, FoodItem } from '@/domains/schemas';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 
+import { DraftPreview } from './FoodMediaDraftTray';
 import { SheetFrame } from './SheetFrame';
 
 interface EditableItem {
   label: string;
+  mediaId?: string;
+  quantity?: number;
+  unit?: string;
   calories: string;
   protein: string;
   carbs: string;
@@ -26,6 +32,8 @@ interface FoodNutritionEditSheetProps {
   visible: boolean;
   text: string;
   data: FoodData;
+  media?: EntryMediaAttachment[];
+  saveUnchanged?: boolean;
   onClose: () => void;
   onSave: (text: string, data: FoodData) => Promise<void> | void;
 }
@@ -37,6 +45,9 @@ export interface FoodNutritionEditHandle {
 function fromItem(item: FoodItem): EditableItem {
   return {
     label: item.label,
+    mediaId: item.mediaId,
+    quantity: item.quantity,
+    unit: item.unit,
     calories: String(Math.round(item.calories)),
     protein: String(item.protein),
     carbs: String(item.carbs),
@@ -53,6 +64,9 @@ function readNumber(value: string): number {
 function toItem(item: EditableItem): FoodItem {
   return {
     label: item.label.trim() || t('details.itemName'),
+    mediaId: item.mediaId,
+    quantity: item.quantity,
+    unit: item.unit,
     calories: readNumber(item.calories),
     protein: readNumber(item.protein),
     carbs: readNumber(item.carbs),
@@ -72,8 +86,17 @@ function fromTotals(item: EditableTotals): FoodItem {
   };
 }
 
+function sameFoodEdit(a: { text: string; items: FoodItem[] }, b: { text: string; items: FoodItem[] }): boolean {
+  return a.text.trim() === b.text.trim() && JSON.stringify(a.items) === JSON.stringify(b.items);
+}
+
 function macroCalories(item: Pick<EditableItem, 'protein' | 'carbs' | 'fat'>): string {
   return String(Math.round(readNumber(item.protein) * 4 + readNumber(item.carbs) * 4 + readNumber(item.fat) * 9));
+}
+
+function scaleAmount(value: string, ratio: number, decimals = 1): string {
+  const scaled = readNumber(value) * ratio;
+  return String(Number(scaled.toFixed(decimals)));
 }
 
 function formatHydrationDisplay(value: string): { value: string; unit: string } {
@@ -177,10 +200,17 @@ function NutrientInput({
   );
 }
 
+function mediaForItem(media: EntryMediaAttachment[] | undefined, item: EditableItem) {
+  if (!media?.length || !item.mediaId) return null;
+  return media.find((attachment) => attachment.id === item.mediaId) ?? null;
+}
+
 export const FoodNutritionEditContent = forwardRef<FoodNutritionEditHandle, Omit<FoodNutritionEditSheetProps, 'visible'>>(
 function FoodNutritionEditContent({
   text,
   data,
+  media,
+  saveUnchanged = false,
   onClose,
   onSave,
 }, ref) {
@@ -260,6 +290,47 @@ function FoodNutritionEditContent({
     setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
   };
 
+  const incrementItemQuantity = (index: number) => {
+    setItems((current) =>
+      current.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const currentQuantity = item.quantity ?? 1;
+        const nextQuantity = currentQuantity + 1;
+        const ratio = nextQuantity / currentQuantity;
+        return {
+          ...item,
+          quantity: nextQuantity,
+          calories: scaleAmount(item.calories, ratio, 0),
+          protein: scaleAmount(item.protein, ratio),
+          carbs: scaleAmount(item.carbs, ratio),
+          fat: scaleAmount(item.fat, ratio),
+          waterMl: scaleAmount(item.waterMl, ratio, 0),
+        };
+      }),
+    );
+  };
+
+  const decrementItemQuantity = (index: number) => {
+    setItems((current) =>
+      current.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const currentQuantity = item.quantity ?? 1;
+        if (currentQuantity <= 1) return item;
+        const nextQuantity = currentQuantity - 1;
+        const ratio = nextQuantity / currentQuantity;
+        return {
+          ...item,
+          quantity: nextQuantity > 1 ? nextQuantity : undefined,
+          calories: scaleAmount(item.calories, ratio, 0),
+          protein: scaleAmount(item.protein, ratio),
+          carbs: scaleAmount(item.carbs, ratio),
+          fat: scaleAmount(item.fat, ratio),
+          waterMl: scaleAmount(item.waterMl, ratio, 0),
+        };
+      }),
+    );
+  };
+
   const addItem = () => {
     setItems((current) => [
       ...current,
@@ -268,15 +339,26 @@ function FoodNutritionEditContent({
   };
 
   const handleSave = useCallback(async () => {
+    const nextText = description.trim() || text;
     const nextItems = autoCalculateTotal
       ? items.map(toItem).filter((item) => item.label.trim().length > 0)
-      : [{ ...fromTotals(manualTotals), label: description.trim() || text }];
-    await onSave(description.trim() || text, {
+      : [{ ...fromTotals(manualTotals), label: nextText }];
+    const savedItems = nextItems;
+
+    const originalItems = data.items.map((item) => toItem(fromItem(item)));
+    if (!saveUnchanged && sameFoodEdit({ text, items: originalItems }, { text: nextText, items: savedItems })) {
+      onClose();
+      return;
+    }
+
+    await onSave(nextText, {
       ...data,
-      items: nextItems.length ? nextItems : [toItem(items[0])],
+      items: savedItems,
+      reasoning: undefined,
+      confidence: undefined,
     });
     onClose();
-  }, [autoCalculateTotal, data, description, items, manualTotals, onClose, onSave, text]);
+  }, [autoCalculateTotal, data, description, items, manualTotals, onClose, onSave, saveUnchanged, text]);
 
   useImperativeHandle(ref, () => ({ save: handleSave }), [handleSave]);
 
@@ -372,15 +454,33 @@ function FoodNutritionEditContent({
 
       <View style={styles.section}>
         <AppText variant="heading">{t('details.items')}</AppText>
-        {items.map((item, index) => (
+        {items.map((item, index) => {
+          const quantity = formatFoodQuantity(toItem(item));
+          const canDecrease = (item.quantity ?? 1) > 1;
+          const itemMedia = mediaForItem(media, item);
+          return (
           <GlassSurface key={index} glass="regular" style={styles.card}>
-            <AppText variant="secondary" color={colors.textSecondary}>
-              {t('details.itemName')}
-            </AppText>
-            <TextField
-              value={item.label}
-              onChangeText={(value) => updateItem(index, { label: value })}
-            />
+            <View style={styles.itemNameHeader}>
+              <AppText variant="secondary" color={colors.textSecondary}>
+                {t('details.itemName')}
+              </AppText>
+              {quantity ? (
+                <View style={[styles.quantityPill, { backgroundColor: colors.backgroundSelected }]}>
+                  <AppText variant="caption" color={colors.textSecondary}>
+                    {quantity}
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.nameInputRow}>
+              {itemMedia ? <DraftPreview draft={itemMedia} size={48} /> : null}
+              <View style={styles.nameInput}>
+                <TextField
+                  value={item.label}
+                  onChangeText={(value) => updateItem(index, { label: value })}
+                />
+              </View>
+            </View>
             <View style={styles.pairedGrid}>
               <NutrientInput
                 initial="C"
@@ -419,7 +519,7 @@ function FoodNutritionEditContent({
                 unit="g"
               />
             </View>
-            {items.length > 1 ? (
+            <View style={styles.itemActions}>
               <Pressable
                 onPress={() => removeItem(index)}
                 accessibilityRole="button"
@@ -432,9 +532,36 @@ function FoodNutritionEditContent({
                   {t('details.removeItem')}
                 </AppText>
               </Pressable>
-            ) : null}
+
+              <Pressable
+                onPress={() => decrementItemQuantity(index)}
+                accessibilityRole="button"
+                accessibilityLabel={t('details.removeQuantity')}
+                disabled={!canDecrease}
+                style={({ pressed }) => [
+                  styles.quantityButton,
+                  { backgroundColor: `${colors.textSecondary}18` },
+                  !canDecrease && styles.disabledAction,
+                  pressed && styles.pressed,
+                ]}>
+                <AppIcon name="minus" color={colors.textSecondary} size={20} />
+              </Pressable>
+
+              <Pressable
+                onPress={() => incrementItemQuantity(index)}
+                accessibilityRole="button"
+                accessibilityLabel={t('details.addQuantity')}
+                style={({ pressed }) => [
+                  styles.quantityButton,
+                  { backgroundColor: `${colors.accent}24` },
+                  pressed && styles.pressed,
+                ]}>
+                <AppIcon name="plus" color={colors.accent} size={20} />
+              </Pressable>
+            </View>
           </GlassSurface>
-        ))}
+          );
+        })}
         <Pressable
           onPress={addItem}
           accessibilityRole="button"
@@ -457,11 +584,24 @@ export function FoodNutritionEditSheet({
   visible,
   text,
   data,
+  media,
+  saveUnchanged,
   onClose,
   onSave,
 }: FoodNutritionEditSheetProps) {
   const colors = useColors();
   const editorRef = useRef<FoodNutritionEditHandle>(null);
+  const closeButton = (
+    <Pressable
+      onPress={onClose}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={t('common.close')}>
+      <GlassSurface glass="regular" isInteractive style={styles.saveButton}>
+        <AppIcon name="x" color={colors.textSecondary} size={24} />
+      </GlassSurface>
+    </Pressable>
+  );
 
   return (
     <SheetFrame
@@ -469,6 +609,10 @@ export function FoodNutritionEditSheet({
       title={t('details.editManually')}
       onClose={onClose}
       size="full"
+      centerTitle
+      keyboardAwareScroll
+      headerLeading={closeButton}
+      hideDefaultClose
       headerTrailing={
         <Pressable
           onPress={() => void editorRef.current?.save()}
@@ -484,6 +628,8 @@ export function FoodNutritionEditSheet({
         ref={editorRef}
         text={text}
         data={data}
+        media={media}
+        saveUnchanged={saveUnchanged}
         onClose={onClose}
         onSave={onSave}
       />
@@ -600,6 +746,37 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   removeButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: Radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemActions: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  itemNameHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  nameInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  nameInput: {
+    flex: 1,
+    minWidth: 0,
+  },
+  quantityPill: {
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.half,
+  },
+  quantityButton: {
+    width: 58,
     minHeight: 52,
     borderRadius: Radii.lg,
     alignItems: 'center',
@@ -607,5 +784,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.65,
+  },
+  disabledAction: {
+    opacity: 0.35,
   },
 });

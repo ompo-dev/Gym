@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react';
 
 import { bus } from '@/core/command/bus';
 import { addDays, todayISO } from '@/core/date';
-import type { Domain, Entry } from '@/core/types';
+import type { Domain, Entry, EntryMediaAttachment } from '@/core/types';
 import { EntryRepository } from '@/data/EntryRepository';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -22,7 +22,10 @@ export function useDay(domain: Domain) {
     };
   }, [domain, day.date, setEntries]);
 
-  const addEntry = useCallback((text: string) => void bus.addEntry(text, domain), [domain]);
+  const addEntry = useCallback(
+    (text: string, media?: EntryMediaAttachment[]) => void bus.addEntry(text, domain, media),
+    [domain],
+  );
   const editEntry = useCallback(
     (entry: Entry, text: string) => void bus.editEntry(entry, text),
     [],

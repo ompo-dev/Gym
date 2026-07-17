@@ -1,10 +1,12 @@
-import { foodSchema, workoutSchema } from './schemas';
+import { foodEditSchema, foodSchema, workoutSchema } from './schemas';
 
 test('food schema parses items and coerces string numbers', () => {
   const result = foodSchema.parse({
     items: [
       {
         label: 'burger',
+        quantity: '2',
+        unit: 'unidades',
         calories: '620',
         protein: 30,
         carbs: 40,
@@ -15,6 +17,8 @@ test('food schema parses items and coerces string numbers', () => {
   });
 
   expect(result.items[0].calories).toBe(620);
+  expect(result.items[0].quantity).toBe(2);
+  expect(result.items[0].unit).toBe('unidades');
   expect(result.items[0].waterMl).toBe(500);
 });
 
@@ -26,8 +30,22 @@ test('food schema defaults missing hydration to zero', () => {
   expect(result.items[0].waterMl).toBe(0);
 });
 
-test('food schema rejects empty items and items missing a label', () => {
-  expect(foodSchema.safeParse({ items: [] }).success).toBe(false);
+test('food edit schema parses updated meal and change list', () => {
+  const result = foodEditSchema.parse({
+    description: 'arroz ajustado',
+    meal: {
+      items: [{ label: 'arroz', calories: 120, protein: 2, carbs: 24, fat: 1 }],
+    },
+    changes: [{ action: 'edited', item: 'arroz', note: 'porcao ajustada' }],
+  });
+
+  expect(result.description).toBe('arroz ajustado');
+  expect(result.meal.items[0].waterMl).toBe(0);
+  expect(result.changes[0].action).toBe('edited');
+});
+
+test('food schema allows empty items and rejects items missing a label', () => {
+  expect(foodSchema.safeParse({ items: [] }).success).toBe(true);
   expect(
     foodSchema.safeParse({ items: [{ calories: 100, protein: 0, carbs: 0, fat: 0 }] }).success,
   ).toBe(false);

@@ -8,10 +8,16 @@ import type { Entry } from '@/core/types';
 import type { DomainConfig } from '@/domains/types';
 import { useColors } from '@/hooks/use-colors';
 
+import { FoodMediaDraftTray, type FoodMediaDraft } from './FoodMediaDraftTray';
+
 interface NotesListProps<TData, TTotals> {
   entries: Entry[];
   config: DomainConfig<TData, TTotals>;
   keyboardVisible?: boolean;
+  canAddEmpty?: boolean;
+  mediaDrafts?: FoodMediaDraft[];
+  onChangeMediaDescription?: (id: string, description: string) => void;
+  onRemoveMediaDraft?: (id: string) => void;
   onAdd: (text: string) => void;
   onEdit: (entry: Entry, text: string) => void;
   onDelete: (entry: Entry) => void;
@@ -29,18 +35,26 @@ function NewNoteInput({
   onAdd,
   showBullet = false,
   inputRef,
+  canAddEmpty = false,
+  mediaDrafts = [],
+  onChangeMediaDescription,
+  onRemoveMediaDraft,
 }: {
   placeholder: string;
   onAdd: (text: string) => void;
   showBullet?: boolean;
   inputRef?: RefObject<TextInput | null>;
+  canAddEmpty?: boolean;
+  mediaDrafts?: FoodMediaDraft[];
+  onChangeMediaDescription?: (id: string, description: string) => void;
+  onRemoveMediaDraft?: (id: string) => void;
 }) {
   const colors = useColors();
   const [text, setText] = useState('');
 
   const submit = () => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed && !canAddEmpty) return;
     onAdd(trimmed);
     setText('');
   };
@@ -51,6 +65,13 @@ function NewNoteInput({
         <AppText variant="value" color={colors.textSecondary} style={styles.newMarker}>
           {'\u2022'}
         </AppText>
+      ) : null}
+      {mediaDrafts.length > 0 && onChangeMediaDescription && onRemoveMediaDraft ? (
+        <FoodMediaDraftTray
+          drafts={mediaDrafts}
+          onChangeDescription={onChangeMediaDescription}
+          onRemove={onRemoveMediaDraft}
+        />
       ) : null}
       <TextInput
         ref={inputRef}
@@ -72,6 +93,10 @@ export function NotesList<TData, TTotals>({
   entries,
   config,
   keyboardVisible,
+  canAddEmpty,
+  mediaDrafts,
+  onChangeMediaDescription,
+  onRemoveMediaDraft,
   onAdd,
   onEdit,
   onDelete,
@@ -198,6 +223,11 @@ export function NotesList<TData, TTotals>({
               previousEntry={index > 0 ? entries[index - 1] : undefined}
               config={config}
               keyboardVisible={keyboardVisible}
+              leading={
+                config.id === 'food' && item.media?.length ? (
+                  <FoodMediaDraftTray drafts={item.media} />
+                ) : undefined
+              }
               onEdit={onEdit}
               onDelete={onDelete}
               onRetry={onRetry}
@@ -239,6 +269,10 @@ export function NotesList<TData, TTotals>({
             onAdd={onAdd}
             showBullet={config.id === 'workout'}
             inputRef={newInputRef}
+            canAddEmpty={canAddEmpty}
+            mediaDrafts={mediaDrafts}
+            onChangeMediaDescription={onChangeMediaDescription}
+            onRemoveMediaDraft={onRemoveMediaDraft}
           />
         }
         contentContainerStyle={styles.content}

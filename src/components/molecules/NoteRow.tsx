@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, type ReactNode, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppText } from '@/components/atoms/AppText';
@@ -19,6 +19,7 @@ interface NoteRowProps<TData, TTotals> {
   previousEntry?: Entry;
   config: DomainConfig<TData, TTotals>;
   keyboardVisible?: boolean;
+  leading?: ReactNode;
   onEdit: (entry: Entry, text: string) => void;
   onDelete: (entry: Entry) => void;
   onRetry: (entry: Entry) => void;
@@ -70,6 +71,7 @@ function FoodRow<TData, TTotals>({
   entry,
   previousEntry,
   config,
+  leading,
   onEdit,
   onDelete,
   onRetry,
@@ -95,6 +97,7 @@ function FoodRow<TData, TTotals>({
 
   return (
     <View style={styles.rowTop}>
+      {leading}
       <TextInput
         value={text}
         onChangeText={setText}

@@ -4,6 +4,9 @@ import type { Domain } from '@/core/types';
 
 export const foodItemSchema = z.object({
   label: z.string().min(1),
+  mediaId: z.string().trim().min(1).optional().catch(undefined),
+  quantity: z.coerce.number().positive().optional().catch(undefined),
+  unit: z.string().trim().min(1).max(32).optional().catch(undefined),
   calories: z.coerce.number().nonnegative(),
   protein: z.coerce.number().nonnegative(),
   carbs: z.coerce.number().nonnegative(),
@@ -13,7 +16,7 @@ export const foodItemSchema = z.object({
 export type FoodItem = z.infer<typeof foodItemSchema>;
 
 export const foodSchema = z.object({
-  items: z.array(foodItemSchema).min(1),
+  items: z.array(foodItemSchema),
   // AI-provided explanation + certainty for the detail sheet. Optional +
   // `.catch` so a missing/garbled field never fails the whole enrich, and old
   // rows saved before this existed still validate.
@@ -21,6 +24,19 @@ export const foodSchema = z.object({
   confidence: z.coerce.number().optional().catch(undefined),
 });
 export type FoodData = z.infer<typeof foodSchema>;
+
+export const foodEditSchema = z.object({
+  description: z.string().trim().min(1).max(160).optional().catch(undefined),
+  meal: foodSchema,
+  changes: z.array(
+    z.object({
+      action: z.enum(['added', 'edited', 'removed']),
+      item: z.string().min(1),
+      note: z.string().max(500).optional().catch(undefined),
+    }),
+  ).default([]),
+});
+export type FoodEditData = z.infer<typeof foodEditSchema>;
 
 export const setSchema = z.object({
   weight: z.coerce.number().nonnegative(),

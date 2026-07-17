@@ -1,4 +1,4 @@
-import type { Domain, Entry, EntryStatus } from '@/core/types';
+import type { Domain, Entry, EntryMediaAttachment, EntryMediaKind, EntryStatus } from '@/core/types';
 import { type EnrichData, schemaByDomain } from '@/domains/schemas';
 
 import { getDb } from './db';
@@ -10,6 +10,7 @@ interface Row {
   date: string;
   domain: string;
   text: string;
+  media: string | null;
   status: string;
   data: string | null;
   error: string | null;
@@ -28,6 +29,34 @@ function parseData(domain: Domain, raw: string | null): EnrichData | null {
   }
 }
 
+function isMediaKind(value: unknown): value is EntryMediaKind {
+  return value === 'foodPhoto' || value === 'menuPhoto' || value === 'barcode';
+}
+
+function parseMedia(raw: string | null): EntryMediaAttachment[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
+    const media = parsed.flatMap((item): EntryMediaAttachment[] => {
+      if (!item || typeof item !== 'object') return [];
+      const record = item as Record<string, unknown>;
+      if (typeof record.id !== 'string' || !isMediaKind(record.kind)) return [];
+      return [
+        {
+          id: record.id,
+          kind: record.kind,
+          uri: typeof record.uri === 'string' ? record.uri : undefined,
+          description: typeof record.description === 'string' ? record.description : '',
+        },
+      ];
+    });
+    return media.length ? media : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function toEntry(r: Row): Entry {
   const domain = r.domain as Domain;
   const data = parseData(domain, r.data);
@@ -39,6 +68,7 @@ function toEntry(r: Row): Entry {
     date: r.date,
     domain,
     text: r.text,
+    media: parseMedia(r.media),
     status,
     data,
     error: r.error,
@@ -61,13 +91,14 @@ export const EntryRepository = {
     const db = await getDb();
     await db.runAsync(
       `INSERT OR REPLACE INTO entries
-         (id, date, domain, text, status, data, error, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, date, domain, text, media, status, data, error, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         entry.id,
         entry.date,
         entry.domain,
         entry.text,
+        entry.media?.length ? JSON.stringify(entry.media) : null,
         entry.status,
         entry.data ? JSON.stringify(entry.data) : null,
         entry.error,
@@ -87,6 +118,10 @@ export const EntryRepository = {
     if (patch.text !== undefined) {
       sets.push('text = ?');
       params.push(patch.text);
+    }
+    if (patch.media !== undefined) {
+      sets.push('media = ?');
+      params.push(patch.media.length ? JSON.stringify(patch.media) : null);
     }
     if (patch.error !== undefined) {
       sets.push('error = ?');

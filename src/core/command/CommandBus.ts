@@ -1,6 +1,6 @@
 import { Lru } from '@/core/cache/lru';
 import type { EnrichRequest, EnrichResponse } from '@/core/enrich/types';
-import type { Domain, Entry } from '@/core/types';
+import type { Domain, Entry, EntryMediaAttachment } from '@/core/types';
 import { hashKey, newId, normalizeText } from '@/core/utils';
 import { type EnrichData, schemaByDomain, type WorkoutData } from '@/domains/schemas';
 import { getWorkoutExerciseLine, parseWorkoutText } from '@/domains/workout';
@@ -66,7 +66,7 @@ export class CommandBus {
 
   // ---- public actions -----------------------------------------------------
 
-  async addEntry(text: string, domain: Domain): Promise<void> {
+  async addEntry(text: string, domain: Domain, media?: EntryMediaAttachment[]): Promise<void> {
     const trimmed = text.trim();
     if (!trimmed) return;
     const entry: Entry = {
@@ -74,6 +74,7 @@ export class CommandBus {
       date: this.deps.store.getDay(domain).date,
       domain,
       text: trimmed,
+      media: media?.length ? media : undefined,
       status: 'thinking',
       data: null,
       error: null,

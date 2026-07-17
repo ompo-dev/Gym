@@ -65,6 +65,17 @@ test('add is optimistic then resolves to done with parsed data', async () => {
   expect((entry.data as { items: { calories: number }[] }).items[0].calories).toBe(620);
 });
 
+test('add keeps media attachments after enrich resolves', async () => {
+  const media = [{ id: 'photo-1', kind: 'foodPhoto' as const, uri: 'file://meal.jpg', description: '' }];
+  const { bus, day } = harness(async () => foodOk());
+  await bus.addEntry('foto do alimento', 'food', media);
+
+  expect(day.food.entries[0].media).toEqual(media);
+  await flush();
+  expect(day.food.entries[0].status).toBe('done');
+  expect(day.food.entries[0].media).toEqual(media);
+});
+
 test('editing an entry re-enriches with the new text', async () => {
   const enrichFn = jest.fn(async () => foodOk());
   const { bus, day } = harness(enrichFn);

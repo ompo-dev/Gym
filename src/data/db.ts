@@ -14,6 +14,7 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
           date TEXT NOT NULL,
           domain TEXT NOT NULL,
           text TEXT NOT NULL,
+          media TEXT,
           status TEXT NOT NULL,
           data TEXT,
           error TEXT,
@@ -31,6 +32,10 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
           createdAt INTEGER NOT NULL
         );
       `);
+      const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(entries)');
+      if (!columns.some((column) => column.name === 'media')) {
+        await db.execAsync('ALTER TABLE entries ADD COLUMN media TEXT;');
+      }
       return db;
     })();
   }

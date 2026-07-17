@@ -1,6 +1,14 @@
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  Keyboard,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  type KeyboardEvent,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppIcon } from "@/components/atoms/AppIcon";
@@ -21,6 +29,8 @@ interface SheetFrameProps {
   centerTitle?: boolean;
   overlay?: ReactNode;
   scroll?: boolean;
+  keyboardAwareScroll?: boolean;
+  contentBottomInset?: number;
   /** 'sheet' = glass bottom card (default), 'full' = native iOS page sheet. */
   size?: "sheet" | "full";
 }
@@ -36,74 +46,39 @@ export function SheetFrame({
   centerTitle = false,
   overlay,
   scroll = true,
+  keyboardAwareScroll = false,
+  contentBottomInset = 0,
   size = "sheet",
 }: SheetFrameProps) {
   const colors = useColors();
   const isFull = size === "full";
-  const scrollRef = useRef<ScrollView | null>(null);
-  const scrollY = useRef(0);
-  const keyboardTop = useRef<number | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [scrolled, setScrolled] = useState(false);
-  const keyboardPadding = keyboardInset > 0
-    ? keyboardInset + Math.round(viewportHeight * 0.45)
-    : 0;
-
-  const scrollFocusedInputToCenter = useCallback((animated: boolean) => {
-    const scroll = scrollRef.current;
-    const nativeScroll = scroll?.getNativeScrollRef();
-    const focusedInput = TextInput.State.currentlyFocusedInput?.();
-    if (!scroll || !nativeScroll || !focusedInput) return;
-
-    nativeScroll.measureInWindow((_scrollX, scrollWindowY, _scrollWidth, scrollHeight) => {
-      focusedInput.measureInWindow((_inputX, inputY, _inputWidth, inputHeight) => {
-        const visibleTop = scrollWindowY + (isFull ? headerHeight + Spacing.four : 0);
-        const visibleBottom = keyboardTop.current
-          ? Math.min(scrollWindowY + scrollHeight, keyboardTop.current - Spacing.four)
-          : scrollWindowY + scrollHeight;
-        const visibleHeight = visibleBottom - visibleTop;
-        if (visibleHeight <= 0) return;
-
-        const desiredCenter = visibleTop + visibleHeight / 2;
-        const inputCenter = inputY + inputHeight / 2;
-        const delta = inputCenter - desiredCenter;
-        if (Math.abs(delta) < 8) return;
-
-        const y = Math.max(0, scrollY.current + delta);
-        scroll.scrollTo({ y, animated });
-      });
-    });
-  }, [headerHeight, isFull]);
-
-  const scheduleFocusedInputScroll = useCallback((animated = true) => {
-    requestAnimationFrame(() => scrollFocusedInputToCenter(animated));
-    setTimeout(() => scrollFocusedInputToCenter(animated), 80);
-  }, [scrollFocusedInputToCenter]);
+  const scrollBottomInset = Math.max(
+    contentBottomInset,
+    keyboardInset > 0 ? keyboardInset + Spacing.five : 0,
+  );
 
   useEffect(() => {
-    if (!visible) return undefined;
-
-    const show = Keyboard.addListener("keyboardDidShow", ({ endCoordinates }) => {
-      keyboardTop.current = endCoordinates.screenY;
-      setKeyboardInset(endCoordinates.height);
-      scheduleFocusedInputScroll(true);
-    });
-    const hide = Keyboard.addListener("keyboardDidHide", () => {
-      keyboardTop.current = null;
+    if (!visible || !keyboardAwareScroll) {
       setKeyboardInset(0);
-    });
+      return undefined;
+    }
+
+    const show = ({ endCoordinates }: KeyboardEvent) => setKeyboardInset(endCoordinates.height);
+    const willShow = Keyboard.addListener("keyboardWillShow", show);
+    const didShow = Keyboard.addListener("keyboardDidShow", show);
+    const willHide = Keyboard.addListener("keyboardWillHide", () => setKeyboardInset(0));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardInset(0));
 
     return () => {
-      show.remove();
+      willShow.remove();
+      didShow.remove();
+      willHide.remove();
       hide.remove();
     };
-  }, [visible, scheduleFocusedInputScroll]);
-
-  useEffect(() => {
-    if (keyboardInset > 0) scheduleFocusedInputScroll(true);
-  }, [keyboardInset, scheduleFocusedInputScroll]);
+  }, [keyboardAwareScroll, visible]);
 
   const handle = (
     <View style={[styles.handle, { backgroundColor: colors.border }]} />
@@ -146,34 +121,24 @@ export function SheetFrame({
 
   // Native iOS page sheet with a glass header that frosts content scrolling under it.
   if (isFull) {
-    return (
-      <Modal
-        visible={visible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={onClose}
-        onDismiss={onClose}
-      >
+    const page = (
         <SafeAreaView
           style={[styles.fill, { backgroundColor: colors.background }]}
           edges={["bottom"]}
         >
           <ScrollView
-            ref={scrollRef}
             style={styles.fill}
             contentContainerStyle={[
               styles.contentFull,
               { paddingTop: headerHeight + Spacing.four },
-              keyboardPadding > 0 && { paddingBottom: Spacing.four + keyboardPadding },
+              scrollBottomInset > 0 && { paddingBottom: Spacing.four + scrollBottomInset },
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets={false}
             scrollEventThrottle={16}
-            onLayout={({ nativeEvent }) => setViewportHeight(nativeEvent.layout.height)}
-            onTouchEnd={() => scheduleFocusedInputScroll(true)}
             onScroll={({ nativeEvent }) => {
-              scrollY.current = nativeEvent.contentOffset.y;
               setScrolled(nativeEvent.contentOffset.y > 4);
             }}
           >
@@ -198,26 +163,32 @@ export function SheetFrame({
           </View>
           {overlay}
         </SafeAreaView>
+    );
+
+    return (
+      <Modal
+        visible={visible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={onClose}
+        onDismiss={onClose}
+      >
+        {page}
       </Modal>
     );
   }
 
   const content = scroll ? (
     <ScrollView
-      ref={scrollRef}
       contentContainerStyle={[
         styles.content,
-        keyboardPadding > 0 && { paddingBottom: keyboardPadding },
+        scrollBottomInset > 0 && { paddingBottom: scrollBottomInset },
       ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
+      automaticallyAdjustKeyboardInsets={false}
       scrollEventThrottle={16}
-      onLayout={({ nativeEvent }) => setViewportHeight(nativeEvent.layout.height)}
-      onTouchEnd={() => scheduleFocusedInputScroll(true)}
-      onScroll={({ nativeEvent }) => {
-        scrollY.current = nativeEvent.contentOffset.y;
-      }}
     >
       {children}
     </ScrollView>
@@ -332,7 +303,6 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
   },
   contentFull: {
-    flexGrow: 1,
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.four,
     gap: Spacing.four,

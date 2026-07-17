@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { ProgressRing } from '@/components/atoms/ProgressRing';
@@ -21,13 +21,14 @@ import {
 import { Metrics, Radii, Spacing } from '@/constants/theme';
 import { timeLabel } from '@/core/date';
 import type { Entry } from '@/core/types';
-import { formatWaterMl, sumFoodData } from '@/domains/food';
+import { formatFoodQuantity, formatWaterMl, sumFoodData } from '@/domains/food';
 import type { FoodData } from '@/domains/schemas';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 
 import { FoodAiEditSheet } from './FoodAiEditSheet';
 import { FoodEntryActionMenu, type FoodEntryActionMenuAnchor } from './FoodEntryActionMenu';
+import { DraftPreview } from './FoodMediaDraftTray';
 import {
   FoodNutritionEditContent,
   type FoodNutritionEditHandle,
@@ -42,6 +43,7 @@ interface FoodEntryDetailSheetProps {
   onSaveMeal?: (entry: Entry) => Promise<void> | void;
   onSaveNutrition?: (entry: Entry, text: string, data: FoodData) => Promise<void> | void;
   onAiEdit?: (entry: Entry, instruction: string) => Promise<void> | void;
+  reasoningLoading?: boolean;
 }
 
 function MacroStat({
@@ -80,6 +82,11 @@ function ConfidenceRing({ value, color, track }: { value: number; color: string;
   );
 }
 
+function mediaForItem(media: Entry['media'], item: FoodData['items'][number]) {
+  if (!media?.length || !item.mediaId) return null;
+  return media.find((attachment) => attachment.id === item.mediaId) ?? null;
+}
+
 export function FoodEntryDetailSheet({
   visible,
   onClose,
@@ -88,6 +95,7 @@ export function FoodEntryDetailSheet({
   onSaveMeal,
   onSaveNutrition,
   onAiEdit,
+  reasoningLoading = false,
 }: FoodEntryDetailSheetProps) {
   const colors = useColors();
   const data =
@@ -99,6 +107,7 @@ export function FoodEntryDetailSheet({
   const [menuAnchor, setMenuAnchor] = useState<FoodEntryActionMenuAnchor | null>(null);
   const [manualVisible, setManualVisible] = useState(false);
   const [aiVisible, setAiVisible] = useState(false);
+  const [aiScrollInset, setAiScrollInset] = useState(0);
   const [savedVisible, setSavedVisible] = useState(false);
   const [mealSaved, setMealSaved] = useState(false);
   const menuButtonRef = useRef<View>(null);
@@ -123,7 +132,16 @@ export function FoodEntryDetailSheet({
 
   useEffect(() => {
     setMealSaved(false);
+    setAiVisible(false);
+    setAiScrollInset(0);
+    setManualVisible(false);
+    setMenuVisible(false);
+    setMenuAnchor(null);
   }, [entry?.id]);
+
+  useEffect(() => {
+    if (!aiVisible) setAiScrollInset(0);
+  }, [aiVisible]);
 
   if (!entry || !data) return null;
 
@@ -181,6 +199,10 @@ export function FoodEntryDetailSheet({
 
   const openManualEditor = () => {
     setManualVisible(true);
+  };
+
+  const saveManualEditor = () => {
+    void manualEditorRef.current?.save();
   };
 
   const useNativeMenu = IOS_NATIVE_ENABLED && SwiftHost && SwiftMenu && SwiftButton;
@@ -253,7 +275,7 @@ export function FoodEntryDetailSheet({
   );
   const manualSaveButton = (
     <Pressable
-      onPress={() => void manualEditorRef.current?.save()}
+      onPress={saveManualEditor}
       hitSlop={10}
       accessibilityRole="button"
       accessibilityLabel={t('settings.done')}>
@@ -264,7 +286,7 @@ export function FoodEntryDetailSheet({
   );
   const manualCloseButton = (
     <Pressable
-      onPress={() => setManualVisible(false)}
+      onPress={saveManualEditor}
       hitSlop={10}
       accessibilityRole="button"
       accessibilityLabel={t('common.close')}>
@@ -279,22 +301,34 @@ export function FoodEntryDetailSheet({
       <SheetFrame
         visible={visible}
         title={manualVisible ? t('details.editManually') : t('details.nutrition')}
-        onClose={manualVisible ? () => setManualVisible(false) : onClose}
+        onClose={manualVisible ? saveManualEditor : onClose}
         size="full"
         centerTitle={manualVisible}
+        keyboardAwareScroll={manualVisible}
+        contentBottomInset={!manualVisible ? Math.max(aiScrollInset, Spacing.eight) : 0}
         headerLeading={manualVisible ? manualCloseButton : undefined}
         hideDefaultClose={manualVisible}
-        overlay={!manualVisible && !useNativeMenu ? (
-          <FoodEntryActionMenu
-            visible={menuVisible}
-            anchor={menuAnchor}
-            mealSaved={mealSaved}
-            onClose={closeMenu}
-            onSaveMeal={handleSaveMeal}
-            onEditWithAi={() => openAfterMenu(() => setAiVisible(true))}
-            onEditManually={() => openAfterMenu(openManualEditor)}
-            onDelete={handleDelete}
-          />
+        overlay={!manualVisible ? (
+          <>
+            {!useNativeMenu ? (
+              <FoodEntryActionMenu
+                visible={menuVisible}
+                anchor={menuAnchor}
+                mealSaved={mealSaved}
+                onClose={closeMenu}
+                onSaveMeal={handleSaveMeal}
+                onEditWithAi={() => openAfterMenu(() => setAiVisible(true))}
+                onEditManually={() => openAfterMenu(openManualEditor)}
+                onDelete={handleDelete}
+              />
+            ) : null}
+            <FoodAiEditSheet
+              visible={aiVisible}
+              onClose={() => setAiVisible(false)}
+              onSubmit={(instruction) => onAiEdit?.(entry, instruction)}
+              onOcclusionChange={setAiScrollInset}
+            />
+          </>
         ) : null}
         headerTrailing={manualVisible ? manualSaveButton : menuButton}>
         {manualVisible ? (
@@ -302,6 +336,7 @@ export function FoodEntryDetailSheet({
             ref={manualEditorRef}
             text={entry.text}
             data={data}
+            media={entry.media}
             onClose={() => setManualVisible(false)}
             onSave={(text, nextData) => onSaveNutrition?.(entry, text, nextData)}
           />
@@ -363,6 +398,8 @@ export function FoodEntryDetailSheet({
               <View style={styles.items}>
                 {data.items.map((item, index) => {
                   const isOpen = expanded[index] ?? false;
+                  const quantity = formatFoodQuantity(item);
+                  const itemMedia = mediaForItem(entry.media, item);
                   return (
                     <GlassSurface key={`${item.label}-${index}`} glass="regular" style={styles.itemCard}>
                       <Pressable
@@ -372,9 +409,26 @@ export function FoodEntryDetailSheet({
                         accessibilityRole="button"
                         accessibilityLabel={isOpen ? t('details.collapseItem') : t('details.expandItem')}>
                         <View style={styles.itemHeader}>
-                          <AppText variant="body" style={styles.itemLabel}>
-                            {item.label}
-                          </AppText>
+                          <View style={styles.itemTitleRow}>
+                            {itemMedia ? <DraftPreview draft={itemMedia} size={34} /> : null}
+                            <View style={styles.itemNameText}>
+                              <AppText variant="body" style={styles.itemLabel}>
+                                {item.label}
+                              </AppText>
+                              {itemMedia?.description.trim() ? (
+                                <AppText variant="caption" color={colors.textSecondary}>
+                                  {itemMedia.description.trim()}
+                                </AppText>
+                              ) : null}
+                            </View>
+                            {quantity ? (
+                              <View style={[styles.quantityPill, { backgroundColor: colors.backgroundSelected }]}>
+                                <AppText variant="caption" color={colors.textSecondary}>
+                                  {quantity}
+                                </AppText>
+                              </View>
+                            ) : null}
+                          </View>
 
                           <View style={styles.itemHeaderRight}>
                             <AppText variant="value" color={colors.calories}>
@@ -417,7 +471,7 @@ export function FoodEntryDetailSheet({
               </View>
             </View>
 
-            {data.reasoning || level ? (
+            {data.reasoning || level || reasoningLoading ? (
               <View style={styles.section}>
                 <AppText variant="heading">{t('details.reasoning')}</AppText>
 
@@ -440,7 +494,14 @@ export function FoodEntryDetailSheet({
                     </View>
                   ) : null}
 
-                  {data.reasoning ? (
+                  {reasoningLoading ? (
+                    <View style={styles.reasoningLoading}>
+                      <ActivityIndicator color={colors.textSecondary} />
+                      <AppText variant="body" color={colors.textSecondary}>
+                        {t('details.reasoningLoading')}
+                      </AppText>
+                    </View>
+                  ) : data.reasoning ? (
                     <AppText variant="body" color={colors.textSecondary}>
                       {data.reasoning}
                     </AppText>
@@ -459,11 +520,6 @@ export function FoodEntryDetailSheet({
         )}
       </SheetFrame>
 
-      <FoodAiEditSheet
-        visible={aiVisible}
-        onClose={() => setAiVisible(false)}
-        onSubmit={(instruction) => onAiEdit?.(entry, instruction)}
-      />
     </>
   );
 }
@@ -568,6 +624,23 @@ const styles = StyleSheet.create({
   itemLabel: {
     flex: 1,
   },
+  itemNameText: {
+    flex: 1,
+    minWidth: 0,
+    gap: Spacing.half,
+  },
+  itemTitleRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  quantityPill: {
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.half,
+  },
   itemHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -584,6 +657,11 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     gap: Spacing.four,
     overflow: 'hidden',
+  },
+  reasoningLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   confidenceRow: {
     flexDirection: 'row',

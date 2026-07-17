@@ -35,7 +35,20 @@
         }
       ],
       "expo-sqlite",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permitir que o Gym acesse a camera",
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permitir que o Gym acesse suas fotos para anexar imagens de alimentos e cardapios"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
