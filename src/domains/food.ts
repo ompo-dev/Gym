@@ -10,6 +10,9 @@ export interface FoodTotals {
   carbs: number;
   fat: number;
   waterMl: number;
+  sugarG: number;
+  fiberG: number;
+  sodiumMg: number;
 }
 
 export interface FoodGoals {
@@ -18,6 +21,9 @@ export interface FoodGoals {
   carbs: number;
   fat: number;
   waterMl: number;
+  sugarG: number;
+  fiberG: number;
+  sodiumMg: number;
 }
 
 const round = Math.round;
@@ -29,6 +35,9 @@ export const defaultFoodGoals: FoodGoals = {
   carbs: 250,
   fat: 70,
   waterMl: 3000,
+  sugarG: 25,
+  fiberG: 25,
+  sodiumMg: 2300,
 };
 
 export function foodGoalsFromProfile(profile: OnboardingProfile): FoodGoals {
@@ -39,6 +48,9 @@ export function foodGoalsFromProfile(profile: OnboardingProfile): FoodGoals {
     carbs: summary.carbs,
     fat: summary.fat,
     waterMl: summary.waterMl,
+    sugarG: summary.sugarG,
+    fiberG: summary.fiberG,
+    sodiumMg: summary.sodiumMg,
   };
 }
 
@@ -50,8 +62,11 @@ export function sumFoodData(data: FoodData): FoodTotals {
       carbs: acc.carbs + item.carbs,
       fat: acc.fat + item.fat,
       waterMl: acc.waterMl + item.waterMl,
+      sugarG: acc.sugarG + item.sugarG,
+      fiberG: acc.fiberG + item.fiberG,
+      sodiumMg: acc.sodiumMg + item.sodiumMg,
     }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0 },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0, sugarG: 0, fiberG: 0, sodiumMg: 0 },
   );
 }
 
@@ -161,16 +176,20 @@ function sumFoodItems(base: FoodItem, next: FoodItem): FoodItem {
   const sameUnit = !base.unit || !next.unit || base.unit === next.unit;
   const quantity = sameUnit ? (base.quantity ?? 1) + (next.quantity ?? 1) : base.quantity;
   const unit = base.unit ?? next.unit;
+  const amount = (value: number | undefined) => value ?? 0;
   return {
     label: base.label,
     mediaId: base.mediaId ?? next.mediaId,
     ...(quantity && quantity > 1 ? { quantity } : {}),
     ...(sameUnit && unit ? { unit } : {}),
-    calories: base.calories + next.calories,
-    protein: base.protein + next.protein,
-    carbs: base.carbs + next.carbs,
-    fat: base.fat + next.fat,
-    waterMl: base.waterMl + next.waterMl,
+    calories: amount(base.calories) + amount(next.calories),
+    protein: amount(base.protein) + amount(next.protein),
+    carbs: amount(base.carbs) + amount(next.carbs),
+    fat: amount(base.fat) + amount(next.fat),
+    waterMl: amount(base.waterMl) + amount(next.waterMl),
+    sugarG: amount(base.sugarG) + amount(next.sugarG),
+    fiberG: amount(base.fiberG) + amount(next.fiberG),
+    sodiumMg: amount(base.sodiumMg) + amount(next.sodiumMg),
   };
 }
 
@@ -235,7 +254,7 @@ export const foodConfig: DomainConfig<FoodData, FoodTotals> = {
   accent: foodColors.calories,
   schema: foodSchema,
   formatResult: (data) => `${round(sumFoodData(data).calories)} cal`,
-  emptyTotals: { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0 },
+  emptyTotals: { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0, sugarG: 0, fiberG: 0, sodiumMg: 0 },
   addToTotals: (totals, data) => {
     const summed = sumFoodData(data);
     return {
@@ -244,6 +263,9 @@ export const foodConfig: DomainConfig<FoodData, FoodTotals> = {
       carbs: totals.carbs + summed.carbs,
       fat: totals.fat + summed.fat,
       waterMl: totals.waterMl + summed.waterMl,
+      sugarG: totals.sugarG + summed.sugarG,
+      fiberG: totals.fiberG + summed.fiberG,
+      sodiumMg: totals.sodiumMg + summed.sodiumMg,
     };
   },
   describeTotals: (totals) => [

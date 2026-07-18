@@ -6,17 +6,32 @@ import { workoutConfig } from './workout';
 test('food totals sum items across entries', () => {
   let totals = foodConfig.emptyTotals;
   totals = foodConfig.addToTotals(totals, {
-    items: [{ label: 'a', calories: 100, protein: 10, carbs: 20, fat: 5, waterMl: 250 }],
+    items: [
+      {
+        label: 'a',
+        calories: 100,
+        protein: 10,
+        carbs: 20,
+        fat: 5,
+        waterMl: 250,
+        sugarG: 6,
+        fiberG: 2,
+        sodiumMg: 300,
+      },
+    ],
   });
   totals = foodConfig.addToTotals(totals, {
     items: [
-      { label: 'b', calories: 50, protein: 5, carbs: 0, fat: 1, waterMl: 0 },
-      { label: 'c', calories: 30, protein: 2, carbs: 3, fat: 0, waterMl: 500 },
+      { label: 'b', calories: 50, protein: 5, carbs: 0, fat: 1, waterMl: 0, sugarG: 1, fiberG: 0, sodiumMg: 50 },
+      { label: 'c', calories: 30, protein: 2, carbs: 3, fat: 0, waterMl: 500, sugarG: 2, fiberG: 3, sodiumMg: 100 },
     ],
   });
 
   expect(totals.calories).toBe(180);
   expect(totals.waterMl).toBe(750);
+  expect(totals.sugarG).toBe(9);
+  expect(totals.fiberG).toBe(5);
+  expect(totals.sodiumMg).toBe(450);
   expect(foodConfig.describeTotals(totals).find((item) => item.key === 'cal')?.value).toBe('180');
   expect(foodConfig.describeTotals(totals).find((item) => item.key === 'h')?.value).toBe('750ml');
 });
@@ -39,6 +54,7 @@ test('addToTotals never mutates the accumulator', () => {
   });
   expect(empty.calories).toBe(0);
   expect(empty.waterMl).toBe(0);
+  expect(empty.sugarG).toBe(0);
 });
 
 test('food goals come from the onboarding profile', () => {
@@ -47,6 +63,8 @@ test('food goals come from the onboarding profile', () => {
   expect(goals.calories).toBeGreaterThan(2400);
   expect(goals.protein).toBe(153);
   expect(goals.waterMl).toBe(3450);
+  expect(goals.sugarG).toBe(25);
+  expect(goals.sodiumMg).toBe(2300);
 });
 
 test('workout volume converts lb to kg', () => {

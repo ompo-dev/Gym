@@ -71,6 +71,17 @@ function kcal(nutriments: Record<string, unknown>, suffix: 'serving' | '100g'): 
   return kj === undefined ? 0 : Math.round(kj / 4.184);
 }
 
+function nutrient(nutriments: Record<string, unknown>, name: string, suffix: 'serving' | '100g'): number {
+  return round(readNumber(nutriments, `${name}_${suffix}`) ?? readNumber(nutriments, name) ?? 0);
+}
+
+function sodiumMg(nutriments: Record<string, unknown>, suffix: 'serving' | '100g'): number {
+  const sodiumG = readNumber(nutriments, `sodium_${suffix}`) ?? readNumber(nutriments, 'sodium');
+  if (sodiumG !== undefined) return Math.round(sodiumG * 1000);
+  const saltG = readNumber(nutriments, `salt_${suffix}`) ?? readNumber(nutriments, 'salt');
+  return saltG === undefined ? 0 : Math.round(saltG * 393.4);
+}
+
 function normalizeText(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
@@ -150,10 +161,13 @@ export function mapOpenFoodFactsProduct(code: string, product: OpenFoodFactsProd
           quantity: 1,
           unit: 'unidade',
           calories: kcal(nutriments, suffix),
-          protein: round(readNumber(nutriments, `proteins_${suffix}`) ?? readNumber(nutriments, 'proteins') ?? 0),
-          carbs: round(readNumber(nutriments, `carbohydrates_${suffix}`) ?? readNumber(nutriments, 'carbohydrates') ?? 0),
-          fat: round(readNumber(nutriments, `fat_${suffix}`) ?? readNumber(nutriments, 'fat') ?? 0),
+          protein: nutrient(nutriments, 'proteins', suffix),
+          carbs: nutrient(nutriments, 'carbohydrates', suffix),
+          fat: nutrient(nutriments, 'fat', suffix),
           waterMl: hydrationMl(product, productName),
+          sugarG: nutrient(nutriments, 'sugars', suffix),
+          fiberG: nutrient(nutriments, 'fiber', suffix),
+          sodiumMg: sodiumMg(nutriments, suffix),
         },
       ],
       reasoning: `Produto ${code} encontrado no Open Food Facts. Valores importados ${basis}; revise com o rotulo se necessario.`,

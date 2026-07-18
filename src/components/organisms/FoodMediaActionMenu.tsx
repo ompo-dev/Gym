@@ -4,10 +4,10 @@ import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Radii, Spacing } from '@/constants/theme';
+import type { FoodMediaAction } from '@/core/types';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 
-export type FoodMediaAction = 'foodPhoto' | 'menuPhoto' | 'barcode';
 type MediaLabel = Parameters<typeof t>[0];
 
 const actionMeta: Record<FoodMediaAction, { label: MediaLabel; icon: AppIconName }> = {

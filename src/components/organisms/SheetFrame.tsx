@@ -22,6 +22,7 @@ interface SheetFrameProps {
   visible: boolean;
   title: string;
   onClose: () => void;
+  onDismiss?: () => void;
   children: ReactNode;
   headerLeading?: ReactNode;
   headerTrailing?: ReactNode;
@@ -39,6 +40,7 @@ export function SheetFrame({
   visible,
   title,
   onClose,
+  onDismiss,
   children,
   headerLeading,
   headerTrailing,
@@ -100,7 +102,7 @@ export function SheetFrame({
   const header = centerTitle ? (
     <View style={styles.centerHeader}>
       <View style={styles.headerSide}>{headerLeading}</View>
-      <AppText variant="heading" style={styles.centerTitle}>
+      <AppText variant="heading" numberOfLines={1} style={styles.centerTitle}>
         {title}
       </AppText>
       <View style={[styles.headerSide, styles.headerSideEnd]}>
@@ -171,7 +173,7 @@ export function SheetFrame({
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={onClose}
-        onDismiss={onClose}
+        onDismiss={onDismiss}
       >
         {page}
       </Modal>
@@ -202,6 +204,7 @@ export function SheetFrame({
       transparent
       animationType="slide"
       onRequestClose={onClose}
+      onDismiss={onDismiss}
     >
       <View style={[styles.modal, { backgroundColor: colors.overlay }]}>
         <Pressable

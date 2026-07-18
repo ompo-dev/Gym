@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
-import { AppIcon } from '@/components/atoms/AppIcon';
+import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { ProgressRing } from '@/components/atoms/ProgressRing';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
@@ -19,31 +19,49 @@ import {
   swiftMenuActionDismissBehavior,
 } from '@/components/onboarding/onboardingNative';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
+import {
+  APP_MODAL_TRANSITION_MS,
+  type AppModalAnchor,
+  canOpenAppModal,
+} from '@/core/appModals';
 import { timeLabel } from '@/core/date';
-import type { Entry } from '@/core/types';
+import type { Domain, Entry } from '@/core/types';
+import {
+  defaultOnboardingProfile,
+  enabledMicronutrients,
+  type OnboardingMicronutrient,
+} from '@/core/onboarding';
 import { formatFoodQuantity, formatWaterMl, sumFoodData } from '@/domains/food';
 import type { FoodData } from '@/domains/schemas';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
+import { useAppModalStore } from '@/store/useAppModalStore';
+import { useAppStore } from '@/store/useAppStore';
 
 import { FoodAiEditSheet } from './FoodAiEditSheet';
-import { FoodEntryActionMenu, type FoodEntryActionMenuAnchor } from './FoodEntryActionMenu';
+import { FoodEntryActionMenu } from './FoodEntryActionMenu';
 import { DraftPreview } from './FoodMediaDraftTray';
-import {
-  FoodNutritionEditContent,
-  type FoodNutritionEditHandle,
-} from './FoodNutritionEditSheet';
 import { SheetFrame } from './SheetFrame';
+
+type FoodEntryDetailModalScope = 'food' | 'savedMeal';
+type FoodEntryChildModal =
+  | 'food.aiEdit'
+  | 'food.nutritionEdit'
+  | 'settings.savedMealAiEdit'
+  | 'settings.savedMealNutritionEdit';
 
 interface FoodEntryDetailSheetProps {
   visible: boolean;
   onClose: () => void;
   entry: Entry | null;
+  modalScope?: FoodEntryDetailModalScope;
+  modalDomain?: Domain;
   onDelete?: (entry: Entry) => void;
   onSaveMeal?: (entry: Entry) => Promise<void> | void;
   onSaveNutrition?: (entry: Entry, text: string, data: FoodData) => Promise<void> | void;
   onAiEdit?: (entry: Entry, instruction: string) => Promise<void> | void;
   reasoningLoading?: boolean;
+  initialMealSaved?: boolean;
 }
 
 function MacroStat({
@@ -52,7 +70,7 @@ function MacroStat({
   label,
   value,
 }: {
-  icon: 'beef' | 'wheat' | 'droplet' | 'glassWater';
+  icon: AppIconName;
   color: string;
   label: string;
   value: string;
@@ -71,6 +89,18 @@ function MacroStat({
     </View>
   );
 }
+
+const MICRO_STATS: {
+  key: OnboardingMicronutrient;
+  icon: AppIconName;
+  color: string;
+  labelKey: 'goals.sugar' | 'goals.fiber' | 'goals.sodium';
+  value: (item: FoodData['items'][number]) => string;
+}[] = [
+  { key: 'sugar', icon: 'squareStack', color: '#2E9BFF', labelKey: 'goals.sugar', value: (item) => `${item.sugarG.toFixed(1)} g` },
+  { key: 'fiber', icon: 'apple', color: '#34C759', labelKey: 'goals.fiber', value: (item) => `${item.fiberG.toFixed(1)} g` },
+  { key: 'sodium', icon: 'asterisk', color: '#FF922E', labelKey: 'goals.sodium', value: (item) => `${Math.round(item.sodiumMg)} mg` },
+];
 
 function ConfidenceRing({ value, color, track }: { value: number; color: string; track: string }) {
   return (
@@ -91,29 +121,54 @@ export function FoodEntryDetailSheet({
   visible,
   onClose,
   entry,
+  modalScope = 'food',
+  modalDomain = 'food',
   onDelete,
   onSaveMeal,
   onSaveNutrition,
   onAiEdit,
   reasoningLoading = false,
+  initialMealSaved = false,
 }: FoodEntryDetailSheetProps) {
   const colors = useColors();
+  const profile = useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
+  const enabledMicros = enabledMicronutrients(profile);
+  const microStats = MICRO_STATS.filter((item) => enabledMicros.includes(item.key));
   const data =
     entry?.status === 'done' && entry.data && 'items' in entry.data
       ? (entry.data as FoodData)
       : null;
+  const activeModal = useAppModalStore((s) => s.stack.at(-1));
+  const openAppModal = useAppModalStore((s) => s.openAppModal);
+  const closeAppModal = useAppModalStore((s) => s.closeAppModal);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState<FoodEntryActionMenuAnchor | null>(null);
-  const [manualVisible, setManualVisible] = useState(false);
-  const [aiVisible, setAiVisible] = useState(false);
   const [aiScrollInset, setAiScrollInset] = useState(0);
   const [savedVisible, setSavedVisible] = useState(false);
-  const [mealSaved, setMealSaved] = useState(false);
+  const [mealSaved, setMealSaved] = useState(initialMealSaved);
   const menuButtonRef = useRef<View>(null);
-  const manualEditorRef = useRef<FoodNutritionEditHandle>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deferredSheetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailModalId = modalScope === 'savedMeal' ? 'settings.savedMealDetails' : 'food.entryDetail';
+  const actionMenuId = modalScope === 'savedMeal' ? 'settings.savedMealActionMenu' : 'food.actionMenu';
+  const aiEditId = modalScope === 'savedMeal' ? 'settings.savedMealAiEdit' : 'food.aiEdit';
+  const nutritionEditId =
+    modalScope === 'savedMeal' ? 'settings.savedMealNutritionEdit' : 'food.nutritionEdit';
+  const activeEntryId =
+    activeModal?.id === 'food.actionMenu' ||
+    activeModal?.id === 'food.aiEdit' ||
+    activeModal?.id === 'food.nutritionEdit'
+      ? activeModal.entryId
+      : activeModal?.id === 'settings.savedMealActionMenu' ||
+          activeModal?.id === 'settings.savedMealAiEdit' ||
+          activeModal?.id === 'settings.savedMealNutritionEdit'
+        ? activeModal.mealId
+        : null;
+  const menuVisible = activeModal?.id === actionMenuId && activeEntryId === entry?.id;
+  const aiVisible = activeModal?.id === aiEditId && activeEntryId === entry?.id;
+  const menuAnchor: AppModalAnchor | null =
+    activeModal?.id === actionMenuId && activeEntryId === entry?.id && 'anchor' in activeModal
+      ? activeModal.anchor
+      : null;
 
   useEffect(() => {
     if (!entry || !data) {
@@ -131,13 +186,9 @@ export function FoodEntryDetailSheet({
   }, []);
 
   useEffect(() => {
-    setMealSaved(false);
-    setAiVisible(false);
+    setMealSaved(initialMealSaved);
     setAiScrollInset(0);
-    setManualVisible(false);
-    setMenuVisible(false);
-    setMenuAnchor(null);
-  }, [entry?.id]);
+  }, [entry?.id, initialMealSaved]);
 
   useEffect(() => {
     if (!aiVisible) setAiScrollInset(0);
@@ -163,6 +214,10 @@ export function FoodEntryDetailSheet({
   };
 
   const handleSaveMeal = async () => {
+    if (mealSaved) {
+      showSavedToast();
+      return;
+    }
     await onSaveMeal?.(entry);
     setMealSaved(true);
     showSavedToast();
@@ -174,38 +229,48 @@ export function FoodEntryDetailSheet({
   };
 
   const openMenu = () => {
+    if (!canOpenAppModal(detailModalId, actionMenuId)) return;
+    if (!entry) return;
+    const openActionMenu = (anchor: AppModalAnchor | null) => {
+      if (modalScope === 'savedMeal') {
+        openAppModal({ id: 'settings.savedMealActionMenu', domain: modalDomain, mealId: entry.id, anchor });
+        return;
+      }
+      openAppModal({ id: 'food.actionMenu', domain: 'food', entryId: entry.id, anchor });
+    };
+
     if (!menuButtonRef.current) {
-      setMenuAnchor(null);
-      setMenuVisible(true);
+      openActionMenu(null);
       return;
     }
 
     menuButtonRef.current?.measureInWindow((x, y, width, height) => {
-      setMenuAnchor({ x, y, width, height });
-      setMenuVisible(true);
+      openActionMenu({ x, y, width, height });
     });
   };
 
   const closeMenu = () => {
-    setMenuVisible(false);
-    setMenuAnchor(null);
+    closeAppModal(actionMenuId);
   };
 
-  const openAfterMenu = (open: () => void) => {
+  const openAfterMenu = (target: FoodEntryChildModal) => {
+    if (!canOpenAppModal(actionMenuId, target)) return;
+    if (!entry) return;
     closeMenu();
     if (deferredSheetTimer.current) clearTimeout(deferredSheetTimer.current);
-    deferredSheetTimer.current = setTimeout(open, 300);
+    deferredSheetTimer.current = setTimeout(() => {
+      if (target === 'settings.savedMealAiEdit' || target === 'settings.savedMealNutritionEdit') {
+        openAppModal({ id: target, domain: modalDomain, mealId: entry.id });
+        return;
+      }
+      openAppModal({ id: target, domain: 'food', entryId: entry.id });
+    }, APP_MODAL_TRANSITION_MS);
   };
 
-  const openManualEditor = () => {
-    setManualVisible(true);
-  };
+  const hasActions = Boolean(onDelete || onSaveMeal || onSaveNutrition || onAiEdit);
+  const saveMealLabel = mealSaved ? t('details.mealSaved') : t('details.saveMeal');
 
-  const saveManualEditor = () => {
-    void manualEditorRef.current?.save();
-  };
-
-  const useNativeMenu = IOS_NATIVE_ENABLED && SwiftHost && SwiftMenu && SwiftButton;
+  const useNativeMenu = hasActions && IOS_NATIVE_ENABLED && SwiftHost && SwiftMenu && SwiftButton;
   const nativeMenu = useNativeMenu ? (
     <SwiftMenu
       label={t('details.actions')}
@@ -219,7 +284,7 @@ export function FoodEntryDetailSheet({
       {SwiftGroup ? (
         <SwiftGroup modifiers={[swiftMenuActionDismissBehavior?.('disabled')].filter(Boolean)}>
           <SwiftButton
-            label={t('details.saveMeal')}
+            label={saveMealLabel}
             systemImage={mealSaved ? 'bookmark.fill' : 'bookmark'}
             modifiers={[swiftMenuActionDismissBehavior?.('disabled')].filter(Boolean)}
             onPress={handleSaveMeal}
@@ -227,7 +292,7 @@ export function FoodEntryDetailSheet({
         </SwiftGroup>
       ) : (
         <SwiftButton
-          label={t('details.saveMeal')}
+          label={saveMealLabel}
           systemImage={mealSaved ? 'bookmark.fill' : 'bookmark'}
           modifiers={[swiftMenuActionDismissBehavior?.('disabled')].filter(Boolean)}
           onPress={handleSaveMeal}
@@ -237,12 +302,12 @@ export function FoodEntryDetailSheet({
         <SwiftButton
           label={t('details.editWithAi')}
           systemImage="sparkles"
-          onPress={() => openAfterMenu(() => setAiVisible(true))}
+          onPress={() => openAfterMenu(aiEditId)}
         />
         <SwiftButton
           label={t('details.editManually')}
           systemImage="slider.horizontal.3"
-          onPress={() => openAfterMenu(openManualEditor)}
+          onPress={() => openAfterMenu(nutritionEditId)}
         />
       </SwiftMenu>
       {SwiftDivider ? <SwiftDivider /> : null}
@@ -254,7 +319,9 @@ export function FoodEntryDetailSheet({
       />
     </SwiftMenu>
   ) : null;
-  const menuButton = useNativeMenu ? (
+  const menuButton = !hasActions ? (
+    <View style={styles.headerButton} />
+  ) : useNativeMenu ? (
     <SwiftHost matchContents style={styles.nativeMenuHost}>
       {nativeMenu}
     </SwiftHost>
@@ -273,42 +340,14 @@ export function FoodEntryDetailSheet({
       </View>
     </Pressable>
   );
-  const manualSaveButton = (
-    <Pressable
-      onPress={saveManualEditor}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel={t('settings.done')}>
-      <View style={[styles.editSaveButton, { backgroundColor: colors.success }]}>
-        <AppIcon name="check" color="#FFFFFF" size={22} />
-      </View>
-    </Pressable>
-  );
-  const manualCloseButton = (
-    <Pressable
-      onPress={saveManualEditor}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel={t('common.close')}>
-      <GlassSurface glass="regular" isInteractive style={styles.editHeaderButton}>
-        <AppIcon name="x" color={colors.textSecondary} size={28} />
-      </GlassSurface>
-    </Pressable>
-  );
-
   return (
-    <>
-      <SheetFrame
+    <SheetFrame
         visible={visible}
-        title={manualVisible ? t('details.editManually') : t('details.nutrition')}
-        onClose={manualVisible ? saveManualEditor : onClose}
+        title={t('details.nutrition')}
+        onClose={onClose}
         size="full"
-        centerTitle={manualVisible}
-        keyboardAwareScroll={manualVisible}
-        contentBottomInset={!manualVisible ? Math.max(aiScrollInset, Spacing.eight) : 0}
-        headerLeading={manualVisible ? manualCloseButton : undefined}
-        hideDefaultClose={manualVisible}
-        overlay={!manualVisible ? (
+        contentBottomInset={Math.max(aiScrollInset, Spacing.eight)}
+        overlay={hasActions ? (
           <>
             {!useNativeMenu ? (
               <FoodEntryActionMenu
@@ -317,80 +356,69 @@ export function FoodEntryDetailSheet({
                 mealSaved={mealSaved}
                 onClose={closeMenu}
                 onSaveMeal={handleSaveMeal}
-                onEditWithAi={() => openAfterMenu(() => setAiVisible(true))}
-                onEditManually={() => openAfterMenu(openManualEditor)}
+                onEditWithAi={() => openAfterMenu(aiEditId)}
+                onEditManually={() => openAfterMenu(nutritionEditId)}
                 onDelete={handleDelete}
               />
             ) : null}
             <FoodAiEditSheet
               visible={aiVisible}
-              onClose={() => setAiVisible(false)}
+              onClose={() => closeAppModal(aiEditId)}
               onSubmit={(instruction) => onAiEdit?.(entry, instruction)}
               onOcclusionChange={setAiScrollInset}
             />
           </>
         ) : null}
-        headerTrailing={manualVisible ? manualSaveButton : menuButton}>
-        {manualVisible ? (
-          <FoodNutritionEditContent
-            ref={manualEditorRef}
-            text={entry.text}
-            data={data}
-            media={entry.media}
-            onClose={() => setManualVisible(false)}
-            onSave={(text, nextData) => onSaveNutrition?.(entry, text, nextData)}
-          />
-        ) : (
-          <>
-            <View style={styles.hero}>
-              <View style={styles.heroText}>
-                <AppText variant="title">{entry.text}</AppText>
-                <AppText variant="secondary" color={colors.textSecondary}>
-                  {t('details.detectedAt')} {timeLabel(entry.createdAt)}
-                </AppText>
+        headerTrailing={menuButton}>
+          <View style={styles.hero}>
+            <View style={styles.heroText}>
+              <AppText variant="title">{entry.text}</AppText>
+              <AppText variant="secondary" color={colors.textSecondary}>
+                {t('details.detectedAt')} {timeLabel(entry.createdAt)}
+              </AppText>
+            </View>
+
+            <GlassSurface glass="regular" style={styles.totalCard}>
+              <View style={styles.totalHeader}>
+                <View style={styles.caloriesSummary}>
+                  <AppIcon name="flame" color={colors.calories} size={30} />
+                  <View style={styles.totalHeaderText}>
+                    <AppText variant="metric">{Math.round(totals.calories)}</AppText>
+                    <AppText variant="secondary" color={colors.textSecondary}>
+                      {t('details.totalCalories')}
+                    </AppText>
+                  </View>
+                </View>
+                <MacroStat
+                  icon="glassWater"
+                  color={colors.water}
+                  label={t('goals.water')}
+                  value={formatWaterMl(totals.waterMl)}
+                />
               </View>
 
-              <GlassSurface glass="regular" style={styles.totalCard}>
-                <View style={styles.totalHeader}>
-                  <View style={styles.caloriesSummary}>
-                    <AppIcon name="flame" color={colors.calories} size={30} />
-                    <View style={styles.totalHeaderText}>
-                      <AppText variant="metric">{Math.round(totals.calories)}</AppText>
-                      <AppText variant="secondary" color={colors.textSecondary}>
-                        {t('details.totalCalories')}
-                      </AppText>
-                    </View>
-                  </View>
-                  <MacroStat
-                    icon="glassWater"
-                    color={colors.water}
-                    label={t('goals.water')}
-                    value={formatWaterMl(totals.waterMl)}
-                  />
-                </View>
-
-                <View style={styles.macroRow}>
-                  <MacroStat
-                    icon="beef"
-                    color={colors.protein}
-                    label={t('goals.protein')}
-                    value={`${totals.protein.toFixed(1)} g`}
-                  />
-                  <MacroStat
-                    icon="wheat"
-                    color={colors.carbs}
-                    label={t('goals.carbs')}
-                    value={`${totals.carbs.toFixed(1)} g`}
-                  />
-                  <MacroStat
-                    icon="droplet"
-                    color={colors.fat}
-                    label={t('goals.fat')}
-                    value={`${totals.fat.toFixed(1)} g`}
-                  />
-                </View>
-              </GlassSurface>
-            </View>
+              <View style={styles.macroRow}>
+                <MacroStat
+                  icon="beef"
+                  color={colors.protein}
+                  label={t('goals.protein')}
+                  value={`${totals.protein.toFixed(1)} g`}
+                />
+                <MacroStat
+                  icon="wheat"
+                  color={colors.carbs}
+                  label={t('goals.carbs')}
+                  value={`${totals.carbs.toFixed(1)} g`}
+                />
+                <MacroStat
+                  icon="droplet"
+                  color={colors.fat}
+                  label={t('goals.fat')}
+                  value={`${totals.fat.toFixed(1)} g`}
+                />
+              </View>
+            </GlassSurface>
+          </View>
 
             <View style={styles.section}>
               <AppText variant="heading">{t('details.items')}</AppText>
@@ -400,6 +428,14 @@ export function FoodEntryDetailSheet({
                   const isOpen = expanded[index] ?? false;
                   const quantity = formatFoodQuantity(item);
                   const itemMedia = mediaForItem(entry.media, item);
+                  const calorieMetric = (
+                    <View style={styles.itemMetric}>
+                      <AppIcon name="flame" color={colors.calories} size={16} />
+                      <AppText variant="value" style={styles.itemMetricValue}>
+                        {Math.round(item.calories)}
+                      </AppText>
+                    </View>
+                  );
                   return (
                     <GlassSurface key={`${item.label}-${index}`} glass="regular" style={styles.itemCard}>
                       <Pressable
@@ -412,14 +448,12 @@ export function FoodEntryDetailSheet({
                           <View style={styles.itemTitleRow}>
                             {itemMedia ? <DraftPreview draft={itemMedia} size={34} /> : null}
                             <View style={styles.itemNameText}>
-                              <AppText variant="body" style={styles.itemLabel}>
+                              <AppText
+                                variant="body"
+                                numberOfLines={isOpen ? undefined : 1}
+                                style={styles.itemLabel}>
                                 {item.label}
                               </AppText>
-                              {itemMedia?.description.trim() ? (
-                                <AppText variant="caption" color={colors.textSecondary}>
-                                  {itemMedia.description.trim()}
-                                </AppText>
-                              ) : null}
                             </View>
                             {quantity ? (
                               <View style={[styles.quantityPill, { backgroundColor: colors.backgroundSelected }]}>
@@ -431,9 +465,38 @@ export function FoodEntryDetailSheet({
                           </View>
 
                           <View style={styles.itemHeaderRight}>
-                            <AppText variant="value" color={colors.calories}>
-                              {Math.round(item.calories)} cal
-                            </AppText>
+                            <View style={styles.itemMetrics}>
+                              {item.waterMl > 0 ? (
+                                <>
+                                  {calorieMetric}
+                                  <AppText
+                                    variant="label"
+                                    color={colors.textTertiary}
+                                    style={styles.itemMetricSeparator}>
+                                    {'\u00b7'}
+                                  </AppText>
+                                  <View style={[styles.itemMetric, styles.itemHydrationMetric]}>
+                                    <AppIcon name="glassWater" color={colors.water} size={16} />
+                                    <AppText variant="value" style={styles.itemMetricValue}>
+                                      {formatWaterMl(item.waterMl)}
+                                    </AppText>
+                                  </View>
+                                </>
+                              ) : (
+                                <>
+                                  <View style={styles.itemMetric} />
+                                  <AppText
+                                    variant="label"
+                                    color={colors.textTertiary}
+                                    style={styles.itemMetricSeparator}>
+                                    {''}
+                                  </AppText>
+                                  <View style={[styles.itemMetric, styles.itemHydrationMetric]}>
+                                    {calorieMetric}
+                                  </View>
+                                </>
+                              )}
+                            </View>
                             <AppIcon
                               name={isOpen ? 'chevronUp' : 'chevronDown'}
                               color={colors.textSecondary}
@@ -444,25 +507,45 @@ export function FoodEntryDetailSheet({
                       </Pressable>
 
                       {isOpen ? (
-                        <View style={styles.itemBreakdown}>
-                          <MacroStat
-                            icon="beef"
-                            color={colors.protein}
-                            label={t('goals.protein')}
-                            value={`${item.protein.toFixed(1)} g`}
-                          />
-                          <MacroStat
-                            icon="wheat"
-                            color={colors.carbs}
-                            label={t('goals.carbs')}
-                            value={`${item.carbs.toFixed(1)} g`}
-                          />
-                          <MacroStat
-                            icon="droplet"
-                            color={colors.fat}
-                            label={t('goals.fat')}
-                            value={`${item.fat.toFixed(1)} g`}
-                          />
+                        <View style={styles.itemExpanded}>
+                          {itemMedia?.description.trim() ? (
+                            <AppText variant="caption" color={colors.textSecondary}>
+                              {itemMedia.description.trim()}
+                            </AppText>
+                          ) : null}
+                          <View style={styles.itemBreakdown}>
+                            <MacroStat
+                              icon="beef"
+                              color={colors.protein}
+                              label={t('goals.protein')}
+                              value={`${item.protein.toFixed(1)} g`}
+                            />
+                            <MacroStat
+                              icon="wheat"
+                              color={colors.carbs}
+                              label={t('goals.carbs')}
+                              value={`${item.carbs.toFixed(1)} g`}
+                            />
+                            <MacroStat
+                              icon="droplet"
+                              color={colors.fat}
+                              label={t('goals.fat')}
+                              value={`${item.fat.toFixed(1)} g`}
+                            />
+                          </View>
+                          {microStats.length ? (
+                            <View style={styles.itemBreakdown}>
+                              {microStats.map((stat) => (
+                                <MacroStat
+                                  key={stat.key}
+                                  icon={stat.icon}
+                                  color={stat.color}
+                                  label={t(stat.labelKey)}
+                                  value={stat.value(item)}
+                                />
+                              ))}
+                            </View>
+                          ) : null}
                         </View>
                       ) : null}
                     </GlassSurface>
@@ -516,11 +599,7 @@ export function FoodEntryDetailSheet({
                 <AppText variant="label">{t('details.mealSaved')}</AppText>
               </GlassSurface>
             ) : null}
-          </>
-        )}
-      </SheetFrame>
-
-    </>
+    </SheetFrame>
   );
 }
 
@@ -536,20 +615,6 @@ const styles = StyleSheet.create({
   nativeMenuHost: {
     width: Metrics.iconButton,
     height: Metrics.iconButton,
-  },
-  editSaveButton: {
-    width: Metrics.iconButton,
-    height: Metrics.iconButton,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editHeaderButton: {
-    width: Metrics.iconButton,
-    height: Metrics.iconButton,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   hero: {
     gap: Spacing.four,
@@ -619,24 +684,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: Spacing.three,
+    gap: Spacing.two,
   },
   itemLabel: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    includeFontPadding: false,
   },
   itemNameText: {
     flex: 1,
     minWidth: 0,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
     gap: Spacing.half,
   },
   itemTitleRow: {
     flex: 1,
     minWidth: 0,
+    alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
   },
   quantityPill: {
+    flexShrink: 0,
     borderRadius: Radii.pill,
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.half,
@@ -644,13 +716,39 @@ const styles = StyleSheet.create({
   itemHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.one,
+  },
+  itemMetrics: {
+    width: 130,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  itemMetric: {
+    width: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: Spacing.one,
+  },
+  itemHydrationMetric: {
+    width: 66,
+  },
+  itemMetricValue: {
+    textAlign: 'left',
+  },
+  itemMetricSeparator: {
+    width: 10,
+    textAlign: 'center',
+  },
+  itemExpanded: {
+    gap: Spacing.three,
+    paddingTop: Spacing.three,
   },
   itemBreakdown: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: Spacing.three,
-    paddingTop: Spacing.three,
   },
   reasoningCard: {
     borderRadius: Radii.xl,

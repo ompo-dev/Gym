@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.two,
+    gap: Spacing.one,
     minHeight: Metrics.dock,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: Radii.pill,
-    gap: Spacing.two,
+    gap: Spacing.one,
   },
   attachedTop: {
     borderTopLeftRadius: Radii.md,
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   itemGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.one,
   },
   macroLetter: {
     minWidth: 10,

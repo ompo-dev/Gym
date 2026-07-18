@@ -7,16 +7,22 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { AppIcon } from '@/components/atoms/AppIcon';
+import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { AnimatedValueText } from '@/components/atoms/AnimatedValueText';
 import { ProgressRing } from '@/components/atoms/ProgressRing';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Radii, Spacing } from '@/constants/theme';
-import { formatWaterMl, type FoodTotals } from '@/domains/food';
+import {
+  defaultOnboardingProfile,
+  enabledMicronutrients,
+  type OnboardingMicronutrient,
+} from '@/core/onboarding';
+import { formatWaterMl, type FoodGoals, type FoodTotals } from '@/domains/food';
 import { useColors } from '@/hooks/use-colors';
 import { useFoodGoals } from '@/hooks/useFoodGoals';
 import { t } from '@/i18n';
+import { useAppStore } from '@/store/useAppStore';
 
 interface FoodGoalsSheetProps {
   totals: FoodTotals;
@@ -27,6 +33,20 @@ function progress(current: number, goal: number): number {
   if (goal <= 0) return 0;
   return Math.max(0, Math.min(current / goal, 1));
 }
+
+const MICRO_GOALS: {
+  key: OnboardingMicronutrient;
+  color: string;
+  icon: AppIconName;
+  labelKey: 'goals.sugar' | 'goals.fiber' | 'goals.sodium';
+  current: (totals: FoodTotals) => number;
+  goal: (goals: FoodGoals) => number;
+  unit: string;
+}[] = [
+  { key: 'sugar', color: '#2E9BFF', icon: 'squareStack', labelKey: 'goals.sugar', current: (totals) => totals.sugarG, goal: (goals) => goals.sugarG, unit: 'g' },
+  { key: 'fiber', color: '#34C759', icon: 'apple', labelKey: 'goals.fiber', current: (totals) => totals.fiberG, goal: (goals) => goals.fiberG, unit: 'g' },
+  { key: 'sodium', color: '#FF922E', icon: 'asterisk', labelKey: 'goals.sodium', current: (totals) => totals.sodiumMg, goal: (goals) => goals.sodiumMg, unit: 'mg' },
+];
 
 function MacroRing({
   color,
@@ -117,6 +137,9 @@ function AnimatedCaloriesBar({
 export function FoodGoalsSheet({ totals, visible }: FoodGoalsSheetProps) {
   const colors = useColors();
   const goals = useFoodGoals();
+  const profile = useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
+  const activeMicros = enabledMicronutrients(profile);
+  const microGoals = MICRO_GOALS.filter((item) => activeMicros.includes(item.key));
   const caloriesProgress = progress(totals.calories, goals.calories);
 
   if (!visible) return null;
@@ -181,6 +204,28 @@ export function FoodGoalsSheet({ totals, visible }: FoodGoalsSheetProps) {
           label={t('goals.water')}
         />
       </View>
+
+      {microGoals.length ? (
+        <View style={styles.microRows}>
+          {microGoals.map((item) => {
+            const current = item.current(totals);
+            const goal = item.goal(goals);
+            return (
+              <View key={item.key} style={styles.microRow}>
+                <View style={styles.microLabel}>
+                  <AppIcon name={item.icon} color={item.color} size={14} />
+                  <AppText variant="secondary" color={colors.textSecondary}>
+                    {t(item.labelKey)}
+                  </AppText>
+                </View>
+                <AppText variant="secondary">
+                  {`${Math.round(current)} / ${Math.round(goal)} ${item.unit}`}
+                </AppText>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
     </GlassSurface>
   );
 }
@@ -232,6 +277,21 @@ const styles = StyleSheet.create({
   },
   macroItem: {
     flex: 1,
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  microRows: {
+    gap: Spacing.two,
+  },
+  microRow: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+  },
+  microLabel: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
   },

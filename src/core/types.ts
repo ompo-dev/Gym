@@ -5,6 +5,7 @@ export type Domain = 'food' | 'workout';
 /** thinking = enrich in flight · queued = waiting for network · done · error */
 export type EntryStatus = 'thinking' | 'queued' | 'done' | 'error';
 export type EntryMediaKind = 'foodPhoto' | 'menuPhoto' | 'barcode';
+export type FoodMediaAction = EntryMediaKind;
 
 export interface EntryMediaAttachment {
   id: string;

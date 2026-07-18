@@ -54,6 +54,9 @@ interface FoodItem {
   carbs: number;
   fat: number;
   waterMl: number;
+  sugarG: number;
+  fiberG: number;
+  sodiumMg: number;
 }
 ```
 
@@ -61,6 +64,8 @@ Regras:
 
 - Macros em gramas.
 - `waterMl` em mililitros.
+- `sugarG` e `fiberG` em gramas.
+- `sodiumMg` em miligramas.
 - `quantity/unit` so para itens contaveis ou unidades explicitas que fazem
   sentido na UI: ovos, copos, latas, fatias, unidades, porcoes etc.
 - Nao usar quantidade para coisas genericas como arroz cozido estimado, pasta,
@@ -195,6 +200,9 @@ Mapeamento:
 - `quantity: 1`, `unit: "unidade"` para permitir merge de duplicados.
 - `waterMl`: volume quando produto parece hidratante, como agua, leite, suco,
   refrigerante, bebida, cafe, cha, iogurte ou kefir.
+- `sugarG`, `fiberG`: importados de `sugars_*` e `fiber_*` quando existem.
+- `sodiumMg`: importado de `sodium_*` convertido de g para mg; se faltar,
+  usa `salt_*` convertido para sodio aproximado.
 - Oleos e vinagre nao contam como hidratacao.
 
 ## OnboardingProfile
@@ -219,8 +227,21 @@ interface OnboardingProfile {
   notes: string;
   estimationBias: 0 | 1 | 2 | 3 | 4;
   trackMicronutrients: boolean;
+  micronutrients: {
+    sugar: boolean;
+    fiber: boolean;
+    sodium: boolean;
+  };
+  micronutrientTargets: {
+    sugarG: number;
+    fiberG: number;
+    sodiumMg: number;
+  };
 }
 ```
+
+Perfis antigos sem `micronutrients` ou `micronutrientTargets` sao normalizados
+em `normalizeOnboardingProfile` ao hidratar/salvar.
 
 ## OnboardingSummary
 
@@ -234,6 +255,9 @@ interface OnboardingSummary {
   carbs: number;
   fat: number;
   waterMl: number;
+  sugarG: number;
+  fiberG: number;
+  sodiumMg: number;
   deltaKg: number;
   targetDays: number;
 }
@@ -244,7 +268,7 @@ Calculos:
 - `bmr`: Harris-Benedict.
 - `tdee`: BMR vezes multiplicador de atividade.
 - `calories`: TDEE ajustado por meta, vies e consideracoes.
-- `protein/carbs/fat/waterMl`: metas diarias.
+- `protein/carbs/fat/waterMl/sugarG/fiberG/sodiumMg`: metas diarias.
 
 ## SQLite
 
@@ -308,7 +332,10 @@ Forma esperada:
       "protein": 30.6,
       "carbs": 60,
       "fat": 15,
-      "waterMl": 0
+      "waterMl": 0,
+      "sugarG": 0,
+      "fiberG": 0,
+      "sodiumMg": 0
     }
   ],
   "reasoning": "Texto curto explicando estimativa.",
@@ -323,6 +350,8 @@ Obrigatorio no prompt:
 - Incluir texto e imagens quando ambos existem.
 - Nao retornar totais.
 - Usar contexto do perfil quando enviado.
+- Se `userContext` incluir `trackMicronutrients`, calcular `sugarG`,
+  `fiberG` e `sodiumMg` por item; caso contrario retornar `0`.
 
 ## Prompt de Food Edit
 
@@ -339,7 +368,10 @@ Forma esperada:
         "protein": 30.6,
         "carbs": 60,
         "fat": 15,
-        "waterMl": 0
+        "waterMl": 0,
+        "sugarG": 0,
+        "fiberG": 0,
+        "sodiumMg": 0
       },
       {
         "label": "ovo frito",
@@ -349,7 +381,10 @@ Forma esperada:
         "protein": 6,
         "carbs": 0.5,
         "fat": 7,
-        "waterMl": 0
+        "waterMl": 0,
+        "sugarG": 0,
+        "fiberG": 0,
+        "sodiumMg": 0
       }
     ],
     "reasoning": "Raciocinio novo para a refeicao final.",

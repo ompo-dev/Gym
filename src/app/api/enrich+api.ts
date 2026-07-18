@@ -73,6 +73,7 @@ async function callDeepSeekJson(
     body: JSON.stringify({
       model: MODEL,
       messages,
+      thinking: { type: 'disabled' },
       response_format: { type: 'json_object' },
       temperature: 0.2,
       max_tokens: maxTokens,
@@ -211,7 +212,7 @@ export async function POST(request: Request): Promise<Response> {
         { role: 'system', content: system },
         { role: 'user', content: userContent },
       ],
-      intent === 'foodEdit' ? 1400 : 800,
+      intent === 'foodEdit' ? 1800 : 1100,
     );
 
     // Validate the model output server-side too (defense in depth).

@@ -7,14 +7,17 @@ import {
 } from "react-native-safe-area-context";
 
 import { AppText } from "@/components/atoms/AppText";
+import { canOpenAppModal } from "@/core/appModals";
 import { addDays, todayISO } from "@/core/date";
 import {
   buildOnboardingSummary,
   defaultOnboardingProfile,
   getOnboardingStage,
+  micronutrientsFromTrack,
   type OnboardingProfile,
 } from "@/core/onboarding";
 import { useAppStore } from "@/store/useAppStore";
+import { useAppModalStore } from "@/store/useAppModalStore";
 import { DatePickerSheet, PickerSheet, PrimaryButton } from "./onboardingControls";
 import { activityOptions, copy, genderOptions } from "./onboardingContent";
 import { useOnboardingTheme } from "./onboardingTheme";
@@ -38,6 +41,9 @@ export function OnboardingFlow() {
   const { colors, styles } = useOnboardingTheme();
   const lang = useAppStore((s) => s.lang);
   const completeOnboarding = useAppStore((s) => s.completeOnboarding);
+  const activeModal = useAppModalStore((s) => s.stack.at(-1));
+  const replaceAppModal = useAppModalStore((s) => s.replaceAppModal);
+  const closeAppModal = useAppModalStore((s) => s.closeAppModal);
   const insets = useSafeAreaInsets();
   const text = copy[lang];
   const [step, setStep] = useState(0);
@@ -45,21 +51,27 @@ export function OnboardingFlow() {
     ...defaultOnboardingProfile(),
     goalDate: null,
   }));
-  const [picker, setPicker] = useState<PickerKind | null>(null);
-  const [birthdayOpen, setBirthdayOpen] = useState(false);
   const [birthdayDraft, setBirthdayDraft] = useState(
     () => defaultOnboardingProfile().birthDate,
   );
-  const [goalDateOpen, setGoalDateOpen] = useState(false);
   const [goalDateDraft, setGoalDateDraft] = useState(
     () => defaultOnboardingProfile().goalDate ?? addDays(todayISO(), 84),
   );
+  const picker = activeModal?.id === "onboarding.picker" ? activeModal.kind : null;
+  const birthdayOpen = activeModal?.id === "onboarding.birthDatePicker";
+  const goalDateOpen = activeModal?.id === "onboarding.goalDatePicker";
   const summary = useMemo(() => buildOnboardingSummary(profile), [profile]);
   const stage = getOnboardingStage(step);
   const progress = step === 0 ? 0 : step / (TOTAL_STEPS - 1);
 
   const updateProfile = (patch: Partial<OnboardingProfile>) =>
-    setProfile((current) => ({ ...current, ...patch }));
+    setProfile((current) => ({
+      ...current,
+      ...patch,
+      ...("trackMicronutrients" in patch && !("micronutrients" in patch)
+        ? { micronutrients: micronutrientsFromTrack(Boolean(patch.trackMicronutrients)) }
+        : {}),
+    }));
 
   const handleNext = async () => {
     if (step === TOTAL_STEPS - 1) {
@@ -74,23 +86,30 @@ export function OnboardingFlow() {
   };
 
   const openBirthday = () => {
+    if (!canOpenAppModal("onboarding.root", "onboarding.birthDatePicker")) return;
     setBirthdayDraft(profile.birthDate);
-    setBirthdayOpen(true);
+    replaceAppModal({ id: "onboarding.birthDatePicker", domain: "onboarding" });
   };
 
   const saveBirthday = () => {
     updateProfile({ birthDate: birthdayDraft });
-    setBirthdayOpen(false);
+    closeAppModal("onboarding.birthDatePicker");
   };
 
   const openGoalDate = () => {
+    if (!canOpenAppModal("onboarding.root", "onboarding.goalDatePicker")) return;
     setGoalDateDraft(profile.goalDate ?? addDays(todayISO(), 84));
-    setGoalDateOpen(true);
+    replaceAppModal({ id: "onboarding.goalDatePicker", domain: "onboarding" });
+  };
+
+  const openPicker = (kind: PickerKind) => {
+    if (!canOpenAppModal("onboarding.root", "onboarding.picker")) return;
+    replaceAppModal({ id: "onboarding.picker", domain: "onboarding", kind });
   };
 
   const saveGoalDate = () => {
     updateProfile({ goalDate: goalDateDraft });
-    setGoalDateOpen(false);
+    closeAppModal("onboarding.goalDatePicker");
   };
 
   return (
@@ -178,9 +197,9 @@ export function OnboardingFlow() {
                     lang={lang}
                     text={text}
                     profile={profile}
-                    onOpenHeight={() => setPicker("height")}
-                    onOpenWeight={() => setPicker("weight")}
-                    onOpenGoalWeight={() => setPicker("goalWeight")}
+                    onOpenHeight={() => openPicker("height")}
+                    onOpenWeight={() => openPicker("weight")}
+                    onOpenGoalWeight={() => openPicker("goalWeight")}
                     onOpenGoalDate={openGoalDate}
                   />
                 ) : null}
@@ -281,7 +300,7 @@ export function OnboardingFlow() {
           text={text}
           picker={picker}
           profile={profile}
-          onClose={() => setPicker(null)}
+          onClose={() => closeAppModal("onboarding.picker")}
           onPick={(kind, value) => {
             if (kind === "height" && typeof value === "number") {
               updateProfile({ heightCm: value });
@@ -297,7 +316,7 @@ export function OnboardingFlow() {
                 goalDate: typeof value === "string" ? value : null,
               });
             }
-            setPicker(null);
+            closeAppModal("onboarding.picker");
           }}
         />
 
@@ -311,7 +330,7 @@ export function OnboardingFlow() {
           value={birthdayDraft}
           maximumDate={new Date()}
           onChange={setBirthdayDraft}
-          onClose={() => setBirthdayOpen(false)}
+          onClose={() => closeAppModal("onboarding.birthDatePicker")}
           onSave={saveBirthday}
         />
 
@@ -323,7 +342,7 @@ export function OnboardingFlow() {
           value={goalDateDraft}
           minimumDate={new Date()}
           onChange={setGoalDateDraft}
-          onClose={() => setGoalDateOpen(false)}
+          onClose={() => closeAppModal("onboarding.goalDatePicker")}
           onSave={saveGoalDate}
         />
       </KeyboardAvoidingView>

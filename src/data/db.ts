@@ -29,6 +29,8 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
           id TEXT PRIMARY KEY NOT NULL,
           name TEXT NOT NULL,
           data TEXT NOT NULL,
+          media TEXT,
+          sourceEntryId TEXT,
           createdAt INTEGER NOT NULL
         );
       `);
@@ -36,6 +38,18 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
       if (!columns.some((column) => column.name === 'media')) {
         await db.execAsync('ALTER TABLE entries ADD COLUMN media TEXT;');
       }
+      const savedMealColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(saved_meals)');
+      if (!savedMealColumns.some((column) => column.name === 'media')) {
+        await db.execAsync('ALTER TABLE saved_meals ADD COLUMN media TEXT;');
+      }
+      if (!savedMealColumns.some((column) => column.name === 'sourceEntryId')) {
+        await db.execAsync('ALTER TABLE saved_meals ADD COLUMN sourceEntryId TEXT;');
+      }
+      await db.execAsync(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_meals_source
+          ON saved_meals (sourceEntryId)
+          WHERE sourceEntryId IS NOT NULL;
+      `);
       return db;
     })();
   }

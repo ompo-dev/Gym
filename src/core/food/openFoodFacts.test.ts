@@ -10,6 +10,9 @@ test('maps Open Food Facts product nutriments into food data', () => {
       proteins_100g: 6.3,
       carbohydrates_100g: 57.5,
       fat_100g: 30.9,
+      sugars_100g: 56.3,
+      fiber_100g: 6.3,
+      sodium_100g: 0.107,
     },
   });
 
@@ -24,6 +27,9 @@ test('maps Open Food Facts product nutriments into food data', () => {
     carbs: 57.5,
     fat: 30.9,
     waterMl: 0,
+    sugarG: 56.3,
+    fiberG: 6.3,
+    sodiumMg: 107,
   });
 });
 

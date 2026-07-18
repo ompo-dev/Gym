@@ -12,28 +12,23 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { UndoToast } from '@/components/molecules/UndoToast';
+import { AppModalHost } from '@/components/organisms/AppModalHost';
 import { DayHeader } from '@/components/organisms/DayHeader';
-import { FoodEntryDetailSheet } from '@/components/organisms/FoodEntryDetailSheet';
 import { FoodGoalsSheet } from '@/components/organisms/FoodGoalsSheet';
-import {
-  FoodMediaActionMenu,
-  type FoodMediaAction,
-} from '@/components/organisms/FoodMediaActionMenu';
-import { FoodMediaCaptureSheet } from '@/components/organisms/FoodMediaCaptureSheet';
+import { FoodMediaActionMenu } from '@/components/organisms/FoodMediaActionMenu';
 import type { FoodMediaDraft } from '@/components/organisms/FoodMediaDraftTray';
-import { FoodNutritionEditSheet } from '@/components/organisms/FoodNutritionEditSheet';
 import { NotesList } from '@/components/organisms/NotesList';
-import { SettingsSheet } from '@/components/organisms/SettingsSheet';
 import { TotalsDock } from '@/components/organisms/TotalsDock';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
+import { APP_MODAL_TRANSITION_MS, canOpenAppModal } from '@/core/appModals';
 import { enrich } from '@/core/enrich/client';
 import type { EnrichMediaDescription, EnrichMediaInput } from '@/core/enrich/types';
 import { lookupOpenFoodFactsProduct } from '@/core/food/openFoodFacts';
 import { buildOnboardingPromptContext } from '@/core/onboarding';
-import type { Entry, EntryMediaAttachment } from '@/core/types';
+import type { Entry, EntryMediaAttachment, FoodMediaAction } from '@/core/types';
 import { newId } from '@/core/utils';
 import { EntryRepository } from '@/data/EntryRepository';
-import { SavedMealRepository } from '@/data/SavedMealRepository';
+import { SavedMealRepository, type SavedMeal } from '@/data/SavedMealRepository';
 import { mergeDuplicateFoodItems, mergeFoodEdit, type FoodTotals } from '@/domains/food';
 import { foodEditSchema, foodSchema, type FoodData, type FoodItem } from '@/domains/schemas';
 import type { DomainConfig } from '@/domains/types';
@@ -41,6 +36,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useDay } from '@/hooks/useDay';
 import { useTotals } from '@/hooks/useTotals';
 import { getLang, t } from '@/i18n';
+import { useAppModalStore } from '@/store/useAppModalStore';
 import { useAppStore } from '@/store/useAppStore';
 
 const UNDO_MS = 4_000;
@@ -128,6 +124,9 @@ function attachMediaToItems(
           carbs: sum.carbs + item.carbs,
           fat: sum.fat + item.fat,
           waterMl: sum.waterMl + item.waterMl,
+          sugarG: sum.sugarG + item.sugarG,
+          fiberG: sum.fiberG + item.fiberG,
+          sodiumMg: sum.sodiumMg + item.sodiumMg,
         }),
         { ...first, mediaId: attachment.id },
       );
@@ -149,6 +148,9 @@ function attachMediaToItems(
       carbs: 0,
       fat: 0,
       waterMl: 0,
+      sugarG: 0,
+      fiberG: 0,
+      sodiumMg: 0,
     };
   });
   const remainingItems = items.filter((_, index) => !used.has(index));
@@ -171,6 +173,9 @@ function ensureMediaItems(
       carbs: 0,
       fat: 0,
       waterMl: 0,
+      sugarG: 0,
+      fiberG: 0,
+      sodiumMg: 0,
     }));
   return [...items, ...missing];
 }
@@ -187,6 +192,9 @@ function fallbackFoodItemsFromText(text: string): FoodItem[] {
       carbs: 0,
       fat: 0,
       waterMl: 0,
+      sugarG: 0,
+      fiberG: 0,
+      sodiumMg: 0,
     }));
 }
 
@@ -206,6 +214,9 @@ function barcodeFoodData(code: string): FoodData {
         carbs: 0,
         fat: 0,
         waterMl: 0,
+        sugarG: 0,
+        fiberG: 0,
+        sodiumMg: 0,
       },
     ],
     reasoning: t('media.barcodeReasoning'),
@@ -237,15 +248,11 @@ export function DayTemplate<TData, TTotals>({
   const totals = useTotals(entries, config);
 
   const [undoVisible, setUndoVisible] = useState(false);
-  const [settingsVisible, setSettingsVisible] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [foodGoalsVisible, setFoodGoalsVisible] = useState(false);
-  const [selectedFoodEntry, setSelectedFoodEntry] = useState<Entry | null>(null);
+  const [selectedFoodMealSaved, setSelectedFoodMealSaved] = useState(false);
   const [foodReasoningLoadingId, setFoodReasoningLoadingId] = useState<string | null>(null);
   const [foodMediaMenuVisible, setFoodMediaMenuVisible] = useState(false);
-  const [foodCaptureMode, setFoodCaptureMode] = useState<FoodMediaAction | null>(null);
   const [foodMediaDrafts, setFoodMediaDrafts] = useState<FoodMediaDraft[]>([]);
-  const [barcodeDraft, setBarcodeDraft] = useState<{ text: string; data: FoodData; imageUri?: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const barcodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingBarcodeDraft = useRef<{ text: string; data: FoodData; imageUri?: string } | null>(null);
@@ -253,6 +260,43 @@ export function DayTemplate<TData, TTotals>({
   const barcodeLookupRun = useRef(0);
   const foodReasoningRun = useRef(0);
   const isFood = config.id === 'food';
+  const modalStack = useAppModalStore((state) => state.stack);
+  const replaceAppModal = useAppModalStore((state) => state.replaceAppModal);
+  const closeAppModal = useAppModalStore((state) => state.closeAppModal);
+  const activeModal = modalStack.at(-1);
+  const activeDomainModal = activeModal?.domain === config.id ? activeModal : null;
+  const foodGoalsVisible = activeDomainModal?.id === 'food.goals';
+  const foodDetailModal = [...modalStack]
+    .reverse()
+    .find(
+      (item) =>
+        item.domain === 'food' &&
+        (item.id === 'food.entryDetail' ||
+          item.id === 'food.actionMenu' ||
+          item.id === 'food.aiEdit' ||
+          item.id === 'food.nutritionEdit'),
+    );
+  const selectedFoodEntryId =
+    foodDetailModal && 'entryId' in foodDetailModal ? foodDetailModal.entryId : null;
+  const selectedFoodEntry =
+    isFood && selectedFoodEntryId
+      ? entries.find((entry) => entry.id === selectedFoodEntryId) ?? null
+      : null;
+  const barcodeDraft =
+    activeDomainModal?.id === 'food.barcodeNutritionEdit' ? activeDomainModal.draft : null;
+  const selectedFoodEntryText = selectedFoodEntry?.text ?? '';
+  const selectedFoodEntryData = selectedFoodEntry?.data;
+  const selectedFoodEntryMedia = selectedFoodEntry?.media;
+
+  const openSettings = useCallback(() => {
+    if (!canOpenAppModal('day.root', 'settings.root')) return;
+    replaceAppModal({ id: 'settings.root', domain: config.id });
+  }, [config.id, replaceAppModal]);
+
+  const openFoodEntryDetails = useCallback((entry: Entry) => {
+    if (!canOpenAppModal('day.root', 'food.entryDetail')) return;
+    replaceAppModal({ id: 'food.entryDetail', domain: 'food', entryId: entry.id });
+  }, [replaceAppModal]);
 
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
@@ -265,15 +309,42 @@ export function DayTemplate<TData, TTotals>({
   }, []);
 
   useEffect(() => {
-    if (keyboardVisible) setFoodGoalsVisible(false);
-    else setFoodMediaMenuVisible(false);
-  }, [keyboardVisible]);
+    if (keyboardVisible) {
+      closeAppModal('food.goals');
+    } else {
+      setFoodMediaMenuVisible(false);
+    }
+  }, [closeAppModal, keyboardVisible]);
 
   useEffect(() => {
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isFood || !selectedFoodEntryId || !selectedFoodEntryData || !('items' in selectedFoodEntryData)) {
+      setSelectedFoodMealSaved(false);
+      return;
+    }
+    let active = true;
+    setSelectedFoodMealSaved(false);
+    void SavedMealRepository.findByEntry(
+      selectedFoodEntryId,
+      selectedFoodEntryText,
+      selectedFoodEntryData as FoodData,
+      selectedFoodEntryMedia,
+    )
+      .then((meal) => {
+        if (active) setSelectedFoodMealSaved(Boolean(meal));
+      })
+      .catch(() => {
+        if (active) setSelectedFoodMealSaved(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isFood, selectedFoodEntryData, selectedFoodEntryId, selectedFoodEntryMedia, selectedFoodEntryText]);
 
   const handleDelete = useCallback(
     (entry: Entry) => {
@@ -416,9 +487,10 @@ export function DayTemplate<TData, TTotals>({
   );
 
   const handleSelectFoodMedia = useCallback((action: FoodMediaAction) => {
+    if (!canOpenAppModal('day.root', 'food.mediaCapture')) return;
     setFoodMediaMenuVisible(false);
-    setFoodCaptureMode(action);
-  }, []);
+    replaceAppModal({ id: 'food.mediaCapture', domain: 'food', mode: action });
+  }, [replaceAppModal]);
 
   const handlePhotoCaptured = useCallback((photo: {
     kind: 'foodPhoto' | 'menuPhoto';
@@ -442,11 +514,12 @@ export function DayTemplate<TData, TTotals>({
   const openPendingBarcodeDraft = useCallback(() => {
     const draft = pendingBarcodeDraft.current;
     if (!draft || !barcodeCaptureDismissed.current) return;
+    if (!canOpenAppModal('food.mediaCapture', 'food.barcodeNutritionEdit')) return;
     if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
     pendingBarcodeDraft.current = null;
-    setBarcodeDraft(draft);
+    replaceAppModal({ id: 'food.barcodeNutritionEdit', domain: 'food', draft });
     barcodeTimer.current = null;
-  }, []);
+  }, [replaceAppModal]);
 
   const handleBarcodeScanned = useCallback((code: string) => {
     if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
@@ -454,11 +527,11 @@ export function DayTemplate<TData, TTotals>({
     barcodeLookupRun.current = run;
     barcodeCaptureDismissed.current = false;
     pendingBarcodeDraft.current = null;
-    setFoodCaptureMode(null);
+    closeAppModal('food.mediaCapture');
     barcodeTimer.current = setTimeout(() => {
       barcodeCaptureDismissed.current = true;
       openPendingBarcodeDraft();
-    }, 900);
+    }, APP_MODAL_TRANSITION_MS);
     void (async () => {
       const product = await lookupOpenFoodFactsProduct(code);
       if (barcodeLookupRun.current !== run) return;
@@ -468,7 +541,7 @@ export function DayTemplate<TData, TTotals>({
       };
       openPendingBarcodeDraft();
     })();
-  }, [openPendingBarcodeDraft]);
+  }, [closeAppModal, openPendingBarcodeDraft]);
 
   const handleFoodCaptureDismiss = useCallback(() => {
     barcodeCaptureDismissed.current = true;
@@ -488,17 +561,18 @@ export function DayTemplate<TData, TTotals>({
         ...current,
         { id, kind: 'barcode', uri: barcodeDraft?.imageUri, description: text, data: parsedData },
       ]);
-      setBarcodeDraft(null);
+      closeAppModal('food.barcodeNutritionEdit');
     },
-    [barcodeDraft?.imageUri],
+    [barcodeDraft?.imageUri, closeAppModal],
   );
 
   const handleDeleteFoodEntry = useCallback(
     (entry: Entry) => {
-      setSelectedFoodEntry(null);
+      closeAppModal();
+      closeAppModal('food.entryDetail');
       handleDelete(entry);
     },
-    [handleDelete],
+    [closeAppModal, handleDelete],
   );
 
   const handleSaveFoodNutrition = useCallback(
@@ -519,7 +593,6 @@ export function DayTemplate<TData, TTotals>({
         error: null,
       });
       useAppStore.getState().upsertEntry('food', updated);
-      setSelectedFoodEntry(updated);
 
       if (!needsReasoning) return;
 
@@ -535,7 +608,6 @@ export function DayTemplate<TData, TTotals>({
           const refreshed: Entry = { ...(latest ?? updated), text: refreshedText, data: refreshedData };
           await EntryRepository.update(entry.id, { text: refreshedText, data: refreshedData });
           useAppStore.getState().upsertEntry('food', refreshed);
-          setSelectedFoodEntry((current) => (current?.id === entry.id ? refreshed : current));
         };
 
         try {
@@ -578,8 +650,36 @@ export function DayTemplate<TData, TTotals>({
 
   const handleSaveMeal = useCallback(async (entry: Entry) => {
     if (!entry.data || !('items' in entry.data)) return;
-    await SavedMealRepository.save(entry.text, entry.data as FoodData);
-  }, []);
+    await SavedMealRepository.save(entry.text, entry.data as FoodData, entry.media, entry.id);
+    if (selectedFoodEntryId === entry.id) setSelectedFoodMealSaved(true);
+  }, [selectedFoodEntryId]);
+
+  const openSavedMealPicker = useCallback(() => {
+    if (!canOpenAppModal('day.root', 'food.savedMealPicker')) return;
+    Keyboard.dismiss();
+    setFoodMediaMenuVisible(false);
+    replaceAppModal({ id: 'food.savedMealPicker', domain: 'food' });
+  }, [replaceAppModal]);
+
+  const handleSelectSavedMeals = useCallback((meals: SavedMeal[]) => {
+    closeAppModal('food.savedMealPicker');
+    const now = Date.now();
+    const entries = meals.map((meal, index): Entry => ({
+      id: newId(),
+      date,
+      domain: 'food',
+      text: meal.name,
+      media: meal.media,
+      status: 'done',
+      data: meal.data,
+      error: null,
+      createdAt: now + index,
+    }));
+    void (async () => {
+      await Promise.all(entries.map((entry) => EntryRepository.insert(entry)));
+      entries.forEach((entry) => useAppStore.getState().upsertEntry('food', entry));
+    })();
+  }, [closeAppModal, date]);
 
   const handleFoodAiEdit = useCallback(
     async (entry: Entry, instruction: string) => {
@@ -612,25 +712,38 @@ export function DayTemplate<TData, TTotals>({
   const totalItems = config.describeTotals(totals);
   const foodTotals = isFood ? (totals as FoodTotals) : null;
   const footerPaddingBottom = keyboardVisible ? Spacing.two : insets.bottom + TAB_BAR_CLEARANCE;
-  const toggleFoodGoals = () => setFoodGoalsVisible((current) => !current);
+  const toggleFoodGoals = () => {
+    if (!canOpenAppModal('day.root', 'food.goals')) return;
+    if (foodGoalsVisible) closeAppModal('food.goals');
+    else replaceAppModal({ id: 'food.goals', domain: 'food' });
+  };
+  const dismissFoodGoalsResponder = useCallback(() => {
+    if (!foodGoalsVisible) return false;
+    closeAppModal('food.goals');
+    return true;
+  }, [closeAppModal, foodGoalsVisible]);
 
   return (
     <KeyboardAvoidingView
       style={[styles.root, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <View style={styles.paddedHeader}>
+        <View
+          style={styles.paddedHeader}
+          onStartShouldSetResponderCapture={dismissFoodGoalsResponder}>
           <DayHeader
             date={date}
             canNext={canGoNext}
             onPrev={goPrev}
             onNext={goNext}
             onToday={goToday}
-            onOpenSettings={() => setSettingsVisible(true)}
+            onOpenSettings={openSettings}
           />
         </View>
 
-        <View style={styles.paddedBody}>
+        <View
+          style={styles.paddedBody}
+          onStartShouldSetResponderCapture={dismissFoodGoalsResponder}>
           <NotesList
             entries={entries}
             config={config}
@@ -649,7 +762,7 @@ export function DayTemplate<TData, TTotals>({
             onEdit={editEntry}
             onDelete={handleDelete}
             onRetry={retryEntry}
-            onOpenFoodDetails={isFood ? setSelectedFoodEntry : undefined}
+            onOpenFoodDetails={isFood ? openFoodEntryDetails : undefined}
           />
         </View>
 
@@ -673,7 +786,11 @@ export function DayTemplate<TData, TTotals>({
                 <View style={styles.keyboardBar}>
                   <View style={styles.keyboardDock}>
                     <TotalsDock
-                      items={isFood ? totalItems.filter((item) => item.key === 'cal') : totalItems}
+                      items={
+                        isFood
+                          ? totalItems.filter((item) => item.key === 'cal' || item.key === 'h')
+                          : totalItems
+                      }
                       compact
                     />
                   </View>
@@ -681,22 +798,22 @@ export function DayTemplate<TData, TTotals>({
                   {isFood ? (
                     <>
                       <Pressable
-                        onPress={() => {}}
-                        hitSlop={10}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('media.microphone')}>
-                        <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
-                          <AppIcon name="mic" color={colors.textSecondary} size={18} />
-                        </GlassSurface>
-                      </Pressable>
-
-                      <Pressable
                         onPress={() => setFoodMediaMenuVisible((current) => !current)}
                         hitSlop={10}
                         accessibilityRole="button"
                         accessibilityLabel={t('media.addAttachment')}>
                         <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
-                          <AppIcon name="plus" color={colors.textSecondary} size={20} />
+                          <AppIcon name="camera" color={colors.carbs} size={20} />
+                        </GlassSurface>
+                      </Pressable>
+
+                      <Pressable
+                        onPress={openSavedMealPicker}
+                        hitSlop={10}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('media.addSavedMeal')}>
+                        <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
+                          <AppIcon name="plus" color={colors.accent} size={20} />
                         </GlassSurface>
                       </Pressable>
                     </>
@@ -725,35 +842,21 @@ export function DayTemplate<TData, TTotals>({
         </View>
       </SafeAreaView>
 
-      <SettingsSheet visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
-      <FoodEntryDetailSheet
-        visible={selectedFoodEntry !== null}
-        onClose={() => setSelectedFoodEntry(null)}
-        entry={selectedFoodEntry}
-        onDelete={handleDeleteFoodEntry}
+      <AppModalHost
+        domain={config.id}
+        entries={entries}
+        selectedFoodMealSaved={selectedFoodMealSaved}
+        reasoningLoadingId={foodReasoningLoadingId}
+        onDeleteFoodEntry={handleDeleteFoodEntry}
         onSaveMeal={handleSaveMeal}
         onSaveNutrition={handleSaveFoodNutrition}
         onAiEdit={handleFoodAiEdit}
-        reasoningLoading={selectedFoodEntry?.id === foodReasoningLoadingId}
-      />
-      <FoodMediaCaptureSheet
-        visible={foodCaptureMode !== null}
-        mode={foodCaptureMode}
-        onClose={() => setFoodCaptureMode(null)}
-        onDismiss={handleFoodCaptureDismiss}
         onPhoto={handlePhotoCaptured}
         onBarcode={handleBarcodeScanned}
+        onFoodCaptureDismiss={handleFoodCaptureDismiss}
+        onSaveBarcodeFood={handleSaveBarcodeFood}
+        onSelectSavedMeals={handleSelectSavedMeals}
       />
-      {barcodeDraft ? (
-        <FoodNutritionEditSheet
-          visible
-          text={barcodeDraft.text}
-          data={barcodeDraft.data}
-          saveUnchanged
-          onClose={() => setBarcodeDraft(null)}
-          onSave={handleSaveBarcodeFood}
-        />
-      ) : null}
     </KeyboardAvoidingView>
   );
 }

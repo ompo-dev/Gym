@@ -9,10 +9,9 @@ import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
+import type { FoodMediaAction } from '@/core/types';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
-
-import type { FoodMediaAction } from './FoodMediaActionMenu';
 
 interface CapturedFoodPhoto {
   kind: Extract<FoodMediaAction, 'foodPhoto' | 'menuPhoto'>;

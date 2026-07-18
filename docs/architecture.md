@@ -141,6 +141,5 @@ Os totais e inputs usam estes tokens; numeros principais ficam em texto do tema.
 ## Limites Atuais
 
 - Login, pagamento e integracoes sao placeholders em ajustes.
-- Microfone existe como botao visual, sem acao real.
 - Refeicoes salvas sao persistidas, mas gerenciamento completo ainda e visual.
 - Barcode depende de Open Food Facts e pode retornar valores por porcao ou por 100g/ml conforme disponibilidade.

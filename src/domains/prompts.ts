@@ -4,7 +4,7 @@ export const promptByDomain: Record<Domain, string> = {
   food: [
     'You are a nutrition parser. The user writes a food entry in natural language.',
     'Return ONLY a JSON object of the shape',
-    '{ "items": [ { "label": string, "mediaId": string | null, "quantity": number | null, "unit": string | null, "calories": number, "protein": number, "carbs": number, "fat": number, "waterMl": number } ], "reasoning": string, "confidence": number }.',
+    '{ "items": [ { "label": string, "mediaId": string | null, "quantity": number | null, "unit": string | null, "calories": number, "protein": number, "carbs": number, "fat": number, "waterMl": number, "sugarG": number, "fiberG": number, "sodiumMg": number } ], "reasoning": string, "confidence": number }.',
     'List ONE object per distinct food or drink component.',
     'If attached image descriptions include media ids, return exactly ONE food/drink item per attached image with that mediaId. Estimate the whole visible food/drink in that image as that item. Foods typed only in text may omit mediaId.',
     'When text and attached images are provided together, include BOTH the typed foods/drinks and the image foods/drinks; do not replace or ignore one source with the other.',
@@ -16,6 +16,7 @@ export const promptByDomain: Record<Domain, string> = {
     'Set quantity and unit only for countable items or explicit serving units that make sense to show to the user, for example eggs, slices, cups, scoops, cans, glasses, pieces, or units. Use null for quantity and unit when it would be awkward or not useful, such as generic rice, pasta, mixed dishes, or estimated portions.',
     'If quantity is 1, use null unless the user explicitly wrote a serving unit that matters.',
     'Set waterMl to the estimated water amount in milliliters for water or drinks, otherwise 0.',
+    'If user nutrition context includes trackMicronutrients, estimate sugarG, fiberG, and sodiumMg per item. Otherwise set sugarG, fiberG, and sodiumMg to 0.',
     'Macros are in grams.',
     'If user nutrition context is provided, use it to adjust serving assumptions and respect restrictions, diet preferences, allergies, goals, and notes.',
     'Set "reasoning" to 2-4 sentences explaining how you identified the items and estimated their nutrition, mentioning the sources or assumptions you used.',
@@ -43,7 +44,7 @@ export const promptByDomain: Record<Domain, string> = {
 export const foodEditPrompt = [
   'You edit an existing nutrition JSON meal according to a user instruction.',
   'Return ONLY a JSON object of the shape',
-  '{ "description": string, "meal": { "items": [ { "label": string, "mediaId": string | null, "quantity": number | null, "unit": string | null, "calories": number, "protein": number, "carbs": number, "fat": number, "waterMl": number } ], "reasoning": string, "confidence": number }, "changes": [ { "action": "added" | "edited" | "removed", "item": string, "note": string } ] }.',
+  '{ "description": string, "meal": { "items": [ { "label": string, "mediaId": string | null, "quantity": number | null, "unit": string | null, "calories": number, "protein": number, "carbs": number, "fat": number, "waterMl": number, "sugarG": number, "fiberG": number, "sodiumMg": number } ], "reasoning": string, "confidence": number }, "changes": [ { "action": "added" | "edited" | "removed", "item": string, "note": string } ] }.',
   'The user may ask to add, remove, rename, resize portions, change macros, change calories, or adjust hydration.',
   'A single instruction may contain multiple edits; apply all of them and include one change object per concrete edit.',
   'Preserve unchanged items exactly unless the instruction clearly affects them.',
@@ -58,6 +59,7 @@ export const foodEditPrompt = [
   'If removing an item, remove it from meal.items.',
   'Do NOT include totals; the app sums items.',
   'Set waterMl in milliliters for water or drinks, otherwise 0.',
+  'If user nutrition context includes trackMicronutrients, preserve or estimate sugarG, fiberG, and sodiumMg per item. Otherwise set sugarG, fiberG, and sodiumMg to 0.',
   'Set changes to one object per concrete add/edit/remove operation.',
   'Rewrite meal.reasoning from scratch for the final updated meal, as if it had just been analyzed normally. Do not mention the edit instruction, previous changes, or phrases like "I added", "I removed", or "I updated".',
   'Set meal.confidence to an integer from 0 to 100.',

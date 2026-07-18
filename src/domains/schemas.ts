@@ -12,6 +12,9 @@ export const foodItemSchema = z.object({
   carbs: z.coerce.number().nonnegative(),
   fat: z.coerce.number().nonnegative(),
   waterMl: z.coerce.number().nonnegative().default(0),
+  sugarG: z.coerce.number().nonnegative().default(0),
+  fiberG: z.coerce.number().nonnegative().default(0),
+  sodiumMg: z.coerce.number().nonnegative().default(0),
 });
 export type FoodItem = z.infer<typeof foodItemSchema>;
 

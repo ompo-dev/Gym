@@ -54,6 +54,8 @@ Calculos:
 - TDEE usa multiplicador de atividade.
 - Calorias sao ajustadas por meta de peso, dias ate meta e vies.
 - Proteina, carbo, gordura e hidratacao viram metas diarias.
+- Ao ativar micronutrientes no onboarding, acucar/fibras/sodio ficam ativos no
+  perfil salvo.
 
 ## Tela de Dieta
 
@@ -74,8 +76,9 @@ Interacoes principais:
 - Editar texto de uma entrada existente reprocessa a entrada.
 - Apagar entrada mostra `UndoToast` por 4 segundos.
 - Erro mostra `tentar de novo`.
-- Com teclado aberto, footer mostra calorias compactas, microfone, mais e fechar teclado.
-- Botao mais abre menu de midia.
+- Com teclado aberto, footer mostra calorias compactas, midia, refeicao salva e fechar teclado.
+- Botao de midia abre menu de camera/galeria/barcode.
+- Botao de refeicao salva abre o seletor de refeicoes salvas.
 
 ## Menu de Midia
 
@@ -86,8 +89,6 @@ Opcoes:
 - `Adicionar foto`: captura ou seleciona foto de alimento.
 - `Tirar foto do menu`: captura ou seleciona foto de cardapio.
 - `Codigo de barras`: abre camera em modo scanner.
-
-O botao de microfone existe no footer, mas ainda nao executa captura de audio.
 
 ## Camera e Galeria
 
@@ -143,6 +144,8 @@ Itens:
 
 - Cada item mostra nome, opcionalmente miniatura ligada por `mediaId`, quantidade quando faz sentido, calorias e expand/collapse.
 - Expandido mostra proteina, carboidratos e gordura.
+- Se micronutrientes estiverem ativos no perfil, o item expandido tambem mostra
+  acucar, fibras e/ou sodio.
 
 Menu:
 
@@ -179,6 +182,8 @@ Regras:
 - Autoajuste recalcula calorias quando proteina/carbo/gordura mudam.
 - Inputs de macros exibem inicial, separador e input na mesma linha.
 - Hidratacao mostra `ml`; ao sair do foco, valores >= 1000 aparecem em `L`.
+- Inputs de acucar, fibras e sodio aparecem nos totais e nos itens quando esses
+  micronutrientes estao ativos no perfil.
 - Cada item pode ser removido mesmo se for o unico item.
 - Botoes `-` e `+` ajustam quantidade e escalam macros.
 - Itens com imagem mostram a miniatura ao lado do nome.
@@ -223,6 +228,7 @@ Mostra:
 
 - Barra de progresso de calorias.
 - Rings de proteina, carboidratos, gordura e hidratacao.
+- Linhas de acucar/fibras/sodio quando esses micronutrientes estao ativos.
 
 Metas vem de `useFoodGoals`, que usa o perfil do onboarding ou perfil padrao.
 
@@ -236,10 +242,8 @@ Conteudo:
 - Resumo de metas.
 - Perfil de saude.
 - Controle de peso.
-- Controle de agua.
 - Refeicoes salvas.
 - Preferencias.
-- Apple Health placeholder.
 - Aparencia e dispositivo.
 - Assinatura placeholder.
 - Connect GymNotes placeholder.
@@ -248,13 +252,18 @@ Conteudo:
 Interacoes funcionais hoje:
 
 - Aparencia alterna `system -> light -> dark`.
+- Gerenciar metas nutricionais salva tipo de meta, peso-alvo, data-alvo,
+  preferencias, metas e micronutrientes no perfil local.
+- Gerenciar informacoes de saude salva genero, data de nascimento, altura, peso
+  e nivel de atividade; isso recalcula BMR/TDEE/metas via Harris-Benedict.
+- Controle de peso e registrar peso atualizam o peso do perfil local.
+- Refeicoes salvas abre lista de refeicoes persistidas em SQLite.
 - Sair limpa onboarding e volta para `OnboardingFlow`.
 - Contagem de refeicoes salvas e lida de SQLite.
 
 Interacoes visuais ainda sem backend real:
 
-- Agua, localizacao, lembretes, summarize, Apple Health.
-- Gerenciar metas, saude, refeicoes, assinatura e API keys.
+- Assinatura e API keys.
 
 ## Tela de Treino
 

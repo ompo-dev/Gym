@@ -5,15 +5,11 @@ import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Metrics, Spacing } from '@/constants/theme';
+import type { AppModalAnchor } from '@/core/appModals';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 
-export interface FoodEntryActionMenuAnchor {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+export type FoodEntryActionMenuAnchor = AppModalAnchor;
 
 const MENU_WIDTH = 250;
 const MENU_RADIUS = 26;
@@ -48,8 +44,6 @@ function ActionRow({
 }) {
   const colors = useColors();
   const textColor = color ?? colors.text;
-  const displayLabel =
-    label === t('details.saveMeal') ? label.replace(' como ', ' como\n') : label;
 
   return (
     <Pressable
@@ -63,7 +57,7 @@ function ActionRow({
         size={23}
       />
       <AppText variant="body" color={textColor} style={styles.rowText}>
-        {displayLabel}
+        {label}
       </AppText>
       {trailing ? <AppIcon name={trailing} color={colors.textSecondary} size={22} /> : null}
     </Pressable>
@@ -141,7 +135,7 @@ export function FoodEntryActionMenu({
           <>
             <ActionRow
               icon="bookmark"
-              label={t('details.saveMeal')}
+              label={mealSaved ? t('details.mealSaved') : t('details.saveMeal')}
               iconColor={mealSaved ? '#FFFFFF' : undefined}
               iconFill={mealSaved ? '#FFFFFF' : undefined}
               onPress={onSaveMeal}

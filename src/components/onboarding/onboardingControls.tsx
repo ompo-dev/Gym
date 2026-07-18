@@ -150,6 +150,7 @@ export function PickerSheet({
   text,
   picker,
   profile,
+  presentation = "modal",
   onClose,
   onPick,
 }: {
@@ -157,6 +158,7 @@ export function PickerSheet({
   text: (typeof copy)["pt-BR"];
   picker: PickerKind | null;
   profile: OnboardingProfile;
+  presentation?: "modal" | "overlay";
   onClose: () => void;
   onPick: (kind: PickerKind, value: PickerValue) => void;
 }) {
@@ -264,7 +266,7 @@ export function PickerSheet({
 
   if (!picker) return null;
 
-  if (IOS_NATIVE_ENABLED && !isWeightPicker) {
+  if (IOS_NATIVE_ENABLED && !isWeightPicker && presentation === "modal") {
     return (
       <IOSNativeBottomSheet
         visible
@@ -312,9 +314,13 @@ export function PickerSheet({
     );
   }
 
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+  const content = (
+    <View
+      style={[
+        styles.modalOverlay,
+        presentation === "overlay" && StyleSheet.absoluteFill,
+      ]}
+    >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
@@ -432,6 +438,13 @@ export function PickerSheet({
           />
         </View>
       </View>
+  );
+
+  if (presentation === "overlay") return content;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      {content}
     </Modal>
   );
 }
@@ -444,6 +457,7 @@ export function DatePickerSheet({
   value,
   minimumDate,
   maximumDate,
+  presentation = "modal",
   onChange,
   onClose,
   onSave,
@@ -455,20 +469,22 @@ export function DatePickerSheet({
   value: string;
   minimumDate?: Date;
   maximumDate?: Date;
+  presentation?: "modal" | "overlay";
   onChange: (value: string) => void;
   onClose: () => void;
   onSave: () => void;
 }) {
   const { colors, styles } = useOnboardingTheme();
 
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
+  if (!visible) return null;
+
+  const content = (
+    <View
+      style={[
+        styles.modalOverlay,
+        presentation === "overlay" && StyleSheet.absoluteFill,
+      ]}
     >
-      <View style={styles.modalOverlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
@@ -491,6 +507,13 @@ export function DatePickerSheet({
           <PrimaryButton label={buttonLabel} onPress={onSave} />
         </View>
       </View>
+  );
+
+  if (presentation === "overlay") return content;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      {content}
     </Modal>
   );
 }

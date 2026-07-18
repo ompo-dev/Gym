@@ -1,15 +1,16 @@
 import { Image } from 'expo-image';
-import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Radii, Spacing } from '@/constants/theme';
+import { canOpenAppModal } from '@/core/appModals';
 import type { EntryMediaAttachment } from '@/core/types';
 import type { FoodData } from '@/domains/schemas';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
+import { useAppModalStore } from '@/store/useAppModalStore';
 
 import { SheetFrame } from './SheetFrame';
 
@@ -52,6 +53,53 @@ export function DraftPreview({
   );
 }
 
+export function DraftStack({
+  drafts,
+  size,
+  overlap = -22,
+  showMore = false,
+}: {
+  drafts: EntryMediaAttachment[];
+  size: number;
+  overlap?: number;
+  showMore?: boolean;
+}) {
+  const visibleDrafts = drafts.slice(0, 3);
+  if (visibleDrafts.length === 0) return null;
+
+  return (
+    <View
+      style={[
+        styles.draftStack,
+        {
+          width: size * visibleDrafts.length + overlap * Math.max(0, visibleDrafts.length - 1),
+          height: size,
+        },
+      ]}>
+      {visibleDrafts.map((draft, index) => (
+        <View
+          key={draft.id}
+          style={[
+            index > 0 && { marginLeft: overlap },
+            {
+              transform: [{ rotate: thumbnailRotations[index] }],
+              zIndex: 3 - index,
+            },
+          ]}>
+          <DraftPreview draft={draft} size={size} />
+        </View>
+      ))}
+      {showMore && drafts.length > 3 ? (
+        <GlassSurface glass="regular" style={styles.moreBadge}>
+          <AppText variant="caption" color="#FFFFFF">
+            +{drafts.length - 3}
+          </AppText>
+        </GlassSurface>
+      ) : null}
+    </View>
+  );
+}
+
 export function FoodMediaDraftTray({
   drafts,
   onChangeDescription,
@@ -62,43 +110,30 @@ export function FoodMediaDraftTray({
   onRemove?: (id: string) => void;
 }) {
   const colors = useColors();
-  const [open, setOpen] = useState(false);
+  const activeModal = useAppModalStore((s) => s.stack.at(-1));
+  const replaceAppModal = useAppModalStore((s) => s.replaceAppModal);
+  const closeAppModal = useAppModalStore((s) => s.closeAppModal);
+  const open = activeModal?.id === 'food.mediaDraftTray';
   if (drafts.length === 0) return null;
 
   return (
     <>
       <Pressable
-        onPress={() => setOpen(true)}
+        onPress={() => {
+          if (!canOpenAppModal('day.root', 'food.mediaDraftTray')) return;
+          replaceAppModal({ id: 'food.mediaDraftTray', domain: 'food' });
+        }}
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel={t('media.photosAdded')}
         style={styles.galleryButton}>
-        {drafts.slice(0, 3).map((draft, index) => (
-          <View
-            key={draft.id}
-            style={[
-              index > 0 && styles.thumbnailOverlap,
-              {
-                transform: [{ rotate: thumbnailRotations[index] }],
-                zIndex: 3 - index,
-              },
-            ]}>
-            <DraftPreview draft={draft} size={38} />
-          </View>
-        ))}
-        {drafts.length > 3 ? (
-          <GlassSurface glass="regular" style={styles.moreBadge}>
-            <AppText variant="caption" color="#FFFFFF">
-              +{drafts.length - 3}
-            </AppText>
-          </GlassSurface>
-        ) : null}
+        <DraftStack drafts={drafts} size={38} showMore />
       </Pressable>
 
       <SheetFrame
         visible={open}
         title={t('media.photosAdded')}
-        onClose={() => setOpen(false)}
+        onClose={() => closeAppModal('food.mediaDraftTray')}
         keyboardAwareScroll>
         {drafts.map((draft) => (
           <View key={draft.id} style={styles.row}>
@@ -141,6 +176,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingLeft: Spacing.one,
   },
+  draftStack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -154,9 +193,6 @@ const styles = StyleSheet.create({
   iconPreview: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  thumbnailOverlap: {
-    marginLeft: -22,
   },
   moreBadge: {
     width: 28,

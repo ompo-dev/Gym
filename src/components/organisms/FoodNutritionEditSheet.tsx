@@ -6,10 +6,16 @@ import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Radii, Spacing } from '@/constants/theme';
 import type { EntryMediaAttachment } from '@/core/types';
+import {
+  defaultOnboardingProfile,
+  enabledMicronutrients,
+  type OnboardingMicronutrient,
+} from '@/core/onboarding';
 import { formatFoodQuantity } from '@/domains/food';
 import type { FoodData, FoodItem } from '@/domains/schemas';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
+import { useAppStore } from '@/store/useAppStore';
 
 import { DraftPreview } from './FoodMediaDraftTray';
 import { SheetFrame } from './SheetFrame';
@@ -24,9 +30,25 @@ interface EditableItem {
   carbs: string;
   fat: string;
   waterMl: string;
+  sugarG: string;
+  fiberG: string;
+  sodiumMg: string;
 }
 
 type EditableTotals = Omit<EditableItem, 'label'>;
+type EditableMicronutrientField = 'sugarG' | 'fiberG' | 'sodiumMg';
+
+const MICRO_INPUTS: {
+  key: OnboardingMicronutrient;
+  field: EditableMicronutrientField;
+  initial: string;
+  color: string;
+  unit: string;
+}[] = [
+  { key: 'sugar', field: 'sugarG', initial: 'A', color: '#2E9BFF', unit: 'g' },
+  { key: 'fiber', field: 'fiberG', initial: 'F', color: '#34C759', unit: 'g' },
+  { key: 'sodium', field: 'sodiumMg', initial: 'S', color: '#FF922E', unit: 'mg' },
+];
 
 interface FoodNutritionEditSheetProps {
   visible: boolean;
@@ -53,6 +75,9 @@ function fromItem(item: FoodItem): EditableItem {
     carbs: String(item.carbs),
     fat: String(item.fat),
     waterMl: String(item.waterMl ?? 0),
+    sugarG: String(item.sugarG ?? 0),
+    fiberG: String(item.fiberG ?? 0),
+    sodiumMg: String(item.sodiumMg ?? 0),
   };
 }
 
@@ -72,6 +97,9 @@ function toItem(item: EditableItem): FoodItem {
     carbs: readNumber(item.carbs),
     fat: readNumber(item.fat),
     waterMl: readNumber(item.waterMl),
+    sugarG: readNumber(item.sugarG),
+    fiberG: readNumber(item.fiberG),
+    sodiumMg: readNumber(item.sodiumMg),
   };
 }
 
@@ -83,6 +111,9 @@ function fromTotals(item: EditableTotals): FoodItem {
     carbs: readNumber(item.carbs),
     fat: readNumber(item.fat),
     waterMl: readNumber(item.waterMl),
+    sugarG: readNumber(item.sugarG),
+    fiberG: readNumber(item.fiberG),
+    sodiumMg: readNumber(item.sodiumMg),
   };
 }
 
@@ -215,6 +246,9 @@ function FoodNutritionEditContent({
   onSave,
 }, ref) {
   const colors = useColors();
+  const profile = useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
+  const activeMicros = enabledMicronutrients(profile);
+  const microInputs = MICRO_INPUTS.filter((item) => activeMicros.includes(item.key));
   const [description, setDescription] = useState(text);
   const [items, setItems] = useState<EditableItem[]>(() => data.items.map(fromItem));
   const [autoCalculateTotal, setAutoCalculateTotal] = useState(true);
@@ -228,8 +262,11 @@ function FoodNutritionEditContent({
           carbs: sum.carbs + item.carbs,
           fat: sum.fat + item.fat,
           waterMl: sum.waterMl + item.waterMl,
+          sugarG: sum.sugarG + item.sugarG,
+          fiberG: sum.fiberG + item.fiberG,
+          sodiumMg: sum.sodiumMg + item.sodiumMg,
         }),
-        { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0 },
+        { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0, sugarG: 0, fiberG: 0, sodiumMg: 0 },
       ),
     [items],
   );
@@ -239,6 +276,9 @@ function FoodNutritionEditContent({
     carbs: totals.carbs.toFixed(1),
     fat: totals.fat.toFixed(1),
     waterMl: String(Math.round(totals.waterMl)),
+    sugarG: totals.sugarG.toFixed(1),
+    fiberG: totals.fiberG.toFixed(1),
+    sodiumMg: String(Math.round(totals.sodiumMg)),
   });
   const shownTotals = autoCalculateTotal
     ? {
@@ -247,6 +287,9 @@ function FoodNutritionEditContent({
         carbs: totals.carbs.toFixed(1),
         fat: totals.fat.toFixed(1),
         waterMl: String(Math.round(totals.waterMl)),
+        sugarG: totals.sugarG.toFixed(1),
+        fiberG: totals.fiberG.toFixed(1),
+        sodiumMg: String(Math.round(totals.sodiumMg)),
       }
     : manualTotals;
 
@@ -263,6 +306,9 @@ function FoodNutritionEditContent({
       carbs: totals.carbs.toFixed(1),
       fat: totals.fat.toFixed(1),
       waterMl: String(Math.round(totals.waterMl)),
+      sugarG: totals.sugarG.toFixed(1),
+      fiberG: totals.fiberG.toFixed(1),
+      sodiumMg: String(Math.round(totals.sodiumMg)),
     });
   }, [autoCalculateTotal, totals]);
 
@@ -305,6 +351,9 @@ function FoodNutritionEditContent({
           carbs: scaleAmount(item.carbs, ratio),
           fat: scaleAmount(item.fat, ratio),
           waterMl: scaleAmount(item.waterMl, ratio, 0),
+          sugarG: scaleAmount(item.sugarG, ratio),
+          fiberG: scaleAmount(item.fiberG, ratio),
+          sodiumMg: scaleAmount(item.sodiumMg, ratio, 0),
         };
       }),
     );
@@ -326,6 +375,9 @@ function FoodNutritionEditContent({
           carbs: scaleAmount(item.carbs, ratio),
           fat: scaleAmount(item.fat, ratio),
           waterMl: scaleAmount(item.waterMl, ratio, 0),
+          sugarG: scaleAmount(item.sugarG, ratio),
+          fiberG: scaleAmount(item.fiberG, ratio),
+          sodiumMg: scaleAmount(item.sodiumMg, ratio, 0),
         };
       }),
     );
@@ -334,7 +386,17 @@ function FoodNutritionEditContent({
   const addItem = () => {
     setItems((current) => [
       ...current,
-      { label: '', calories: '0', protein: '0', carbs: '0', fat: '0', waterMl: '0' },
+      {
+        label: '',
+        calories: '0',
+        protein: '0',
+        carbs: '0',
+        fat: '0',
+        waterMl: '0',
+        sugarG: '0',
+        fiberG: '0',
+        sodiumMg: '0',
+      },
     ]);
   };
 
@@ -446,6 +508,25 @@ function FoodNutritionEditContent({
               disabled={autoCalculateTotal}
             />
           </View>
+          {microInputs.length ? (
+            <View style={styles.macroGrid}>
+              {microInputs.map((meta) => (
+                <NutrientInput
+                  key={meta.key}
+                  initial={meta.initial}
+                  color={meta.color}
+                  value={shownTotals[meta.field]}
+                  onChangeText={(value) =>
+                    updateManualTotals({
+                      [meta.field]: value,
+                    } as Partial<EditableTotals>)
+                  }
+                  unit={meta.unit}
+                  disabled={autoCalculateTotal}
+                />
+              ))}
+            </View>
+          ) : null}
         </GlassSurface>
         <AppText variant="secondary" color={colors.textSecondary}>
           {t('details.calculatedFromItems')}
@@ -519,6 +600,24 @@ function FoodNutritionEditContent({
                 unit="g"
               />
             </View>
+            {microInputs.length ? (
+              <View style={styles.macroGrid}>
+                {microInputs.map((meta) => (
+                  <NutrientInput
+                    key={meta.key}
+                    initial={meta.initial}
+                    color={meta.color}
+                    value={item[meta.field]}
+                    onChangeText={(value) =>
+                      updateItem(index, {
+                        [meta.field]: value,
+                      } as Partial<EditableItem>)
+                    }
+                    unit={meta.unit}
+                  />
+                ))}
+              </View>
+            ) : null}
             <View style={styles.itemActions}>
               <Pressable
                 onPress={() => removeItem(index)}

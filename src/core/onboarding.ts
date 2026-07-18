@@ -3,6 +3,7 @@ import { addDays, todayISO } from '@/core/date';
 export type OnboardingGender = 'male' | 'female' | 'other' | 'private';
 export type OnboardingActivity = 'sedentary' | 'light' | 'moderate' | 'high';
 export type OnboardingBias = 0 | 1 | 2 | 3 | 4;
+export type OnboardingMicronutrient = 'sugar' | 'fiber' | 'sodium';
 export type OnboardingConsideration =
   | 'high-protein'
   | 'low-carb'
@@ -10,6 +11,14 @@ export type OnboardingConsideration =
   | 'strength'
   | 'endurance'
   | 'vegetarian';
+
+export type OnboardingMicronutrients = Record<OnboardingMicronutrient, boolean>;
+
+export interface OnboardingMicronutrientTargets {
+  sugarG: number;
+  fiberG: number;
+  sodiumMg: number;
+}
 
 export interface OnboardingProfile {
   gender: OnboardingGender;
@@ -23,6 +32,8 @@ export interface OnboardingProfile {
   notes: string;
   estimationBias: OnboardingBias;
   trackMicronutrients: boolean;
+  micronutrients: OnboardingMicronutrients;
+  micronutrientTargets: OnboardingMicronutrientTargets;
 }
 
 export interface OnboardingSummary {
@@ -34,6 +45,9 @@ export interface OnboardingSummary {
   carbs: number;
   fat: number;
   waterMl: number;
+  sugarG: number;
+  fiberG: number;
+  sodiumMg: number;
   deltaKg: number;
   targetDays: number;
 }
@@ -54,6 +68,20 @@ const activityMultiplier: Record<OnboardingActivity, number> = {
   high: 1.725,
 };
 
+export const defaultMicronutrientTargets: OnboardingMicronutrientTargets = {
+  sugarG: 25,
+  fiberG: 25,
+  sodiumMg: 2300,
+};
+
+export function micronutrientsFromTrack(enabled: boolean): OnboardingMicronutrients {
+  return {
+    sugar: enabled,
+    fiber: enabled,
+    sodium: enabled,
+  };
+}
+
 export function defaultOnboardingProfile(): OnboardingProfile {
   return {
     gender: 'male',
@@ -67,7 +95,35 @@ export function defaultOnboardingProfile(): OnboardingProfile {
     notes: '',
     estimationBias: 2,
     trackMicronutrients: false,
+    micronutrients: micronutrientsFromTrack(false),
+    micronutrientTargets: defaultMicronutrientTargets,
   };
+}
+
+export function normalizeOnboardingProfile(profile: Partial<OnboardingProfile>): OnboardingProfile {
+  const base = defaultOnboardingProfile();
+  const legacyTrack = Boolean(profile.trackMicronutrients);
+  const micronutrients = {
+    ...base.micronutrients,
+    ...(profile.micronutrients ?? micronutrientsFromTrack(legacyTrack)),
+  };
+  return {
+    ...base,
+    ...profile,
+    micronutrients,
+    micronutrientTargets: {
+      ...base.micronutrientTargets,
+      ...profile.micronutrientTargets,
+    },
+    trackMicronutrients: Object.values(micronutrients).some(Boolean),
+  };
+}
+
+export function enabledMicronutrients(profile: OnboardingProfile): OnboardingMicronutrient[] {
+  const normalized = normalizeOnboardingProfile(profile);
+  return (Object.keys(normalized.micronutrients) as OnboardingMicronutrient[]).filter(
+    (key) => normalized.micronutrients[key],
+  );
 }
 
 export function estimateAge(birthDate: string, today = todayISO()): number {
@@ -82,6 +138,7 @@ export function buildOnboardingSummary(
   profile: OnboardingProfile,
   today = todayISO(),
 ): OnboardingSummary {
+  profile = normalizeOnboardingProfile(profile);
   const age = estimateAge(profile.birthDate, today);
   const bmr = estimateBmrHarrisBenedict(profile, age);
   const tdeeBase = bmr * activityMultiplier[profile.activity];
@@ -115,6 +172,9 @@ export function buildOnboardingSummary(
     carbs,
     fat,
     waterMl,
+    sugarG: profile.micronutrientTargets.sugarG,
+    fiberG: profile.micronutrientTargets.fiberG,
+    sodiumMg: profile.micronutrientTargets.sodiumMg,
     deltaKg,
     targetDays,
   };
@@ -126,10 +186,17 @@ export function buildOnboardingPromptContext(
   today = todayISO(),
 ): string | undefined {
   if (!profile) return undefined;
+  profile = normalizeOnboardingProfile(profile);
   const lang = locale.toLowerCase().startsWith('en') ? 'en-US' : 'pt-BR';
   const summary = buildOnboardingSummary(profile, today);
   const considerations = profile.considerations.map((item) => considerationText[item][lang]);
   const notes = profile.notes.trim().slice(0, 240);
+  const trackedMicros = enabledMicronutrients(profile);
+  const microTargets = trackedMicros.map((key) => {
+    if (key === 'sugar') return `sugar <= ${summary.sugarG}g/day`;
+    if (key === 'fiber') return `fiber >= ${summary.fiberG}g/day`;
+    return `sodium <= ${summary.sodiumMg}mg/day`;
+  });
 
   return [
     lang === 'pt-BR' ? 'Perfil nutricional local do usuário:' : 'Local user nutrition profile:',
@@ -140,6 +207,8 @@ export function buildOnboardingPromptContext(
     `goalWeightKg=${profile.goalWeightKg}`,
     `activity=${profile.activity}`,
     `targets=${summary.calories} kcal, protein ${summary.protein}g, carbs ${summary.carbs}g, fat ${summary.fat}g, water ${summary.waterMl}ml`,
+    trackedMicros.length ? `trackMicronutrients=${trackedMicros.join(', ')}` : '',
+    microTargets.length ? `micronutrientTargets=${microTargets.join(', ')}` : '',
     considerations.length ? `considerations=${considerations.join(', ')}` : '',
     notes ? `userNotes=${notes}` : '',
     `calorieEstimationBias=${profile.estimationBias}`,

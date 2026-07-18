@@ -31,6 +31,8 @@ test('buildOnboardingPromptContext includes local goals and restrictions', () =>
       goalDate: '2026-10-06',
       considerations: ['vegetarian', 'low-carb'],
       notes: 'sem lactose',
+      trackMicronutrients: true,
+      micronutrients: { sugar: true, fiber: true, sodium: false },
     },
     'pt-BR',
     '2026-07-14',
@@ -41,6 +43,10 @@ test('buildOnboardingPromptContext includes local goals and restrictions', () =>
   expect(context).toContain('vegetariano');
   expect(context).toContain('baixo carboidrato');
   expect(context).toContain('userNotes=sem lactose');
+  expect(context).toContain('trackMicronutrients=sugar, fiber');
+  expect(context).toContain('sugar <= 25g/day');
+  expect(context).toContain('fiber >= 25g/day');
+  expect(context).not.toContain('sodium <=');
 });
 
 test('getOnboardingStage groups the welcome, profile and GymNotes sections', () => {

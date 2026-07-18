@@ -109,6 +109,19 @@ Formato visual:
 - abaixo de 1000: `ml`;
 - 1000 ou mais: `L` ao sair do foco.
 
+## Micronutrientes
+
+Micronutrientes por item vivem no mesmo `FoodItem`:
+
+- `sugarG`: acucar em gramas;
+- `fiberG`: fibras em gramas;
+- `sodiumMg`: sodio em miligramas.
+
+O perfil controla quais aparecem/calculam via `micronutrients`. Quando nenhum
+esta ativo, a IA deve retornar esses campos como `0` e a UI fica igual ao fluxo
+de macros. Quando ativos, incluir no `userContext`, em detalhes, edicao manual,
+edicao por IA, barcode/Open Food Facts e metas do dia.
+
 ## Raciocinio da IA
 
 `reasoning` pertence ao estado final da refeicao, nao ao historico de edicoes.
@@ -175,6 +188,7 @@ Usar tokens de `Colors`:
 - carboidratos: `colors.carbs`;
 - gordura: `colors.fat`;
 - hidratacao: `colors.water`.
+- micronutrientes: azul para acucar, verde para fibras, laranja para sodio.
 
 Na barra compacta, calorias usa icone de fogo; macros/hidratacao usam letras.
 
@@ -187,7 +201,7 @@ Ordem minima:
 3. atualizar `sumFoodData`, `defaultFoodGoals`, `foodGoalsFromProfile`;
 4. atualizar prompts;
 5. atualizar `FoodEntryDetailSheet`, `FoodNutritionEditSheet`, `FoodGoalsSheet`
-   e `TotalsDock`;
+   e `TotalsDock` se o campo fizer sentido na barra compacta;
 6. atualizar docs e testes de schema/domain.
 
 ## Como Adicionar Nova Fonte de Alimento

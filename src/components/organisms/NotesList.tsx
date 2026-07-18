@@ -1,5 +1,5 @@
 import { type RefObject, useEffect, useRef, useState } from 'react';
-import { FlatList, Keyboard, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Keyboard, type LayoutChangeEvent, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppText } from '@/components/atoms/AppText';
 import { NoteRow } from '@/components/molecules/NoteRow';
@@ -39,6 +39,8 @@ function NewNoteInput({
   mediaDrafts = [],
   onChangeMediaDescription,
   onRemoveMediaDraft,
+  onFocus,
+  onBlur,
 }: {
   placeholder: string;
   onAdd: (text: string) => void;
@@ -48,6 +50,8 @@ function NewNoteInput({
   mediaDrafts?: FoodMediaDraft[];
   onChangeMediaDescription?: (id: string, description: string) => void;
   onRemoveMediaDraft?: (id: string) => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }) {
   const colors = useColors();
   const [text, setText] = useState('');
@@ -77,6 +81,8 @@ function NewNoteInput({
         ref={inputRef}
         value={text}
         onChangeText={setText}
+        onFocus={onFocus}
+        onBlur={onBlur}
         onSubmitEditing={submit}
         placeholder={placeholder}
         placeholderTextColor={colors.textSecondary}
@@ -109,12 +115,28 @@ export function NotesList<TData, TTotals>({
   const [pendingWorkoutExerciseFocusId, setPendingWorkoutExerciseFocusId] = useState<string | null>(
     null,
   );
+  const [viewportHeight, setViewportHeight] = useState(0);
   const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const newInputCenterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollEndTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const centerNewInputRef = useRef<(animated: boolean) => void>(() => {});
+  const newInputFocused = useRef(false);
+  const lastScrolledEntriesKey = useRef<string | null>(null);
+  const entriesLength = useRef(entries.length);
   const scrollY = useRef(0);
   const listHeight = useRef(0);
   const listWindowY = useRef(0);
   const keyboardTop = useRef<number | null>(null);
   const focusedLine = useRef<{ index: number; screenY: number; height: number } | null>(null);
+  const entriesKey = entries.map((entry) => entry.id).join('|');
+  entriesLength.current = entries.length;
+
+  const scheduleScrollToEnd = (animated = false) => {
+    if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
+    scrollEndTimer.current = setTimeout(() => {
+      listRef.current?.scrollToEnd({ animated });
+    }, 32);
+  };
 
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', ({ endCoordinates }) => {
@@ -123,12 +145,24 @@ export function NotesList<TData, TTotals>({
     });
     const hide = Keyboard.addListener('keyboardDidHide', () => {
       keyboardTop.current = null;
+      if (focusedLine.current?.index === entriesLength.current) {
+        centerNewInputRef.current(false);
+        return;
+      }
       if (focusedLine.current) measureViewport(() => scrollLineToCenter(focusedLine.current!, false));
     });
 
     return () => {
       show.remove();
       hide.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (focusTimer.current) clearTimeout(focusTimer.current);
+      if (newInputCenterTimer.current) clearTimeout(newInputCenterTimer.current);
+      if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
     };
   }, []);
 
@@ -171,6 +205,22 @@ export function NotesList<TData, TTotals>({
     measureViewport(() => scrollLineToCenter(target, true));
   };
 
+  const centerNewInput = (animated: boolean) => {
+    const input = newInputRef.current;
+    if (!input) return;
+    input.measureInWindow((_x, y, _width, height) => {
+      const target = { index: entries.length, screenY: y, height };
+      focusedLine.current = target;
+      measureViewport(() => scrollLineToCenter(target, animated));
+    });
+  };
+  centerNewInputRef.current = centerNewInput;
+
+  const scheduleNewInputCenter = (animated = true) => {
+    if (newInputCenterTimer.current) clearTimeout(newInputCenterTimer.current);
+    newInputCenterTimer.current = setTimeout(() => centerNewInput(animated), 32);
+  };
+
   const focusNewExercise = () => {
     let attempts = 0;
 
@@ -198,15 +248,36 @@ export function NotesList<TData, TTotals>({
     setPendingWorkoutExerciseFocusId(entryId);
   };
 
+  const handleNewInputFocus = () => {
+    newInputFocused.current = true;
+    scheduleNewInputCenter(true);
+  };
+
+  const handleNewInputBlur = () => {
+    newInputFocused.current = false;
+    scheduleNewInputCenter(false);
+  };
+
+  const handleLayout = (event: LayoutChangeEvent) => {
+    const height = event.nativeEvent.layout.height;
+    setViewportHeight((current) => (current === height ? current : height));
+    measureViewport(() => {
+      if (focusedLine.current?.index === entriesLength.current) {
+        centerNewInput(false);
+        return;
+      }
+      if (focusedLine.current) scrollLineToCenter(focusedLine.current, false);
+    });
+  };
+
+  const contentPaddingBottom =
+    viewportHeight > 0 ? Math.max(Spacing.four, Math.round(viewportHeight * 0.45)) : Spacing.four;
+
   return (
     <View
       ref={containerRef}
       style={styles.container}
-      onLayout={() => {
-        measureViewport(() => {
-          if (focusedLine.current) scrollLineToCenter(focusedLine.current, false);
-        });
-      }}>
+      onLayout={handleLayout}>
       <FlatList
         ref={listRef}
         style={styles.list}
@@ -263,6 +334,16 @@ export function NotesList<TData, TTotals>({
             }
           }, 32);
         }}
+        onContentSizeChange={() => {
+          if (newInputFocused.current) {
+            scheduleNewInputCenter(true);
+            return;
+          }
+          if (lastScrolledEntriesKey.current !== entriesKey) {
+            lastScrolledEntriesKey.current = entriesKey;
+            scheduleScrollToEnd(false);
+          }
+        }}
         ListFooterComponent={
           <NewNoteInput
             placeholder={config.placeholder}
@@ -273,9 +354,11 @@ export function NotesList<TData, TTotals>({
             mediaDrafts={mediaDrafts}
             onChangeMediaDescription={onChangeMediaDescription}
             onRemoveMediaDraft={onRemoveMediaDraft}
+            onFocus={handleNewInputFocus}
+            onBlur={handleNewInputBlur}
           />
         }
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: contentPaddingBottom }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets

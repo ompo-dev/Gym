@@ -53,6 +53,9 @@ test('food AI edit merges serving-label variants like refri and copo de refriger
           carbs: 25,
           fat: 0,
           waterMl: 250,
+          sugarG: 25,
+          fiberG: 0,
+          sodiumMg: 20,
         },
       ],
     },
@@ -68,6 +71,9 @@ test('food AI edit merges serving-label variants like refri and copo de refriger
             carbs: 25,
             fat: 0,
             waterMl: 250,
+            sugarG: 25,
+            fiberG: 0,
+            sodiumMg: 20,
           },
         ],
       },
@@ -79,6 +85,8 @@ test('food AI edit merges serving-label variants like refri and copo de refriger
   expect(result.items).toHaveLength(1);
   expect(result.items[0].label).toBe('refrigerante');
   expect(result.items[0].calories).toBe(200);
+  expect(result.items[0].sugarG).toBe(50);
+  expect(result.items[0].sodiumMg).toBe(40);
   expect(formatFoodQuantity(result.items[0])).toBe('2');
 });
 
@@ -93,6 +101,9 @@ test('merges duplicate barcode products into one countable item', () => {
       carbs: 47,
       fat: 34,
       waterMl: 1000,
+      sugarG: 47,
+      fiberG: 0,
+      sodiumMg: 400,
     },
     {
       label: 'Leite integral',
@@ -103,11 +114,16 @@ test('merges duplicate barcode products into one countable item', () => {
       carbs: 47,
       fat: 34,
       waterMl: 1000,
+      sugarG: 47,
+      fiberG: 0,
+      sodiumMg: 400,
     },
   ]);
 
   expect(result).toHaveLength(1);
   expect(result[0].calories).toBe(1220);
   expect(result[0].waterMl).toBe(2000);
+  expect(result[0].sugarG).toBe(94);
+  expect(result[0].sodiumMg).toBe(800);
   expect(formatFoodQuantity(result[0])).toBe('2');
 });

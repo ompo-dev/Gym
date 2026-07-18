@@ -42,7 +42,7 @@ sequenceDiagram
   Notes->>Bus: addEntry(text, food)
   Bus->>Repo: insert Entry(status=thinking)
   Bus->>Store: upsert thinking
-  Bus->>API: EnrichRequest(domain=food)
+  Bus->>API: EnrichRequest(domain=food + userContext)
   API-->>Bus: FoodData
   Bus->>Repo: update done/data
   Bus->>Store: upsert done
@@ -101,6 +101,8 @@ Barcode e um caso separado:
 - Nao manda imagem para a IA.
 - Dados nutricionais vem de Open Food Facts.
 - Produto vira `FoodData` com um item.
+- Acucar, fibras e sodio sao importados quando Open Food Facts fornece
+  nutrimentos correspondentes.
 - `quantity: 1` e `unit: "unidade"` permitem mesclar produtos repetidos.
 - Duas caixas iguais devem virar um item com quantidade 2, nao dois itens.
 
@@ -147,7 +149,8 @@ flowchart TD
 ```
 
 A tela nao recalcula via backend ao abrir. Ela le `entry.data`, soma no cliente e
-renderiza.
+renderiza. Quando o perfil tem micronutrientes ativos, os itens expandidos
+tambem mostram acucar, fibras e/ou sodio.
 
 ## 7. Salvar Refeicao
 
@@ -189,6 +192,8 @@ sequenceDiagram
 ```
 
 Se o usuario abrir e fechar sem mudar nada, nao deve refazer o raciocinio.
+Campos de acucar/fibras/sodio aparecem nos totais e itens somente quando estao
+ativos no perfil.
 
 ## 9. Editar com IA
 
@@ -203,7 +208,7 @@ sequenceDiagram
 
   User->>AiSheet: escreve instrucao
   AiSheet->>Template: onAiEdit(entry,instruction)
-  Template->>API: currentFood + instruction
+  Template->>API: currentFood + instruction + userContext
   API-->>Template: FoodEditData
   Template->>Merge: mergeFoodEdit(current, edit, instruction)
   Merge-->>Template: FoodData final
@@ -216,6 +221,8 @@ Regras de UX:
 - Enviar nao deve fechar teclado.
 - Pode aplicar multiplas edicoes em um unico prompt.
 - Raciocinio deve ser refeito do zero para a refeicao final, sem mencionar "eu adicionei".
+- Quando micronutrientes estao ativos, a IA deve preservar ou recalcular
+  `sugarG`, `fiberG` e `sodiumMg`.
 
 ## 10. Treino
 

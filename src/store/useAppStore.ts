@@ -2,7 +2,11 @@ import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
 import { todayISO } from '@/core/date';
-import type { OnboardingProfile } from '@/core/onboarding';
+import {
+  micronutrientsFromTrack,
+  normalizeOnboardingProfile,
+  type OnboardingProfile,
+} from '@/core/onboarding';
 import type { Domain, Entry } from '@/core/types';
 import { SettingsRepository } from '@/data/SettingsRepository';
 import { defaultLang, registerLangGetter, type Lang } from '@/i18n';
@@ -30,6 +34,7 @@ interface AppState {
   setTheme: (theme: ThemeMode) => Promise<void>;
   setLang: (lang: Lang) => Promise<void>;
   completeOnboarding: (profile: OnboardingProfile) => Promise<void>;
+  updateOnboardingProfile: (patch: Partial<OnboardingProfile>) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -129,11 +134,27 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   completeOnboarding: async (profile) => {
+    profile = normalizeOnboardingProfile(profile);
     set({ onboardingDone: true, onboardingProfile: profile });
     await Promise.all([
       SettingsRepository.set(ONBOARDING_DONE_KEY, '1'),
       SettingsRepository.set(ONBOARDING_PROFILE_KEY, JSON.stringify(profile)),
     ]);
+  },
+
+  updateOnboardingProfile: async (patch) => {
+    const current = useAppStore.getState().onboardingProfile;
+    if (!current) return;
+    const merged = {
+      ...current,
+      ...patch,
+      ...('trackMicronutrients' in patch && !('micronutrients' in patch)
+        ? { micronutrients: micronutrientsFromTrack(Boolean(patch.trackMicronutrients)) }
+        : {}),
+    };
+    const profile = normalizeOnboardingProfile(merged);
+    set({ onboardingProfile: profile });
+    await SettingsRepository.set(ONBOARDING_PROFILE_KEY, JSON.stringify(profile));
   },
 
   // Clears the onboarding flag so RootLayout swaps back to a fresh OnboardingFlow.
@@ -151,7 +172,7 @@ registerLangGetter(() => useAppStore.getState().lang);
 function parseOnboardingProfile(value: string | null): OnboardingProfile | null {
   if (!value) return null;
   try {
-    return JSON.parse(value) as OnboardingProfile;
+    return normalizeOnboardingProfile(JSON.parse(value) as Partial<OnboardingProfile>);
   } catch {
     return null;
   }

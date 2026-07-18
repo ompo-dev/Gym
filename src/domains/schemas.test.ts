@@ -12,6 +12,9 @@ test('food schema parses items and coerces string numbers', () => {
         carbs: 40,
         fat: 35,
         waterMl: '500',
+        sugarG: '12.5',
+        fiberG: '2',
+        sodiumMg: '900',
       },
     ],
   });
@@ -20,14 +23,20 @@ test('food schema parses items and coerces string numbers', () => {
   expect(result.items[0].quantity).toBe(2);
   expect(result.items[0].unit).toBe('unidades');
   expect(result.items[0].waterMl).toBe(500);
+  expect(result.items[0].sugarG).toBe(12.5);
+  expect(result.items[0].fiberG).toBe(2);
+  expect(result.items[0].sodiumMg).toBe(900);
 });
 
-test('food schema defaults missing hydration to zero', () => {
+test('food schema defaults missing hydration and micronutrients to zero', () => {
   const result = foodSchema.parse({
     items: [{ label: 'burger', calories: 620, protein: 30, carbs: 40, fat: 35 }],
   });
 
   expect(result.items[0].waterMl).toBe(0);
+  expect(result.items[0].sugarG).toBe(0);
+  expect(result.items[0].fiberG).toBe(0);
+  expect(result.items[0].sodiumMg).toBe(0);
 });
 
 test('food edit schema parses updated meal and change list', () => {
