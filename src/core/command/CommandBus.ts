@@ -1,4 +1,5 @@
 import { Lru } from '@/core/cache/lru';
+import { normalizeForEnrich } from '@/core/enrich/normalize';
 import type { EnrichRequest, EnrichResponse } from '@/core/enrich/types';
 import type { Domain, Entry, EntryMediaAttachment } from '@/core/types';
 import { hashKey, newId, normalizeText } from '@/core/utils';
@@ -134,7 +135,14 @@ export class CommandBus {
   private async runEnrich(entry: Entry): Promise<void> {
     const locale = this.deps.getLocale ? this.deps.getLocale() : this.deps.locale ?? 'pt-BR';
     const userContext = entry.domain === 'food' ? this.deps.getUserContext?.() : undefined;
-    const key = hashKey(entry.domain, `${locale}:${userContext ?? ''}:${normalizeText(entry.text)}`);
+    const normalizedCacheText =
+      entry.domain === 'workout'
+        ? normalizeForEnrich(entry.text, { domain: entry.domain, locale })
+        : entry.text;
+    const key = hashKey(
+      entry.domain,
+      `${locale}:${userContext ?? ''}:${normalizeText(normalizedCacheText)}`,
+    );
 
     const cached = this.cache.get(key);
     if (cached) {
@@ -190,6 +198,7 @@ export class CommandBus {
         const data: WorkoutData = {
           ...localData,
           exercise: aiData.exercise ?? localData.exercise,
+          kind: aiData.kind ?? localData.kind,
         };
         this.cache.set(key, data);
         await this.applyResolved(entry, data);

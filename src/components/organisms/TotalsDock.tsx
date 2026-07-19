@@ -12,6 +12,8 @@ const iconByKey: Record<string, AppIconName> = {
   cal: 'flame',
   sets: 'squareStack',
   vol: 'dumbbell',
+  time: 'clock',
+  dist: 'navigation',
 };
 
 const macroKeys = new Set(['c', 'p', 'f', 'h']);
@@ -30,7 +32,7 @@ export function TotalsDock({
   attachedTop = false,
 }: TotalsDockProps) {
   const colors = useColors();
-  const visibleItems = compact ? items.slice(0, 2) : items;
+  const visibleItems = items;
   const body = (
     <GlassSurface
       glass="regular"

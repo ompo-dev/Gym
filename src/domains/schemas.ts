@@ -41,18 +41,57 @@ export const foodEditSchema = z.object({
 });
 export type FoodEditData = z.infer<typeof foodEditSchema>;
 
+const nullToUndefined = (value: unknown) => (value === null ? undefined : value);
+
+function normalizeWorkoutKind(value: unknown): unknown {
+  if (value === null) return undefined;
+  if (typeof value !== 'string') return value;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (['serie', 'series', 'strength', 'forca', 'musculacao'].includes(normalized)) {
+    return 'strength';
+  }
+  if (normalized === 'cardio') return 'cardio';
+  return value;
+}
+
+function hasWorkoutSetMetric(set: {
+  weight?: number;
+  reps?: number;
+  durationSeconds?: number;
+  distanceMeters?: number;
+}): boolean {
+  return (
+    set.weight !== undefined ||
+    set.reps !== undefined ||
+    set.durationSeconds !== undefined ||
+    set.distanceMeters !== undefined
+  );
+}
+
 export const setSchema = z.object({
-  weight: z.coerce.number().nonnegative(),
-  unit: z.enum(['kg', 'lb']),
-  reps: z.coerce.number().int().nonnegative(),
-});
+  weight: z.preprocess(nullToUndefined, z.coerce.number().nonnegative().optional()),
+  unit: z.preprocess(nullToUndefined, z.enum(['kg', 'lb']).optional()),
+  reps: z.preprocess(nullToUndefined, z.coerce.number().int().nonnegative().optional()),
+  durationSeconds: z.preprocess(
+    nullToUndefined,
+    z.coerce.number().int().nonnegative().optional(),
+  ),
+  distanceMeters: z.preprocess(nullToUndefined, z.coerce.number().nonnegative().optional()),
+}).refine(
+  hasWorkoutSetMetric,
+).refine((set) => set.weight === undefined || set.reps !== undefined);
 export type WorkoutSet = z.infer<typeof setSchema>;
 
 export const workoutSchema = z.object({
   exercise: z.string().nullable(),
+  kind: z.preprocess(normalizeWorkoutKind, z.enum(['strength', 'cardio']).optional()),
   // Zero sets is valid: the outliner creates an exercise first, then you add
   // sets line by line, so a set-less exercise is a normal transient state.
-  sets: z.array(setSchema),
+  sets: z.array(setSchema).default([]),
 });
 export type WorkoutData = z.infer<typeof workoutSchema>;
 

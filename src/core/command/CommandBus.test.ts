@@ -179,6 +179,7 @@ test('workout entries are parsed locally without calling the AI', async () => {
   expect(day.workout.entries[0].status).toBe('done');
   expect(day.workout.entries[0].data).toEqual({
     exercise: null,
+    kind: 'strength',
     sets: [{ weight: 100, unit: 'kg', reps: 8 }],
   });
 });
@@ -186,7 +187,7 @@ test('workout entries are parsed locally without calling the AI', async () => {
 test('workout entries use AI to correct the exercise name but keep local set parsing', async () => {
   const enrichFn = jest.fn(async () => ({
     ok: true,
-    data: { exercise: 'Supino reto', sets: [] },
+    data: { exercise: 'Supino reto', kind: 'série' },
   }));
   const { bus, day } = harness(enrichFn);
 
@@ -198,6 +199,27 @@ test('workout entries use AI to correct the exercise name but keep local set par
   );
   expect(day.workout.entries[0].data).toEqual({
     exercise: 'Supino reto',
+    kind: 'strength',
     sets: [{ weight: 100, unit: 'kg', reps: 8 }],
+  });
+});
+
+test('workout entries use AI to classify cardio while keeping local cardio metrics', async () => {
+  const enrichFn = jest.fn(async () => ({
+    ok: true,
+    data: { exercise: 'Corrida', kind: 'cardio', sets: [] },
+  }));
+  const { bus, day } = harness(enrichFn);
+
+  await bus.addEntry('corida\n1h/5km', 'workout');
+  await flush();
+
+  expect(enrichFn).toHaveBeenCalledWith(
+    expect.objectContaining({ text: 'corida', domain: 'workout' }),
+  );
+  expect(day.workout.entries[0].data).toEqual({
+    exercise: 'Corrida',
+    kind: 'cardio',
+    sets: [{ distanceMeters: 5000, durationSeconds: 3600 }],
   });
 });

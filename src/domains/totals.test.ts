@@ -78,6 +78,19 @@ test('workout volume converts lb to kg', () => {
   expect(Math.round(totals.volumeKg)).toBe(454);
 });
 
+test('workout totals include cardio duration and distance', () => {
+  let totals = workoutConfig.emptyTotals;
+  totals = workoutConfig.addToTotals(totals, {
+    exercise: 'run',
+    sets: [{ distanceMeters: 5000, durationSeconds: 1500 }],
+  });
+
+  expect(totals.sets).toBe(1);
+  expect(totals.volumeKg).toBe(0);
+  expect(totals.durationSeconds).toBe(1500);
+  expect(totals.distanceMeters).toBe(5000);
+});
+
 test('workout formatResult renders each set', () => {
   const line = workoutConfig.formatResult({
     exercise: 'Bench',

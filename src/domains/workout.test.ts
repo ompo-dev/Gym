@@ -1,8 +1,13 @@
 import {
+  formatWorkoutPace,
+  formatWorkoutSetSummary,
+  formatWorkoutSetPace,
   formatWorkoutSetVolume,
+  getWorkoutSetPaceSecondsPerKm,
   parseWorkoutSetLine,
   parseWorkoutText,
   serializeWorkoutLines,
+  uniqueWorkoutExerciseNames,
   workoutConfig,
 } from './workout';
 
@@ -41,9 +46,38 @@ test('parseWorkoutSetLine carries the previous unit when omitted', () => {
   expect(parseWorkoutSetLine('6x205', 'lb')).toEqual({ weight: 205, unit: 'lb', reps: 6 });
 });
 
+test('parseWorkoutSetLine accepts cardio distance and duration', () => {
+  expect(parseWorkoutSetLine('5km')).toEqual({ distanceMeters: 5000 });
+  expect(parseWorkoutSetLine('500 m')).toEqual({ distanceMeters: 500 });
+  expect(parseWorkoutSetLine('30 min')).toEqual({ durationSeconds: 1800 });
+  expect(parseWorkoutSetLine('1h30')).toEqual({ durationSeconds: 5400 });
+  expect(parseWorkoutSetLine('1h/5km')).toEqual({
+    durationSeconds: 3600,
+    distanceMeters: 5000,
+  });
+  expect(parseWorkoutSetLine('5 km 30 min')).toEqual({
+    distanceMeters: 5000,
+    durationSeconds: 1800,
+  });
+});
+
+test('parseWorkoutSetLine accepts reps without load', () => {
+  expect(parseWorkoutSetLine('20 reps')).toEqual({ reps: 20 });
+  expect(parseWorkoutSetLine('15 repeticoes')).toEqual({ reps: 15 });
+});
+
+test('parseWorkoutSetLine keeps cardio metrics from becoming load when reps are explicit', () => {
+  expect(parseWorkoutSetLine('5km 30 min 20 reps')).toEqual({
+    distanceMeters: 5000,
+    durationSeconds: 1800,
+    reps: 20,
+  });
+});
+
 test('parseWorkoutText expands abbreviations and keeps only complete sets', () => {
   expect(parseWorkoutText('bp\n100x8\n95', { locale: 'en-US' })).toEqual({
     exercise: 'bench press',
+    kind: 'strength',
     sets: [{ weight: 100, unit: 'kg', reps: 8 }],
   });
 });
@@ -51,6 +85,7 @@ test('parseWorkoutText expands abbreviations and keeps only complete sets', () =
 test('parseWorkoutText falls back to the previous exercise when the line is only sets', () => {
   expect(parseWorkoutText('8x100\n6x95', { fallbackExercise: 'Bench Press' })).toEqual({
     exercise: 'Bench Press',
+    kind: 'strength',
     sets: [
       { weight: 100, unit: 'kg', reps: 8 },
       { weight: 95, unit: 'kg', reps: 6 },
@@ -58,6 +93,53 @@ test('parseWorkoutText falls back to the previous exercise when the line is only
   });
 });
 
+test('parseWorkoutText keeps cardio lines under the exercise', () => {
+  expect(parseWorkoutText('corrida\n5km\n30 min')).toEqual({
+    exercise: 'corrida',
+    kind: 'cardio',
+    sets: [{ distanceMeters: 5000 }, { durationSeconds: 1800 }],
+  });
+});
+
+test('parseWorkoutText accepts exercise and cardio metrics on one line', () => {
+  expect(parseWorkoutText('corrida 5km 30 min')).toEqual({
+    exercise: 'corrida',
+    kind: 'cardio',
+    sets: [{ distanceMeters: 5000, durationSeconds: 1800 }],
+  });
+});
+
+test('parseWorkoutText treats mixed cardio plus reps as cardio when no load exists', () => {
+  expect(parseWorkoutText('5km 30 min 20 reps')).toEqual({
+    exercise: null,
+    kind: 'cardio',
+    sets: [{ distanceMeters: 5000, durationSeconds: 1800, reps: 20 }],
+  });
+});
+
 test('formatWorkoutSetVolume shows the set volume in kg', () => {
   expect(formatWorkoutSetVolume({ weight: 50, unit: 'kg', reps: 10 })).toBe('500 kg');
+});
+
+test('formatWorkoutSetSummary shows cardio metrics', () => {
+  expect(formatWorkoutSetSummary({ distanceMeters: 5000, durationSeconds: 1500 })).toBe(
+    '5 km - 25 min',
+  );
+});
+
+test('formatWorkoutPace shows cardio pace when time and distance exist', () => {
+  const set = { distanceMeters: 5000, durationSeconds: 1500 };
+  expect(getWorkoutSetPaceSecondsPerKm(set)).toBe(300);
+  expect(formatWorkoutPace(300)).toBe('5:00/km');
+  expect(formatWorkoutSetPace(set)).toBe('5:00/km');
+});
+
+test('uniqueWorkoutExerciseNames extracts templates without results', () => {
+  expect(
+    uniqueWorkoutExerciseNames([
+      { text: 'supino\n100x8', data: { exercise: 'Supino reto', sets: [] } },
+      { text: 'Supino reto\n90x8', data: { exercise: 'supino reto', sets: [] } },
+      { text: 'corrida\n5km', data: { exercise: 'Corrida', sets: [] } },
+    ]),
+  ).toEqual(['Supino reto', 'Corrida']);
 });

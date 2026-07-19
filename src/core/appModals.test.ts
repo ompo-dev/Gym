@@ -11,9 +11,13 @@ describe('app modal registry', () => {
     expect(modalIds).toContain('settings.healthProfilePicker');
     expect(modalIds).toContain('settings.registerWeightPicker');
     expect(modalIds).toContain('settings.estimationBias');
+    expect(modalIds).toContain('settings.workoutMonitor');
+    expect(modalIds).toContain('settings.savedWorkouts');
     expect(modalIds).toContain('settings.savedMealNutritionEdit');
     expect(modalIds).toContain('food.entryDetail');
     expect(modalIds).toContain('food.mediaDraftTray');
+    expect(modalIds).toContain('workout.progress');
+    expect(modalIds).toContain('workout.savedWorkoutPicker');
     expect(modalIds).toContain('onboarding.root');
     expect(modalIds).toContain('onboarding.picker');
   });
@@ -25,8 +29,12 @@ describe('app modal registry', () => {
     expect(canOpenAppModal('day.root', 'food.entryDetail')).toBe(true);
     expect(canOpenAppModal('day.root', 'food.mediaCapture')).toBe(true);
     expect(canOpenAppModal('day.root', 'food.mediaDraftTray')).toBe(true);
+    expect(canOpenAppModal('day.root', 'workout.progress')).toBe(true);
+    expect(canOpenAppModal('day.root', 'workout.savedWorkoutPicker')).toBe(true);
     expect(canOpenAppModal('settings.root', 'settings.nutritionGoals')).toBe(true);
     expect(canOpenAppModal('settings.root', 'settings.estimationBias')).toBe(true);
+    expect(canOpenAppModal('settings.root', 'settings.workoutMonitor')).toBe(true);
+    expect(canOpenAppModal('settings.root', 'settings.savedWorkouts')).toBe(true);
     expect(canOpenAppModal('settings.nutritionGoals', 'settings.healthProfile')).toBe(true);
     expect(canOpenAppModal('settings.nutritionGoals', 'settings.goalWeightPicker')).toBe(true);
     expect(canOpenAppModal('settings.nutritionGoals', 'settings.goalDatePicker')).toBe(true);

@@ -3,12 +3,13 @@ import { useEffect } from 'react';
 import type { FoodMediaAction, Domain, Entry } from '@/core/types';
 import type { FoodData } from '@/domains/schemas';
 import type { SavedMeal } from '@/data/SavedMealRepository';
+import type { SavedWorkout } from '@/data/SavedWorkoutRepository';
 import { useAppModalStore } from '@/store/useAppModalStore';
 
 import { FoodEntryDetailSheet } from './FoodEntryDetailSheet';
 import { FoodMediaCaptureSheet } from './FoodMediaCaptureSheet';
 import { FoodNutritionEditSheet } from './FoodNutritionEditSheet';
-import { SavedMealsSheet, SettingsSheet } from './SettingsSheet';
+import { SavedMealsSheet, SavedWorkoutsSheet, SettingsSheet } from './SettingsSheet';
 
 type CapturedFoodPhoto = {
   kind: Extract<FoodMediaAction, 'foodPhoto' | 'menuPhoto'>;
@@ -31,6 +32,7 @@ interface AppModalHostProps {
   onFoodCaptureDismiss: () => void;
   onSaveBarcodeFood: (text: string, data: FoodData) => Promise<void> | void;
   onSelectSavedMeals: (meals: SavedMeal[]) => void;
+  onSelectSavedWorkouts: (workouts: SavedWorkout[]) => void;
 }
 
 export function AppModalHost({
@@ -47,6 +49,7 @@ export function AppModalHost({
   onFoodCaptureDismiss,
   onSaveBarcodeFood,
   onSelectSavedMeals,
+  onSelectSavedWorkouts,
 }: AppModalHostProps) {
   const activeModal = useAppModalStore((state) => state.stack.at(-1));
   const stack = useAppModalStore((state) => state.stack);
@@ -100,6 +103,16 @@ export function AppModalHost({
         visible
         onClose={() => closeAppModal('food.savedMealPicker')}
         onSelect={onSelectSavedMeals}
+      />
+    );
+  }
+
+  if (modal.id === 'workout.savedWorkoutPicker') {
+    return (
+      <SavedWorkoutsSheet
+        visible
+        onClose={() => closeAppModal('workout.savedWorkoutPicker')}
+        onSelect={onSelectSavedWorkouts}
       />
     );
   }

@@ -242,18 +242,41 @@ Conteudo:
 - Resumo de metas.
 - Perfil de saude.
 - Controle de peso.
-- Refeicoes salvas.
+- Refeicoes salvas (so quando aberto pela dieta).
+- Treinos: monitoramento e treinos salvos (so quando aberto pelo treino).
 - Preferencias.
 - Aparencia e dispositivo.
 - Assinatura placeholder.
 - Connect GymNotes placeholder.
 - Feedback, legal e sair.
 
+Essa secao e a unica que muda por dominio: dieta mostra refeicoes salvas,
+treino mostra a secao de treinos. O resto e igual nos dois.
+
+### Monitoramento de Treino
+
+Resumo do historico inteiro:
+
+- dias treinados, series e volume;
+- tempo e distancia, quando maiores que zero;
+- `Salvar treino de hoje`, que vira template do dia visivel;
+- lista por exercicio com sessoes, series, volume, tempo, distancia e data do
+  ultimo registro, ordenada pelo mais recente.
+
+### Treinos Salvos (ajustes)
+
+Lista dos templates persistidos, com icone de haltere para forca e de rota para
+cardio, e os exercicios do template embaixo do nome. A lixeira apaga o
+template.
+
 Interacoes funcionais hoje:
 
-- Aparencia alterna `system -> light -> dark`.
+- Aparencia abre um menu com `system`, `light` e `dark`; a opcao escolhida e
+  aplicada na hora e a linha mostra o modo atual.
 - Gerenciar metas nutricionais salva tipo de meta, peso-alvo, data-alvo,
   preferencias, metas e micronutrientes no perfil local.
+- Monitoramento de treino agrega o historico completo por exercicio.
+- Salvar treino de hoje e apagar treino salvo escrevem em `saved_workouts`.
 - Gerenciar informacoes de saude salva genero, data de nascimento, altura, peso
   e nivel de atividade; isso recalcula BMR/TDEE/metas via Harris-Benedict.
 - Controle de peso e registrar peso atualizam o peso do perfil local.
@@ -275,15 +298,58 @@ Entrada:
 
 - Input cria exercicio/series.
 - `WorkoutOutliner` permite editar exercicio e linhas de serie.
-- Linhas como `100x8`, `95 kg x 7` ou semelhantes viram sets.
+- Linhas como `100x8` ou `95 kg x 7` viram series de carga.
+- Linhas como `5km`, `30 min`, `1h30` ou `1h/5km` viram cardio.
 
-Totais:
+Como a linha aparece:
 
-- Numero de series.
-- Volume em kg.
+- serie de carga: peso e unidade em azul, `x`, repeticoes em verde, e o volume
+  da serie a direita;
+- so repeticoes: `12 reps`;
+- cardio: tempo em laranja e distancia em verde, separados por `/`, e o pace a
+  direita quando da para calcular.
+
+Totais no dock: series, volume, tempo e distancia. Tocar no dock com o teclado
+fechado abre o painel de progresso.
+
+Acoes na entrada resolvida:
+
+- bookmark alterna salvar/dessalvar o exercicio como template (so em entrada
+  `done`). Preenchido significa salvo, e o estado vem do banco, nao da sessao.
+  Desmarcar apaga o template na hora, sem confirmacao e sem undo;
+- `+` adiciona linha.
+
+Com o teclado aberto, o footer mostra series/volume/distancia e um `+` que abre
+o seletor de treinos salvos.
 
 IA:
 
-- O parser local entende series.
-- A IA e usada apenas para melhorar nome de exercicio quando ha nome.
+- O parser local entende series e cardio.
+- A IA recebe so a linha do exercicio e devolve nome corrigido e `kind`.
+- As series nunca vem da IA.
 - Em falha de IA, o parser local ainda resolve a entrada.
+
+## Progresso do Treino
+
+Arquivo: `WorkoutProgressSheet.tsx`
+
+Abre ao tocar no `TotalsDock` do treino com o teclado fechado.
+
+Mostra:
+
+- resumo do dia: series, volume, tempo e distancia;
+- badge com a contagem de PRs do dia, ou `Hoje` quando nao ha nenhum;
+- ate 6 recordes batidos hoje, cada um com exercicio, tipo de PR, marca
+  anterior e marca nova.
+
+Tipos de PR: carga (volume), distancia, tempo e pace. Exercicio sem historico
+aparece como `Primeiro registro`. Sem nenhum PR, mostra `Sem PRs ainda hoje`.
+
+## Seletor de Treino Salvo
+
+Aberto pelo `+` do footer da tela de treino com o teclado aberto.
+
+- Lista os templates salvos, exercicio e dia juntos.
+- Selecao multipla; o check no header confirma.
+- Confirmar cria uma entrada por exercicio de cada template escolhido, so com o
+  nome. Series ficam em branco.

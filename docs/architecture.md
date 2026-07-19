@@ -50,8 +50,15 @@ Cada dominio define:
 - `emptyTotals`, `addToTotals`, `describeTotals`: totalizadores do dia.
 
 Com isso, `DayTemplate` renderiza lista, header, footer, totais, undo e
-persistencia para ambos os dominios. Comida tem fluxos extras para midia,
-barcode e detalhes nutricionais.
+persistencia para ambos os dominios.
+
+Cada dominio ainda tem seus fluxos exclusivos:
+
+- comida: midia, barcode, detalhes nutricionais e metas;
+- treino: outliner de series, painel de progresso/PR e treinos salvos.
+
+O dock de totais e o mesmo componente nos dois: em comida abre
+`FoodGoalsSheet`, em treino abre `WorkoutProgressSheet`.
 
 ## Persistencia
 
@@ -60,10 +67,17 @@ barcode e detalhes nutricionais.
 - `entries`: notas de comida e treino.
 - `settings`: chave-valor para tema, idioma e onboarding.
 - `saved_meals`: refeicoes salvas.
+- `saved_workouts`: exercicios e dias de treino salvos como template.
 
 `EntryRepository` valida `data` ao ler. Se uma row antiga estava `done`, mas o
 JSON nao valida mais, ela volta como `error` para poder ser refeita em vez de
 quebrar a UI.
+
+`EntryRepository.findAll(domain)` le o historico inteiro de um dominio, fora da
+regra "so o dia visivel". Existe porque comparar PR e agregar evolucao precisa
+de todos os dias. Hoje so treino usa, em dois lugares: `WorkoutProgressSheet` e
+o monitor de treino em ajustes. Ambos leem sob demanda ao abrir o painel, nunca
+no caminho de digitacao.
 
 ## Estado
 
@@ -143,3 +157,9 @@ Os totais e inputs usam estes tokens; numeros principais ficam em texto do tema.
 - Login, pagamento e integracoes sao placeholders em ajustes.
 - Refeicoes salvas sao persistidas, mas gerenciamento completo ainda e visual.
 - Barcode depende de Open Food Facts e pode retornar valores por porcao ou por 100g/ml conforme disponibilidade.
+- Treino salvo guarda so nomes de exercicio, nao series. Reaplicar cria linhas
+  vazias.
+- PR e evolucao de treino sao calculados na hora, lendo o historico completo a
+  cada abertura do painel. Sem cache e sem tabela agregada.
+- O dock de treino mostra tempo e distancia mesmo zerados em dia so de
+  musculacao.

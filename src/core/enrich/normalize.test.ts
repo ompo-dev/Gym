@@ -29,4 +29,10 @@ test('expands common pt-BR workout abbreviations before enrich', () => {
   expect(normalizeForEnrich('desenv halter\n26x10', { domain: 'workout', locale: 'pt-BR' })).toBe(
     'desenvolvimento halter\n26x10',
   );
+  expect(normalizeForEnrich('LP\n100x8', { domain: 'workout', locale: 'pt-BR' })).toBe(
+    'leg press\n100x8',
+  );
+  expect(normalizeForEnrich('Sipini reto', { domain: 'workout', locale: 'pt-BR' })).toBe(
+    'supino reto',
+  );
 });

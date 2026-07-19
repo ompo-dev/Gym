@@ -228,20 +228,149 @@ Regras de UX:
 
 ```mermaid
 flowchart TD
-  A["Usuario digita exercicio/series"] --> B["CommandBus.addEntry"]
+  A["Usuario digita exercicio/series/cardio"] --> B["CommandBus.addEntry"]
   B --> C["parseWorkoutText local"]
   C --> D{"tem nome de exercicio?"}
   D -->|nao| E["salva localData"]
-  D -->|sim| F["IA corrige nome"]
-  F --> G["combina nome IA + series locais"]
+  D -->|sim| F["IA recebe a linha do exercicio + ultimo exercicio do dia"]
+  F --> G["combina exercise + kind da IA com series locais"]
   E --> H["Entry done"]
   G --> H
 ```
 
-Series sao sempre calculadas localmente. A IA so ajuda a normalizar nome do
-exercicio quando necessario.
+Series sao sempre calculadas localmente e nunca sao enviadas para a IA. O
+payload leva a linha do exercicio em `text` mais `context`: o nome do ultimo
+exercicio ja registrado no dia visivel (`CommandBus.lastExercise`), que a rota
+injeta no prompt como `Context: current exercise is "..."`. Da resposta o app
+aproveita apenas `exercise` e `kind`; qualquer `sets` que a IA devolva e
+descartado.
 
-## 11. Undo e Retry
+Se a IA falhar, responder erro ou devolver JSON que nao valida, o app cai para
+o `localData` e a entrada fica `done` do mesmo jeito. Treino nunca fica preso em
+`error` por causa da IA.
+
+Cache: a chave de treino e montada sobre o texto ja normalizado por
+`normalizeForEnrich`, nao sobre o texto cru. Entao `sipini`, `supini` e `supino`
+colidem na mesma entrada de cache de proposito — a correcao ja aconteceu antes
+do hash. A chave nao inclui o `context`, entao o mesmo texto reaproveita o
+resultado mesmo que o exercicio anterior do dia tenha mudado.
+
+### Series e cardio na mesma estrutura
+
+`parseWorkoutSetLine` tenta cardio e forca na mesma linha:
+
+| Linha | Resultado |
+| --- | --- |
+| `100x8` | `{ weight: 100, unit: "kg", reps: 8 }` |
+| `95 kg x 7` | `{ weight: 95, unit: "kg", reps: 7 }` |
+| `20 reps` | `{ reps: 20 }` |
+| `15 repeticoes` | `{ reps: 15 }` |
+| `5km` | `{ distanceMeters: 5000 }` |
+| `500 m` | `{ distanceMeters: 500 }` |
+| `30 min` | `{ durationSeconds: 1800 }` |
+| `1h30` | `{ durationSeconds: 5400 }` |
+| `10:30` | `{ durationSeconds: 630 }` |
+| `1h/5km` | `{ durationSeconds: 3600, distanceMeters: 5000 }` |
+| `5km 30 min 20 reps` | `{ distanceMeters: 5000, durationSeconds: 1800, reps: 20 }` |
+
+Regras do parser:
+
+- Quando a linha tem metrica de cardio, as partes de tempo/distancia sao
+  removidas antes de tentar ler carga, para `5 km` nao virar peso 5.
+- Unidade explicita (`kg`/`lb`) ou `x` forcam leitura como serie de carga.
+- Repeticao sozinha precisa da palavra: `20 reps` ou `15 repeticoes` viram
+  `{ reps }`. Um numero solto sem `x`, unidade ou palavra nao vira serie.
+- A ultima unidade explicita e carregada para as linhas seguintes.
+- A primeira linha pode conter exercicio e metrica juntos; `getWorkoutExerciseLine`
+  tira as metricas e devolve so o nome.
+
+`inferWorkoutKind` decide o `kind` localmente: metrica de cardio sem carga vira
+`cardio`, nome que casa com corrida/bike/natacao/esteira/HIIT vira `cardio`, o
+resto vira `strength`. A IA pode sobrescrever esse palpite.
+
+## 11. Progresso e PR do Treino
+
+```mermaid
+sequenceDiagram
+  participant User as Usuario
+  participant Dock as TotalsDock
+  participant Sheet as WorkoutProgressSheet
+  participant Repo as EntryRepository
+  participant UI as Lista de PRs
+
+  User->>Dock: toca o dock com teclado fechado
+  Dock->>Sheet: abre workout.progress
+  Sheet->>Repo: findAll("workout")
+  Repo-->>Sheet: historico completo
+  Sheet->>Sheet: melhor entrada isolada anterior (date < hoje)
+  Sheet->>Sheet: totais de hoje por exercicio
+  Sheet->>UI: recordes batidos hoje
+```
+
+Como o PR e apurado:
+
+- so entram entradas `done` com `WorkoutData`;
+- o historico e filtrado por `entry.date < date` — o proprio dia nunca entra na
+  marca a bater;
+- entradas do mesmo exercicio **de hoje** sao somadas entre si antes de
+  comparar (`buildTodayTotals` usa `combineTotals`);
+- a marca anterior **nao** e somada por dia: e o melhor valor de uma entrada
+  isolada (`buildPreviousBests` usa `Math.max` por entrada). Uma sessao passada
+  dividida em varias entradas deixa a marca a bater mais baixa do que se
+  tivesse sido registrada de uma vez so;
+- volume, distancia e duracao viram PR quando ficam **acima** do melhor
+  anterior; pace vira PR quando fica **abaixo**;
+- sem marca anterior, o item aparece como `Primeiro registro`;
+- pace so aparece quando existe marca anterior de pace para comparar;
+- a lista corta em 6 itens.
+
+O painel recarrega o historico toda vez que fica visivel. Nao ha cache.
+
+## 12. Treinos Salvos
+
+Dois jeitos de criar um template:
+
+```mermaid
+flowchart TD
+  A["Bookmark no outliner"] --> B["save(kind=exercise, sourceEntryId)"]
+  C["Salvar treino de hoje no monitor"] --> D["save(kind=day, sourceDate)"]
+  B --> E["saved_workouts"]
+  D --> E
+  E --> F["Picker de treino salvo"]
+  F --> G["addEntry por exercicio"]
+```
+
+Salvar:
+
+- o bookmark do outliner so aparece em entrada `done` e salva um exercicio,
+  ligado a `Entry` por `sourceEntryId`;
+- o bookmark e alternavel nos dois sentidos: tocar num bookmark preenchido
+  chama `deleteBySourceEntryId` e **apaga o template de vez**, sem confirmacao
+  e sem undo;
+- o estado preenchido nao e da sessao. `DayTemplate` recarrega
+  `SavedWorkoutRepository.all()` a cada mudanca de dia ou de entradas e monta
+  `savedWorkoutEntryIds`, entao o bookmark continua preenchido depois de
+  fechar o app;
+- `Salvar treino de hoje` junta os nomes distintos do dia visivel em um
+  template `day`, com `sourceDate`;
+- a UI e otimista: o icone marca na hora e reverte se o repository devolver
+  falso ou lancar;
+- salvar de novo a mesma origem nao duplica, os indices unicos parciais
+  garantem isso e `save` devolve o registro existente.
+
+Reaplicar:
+
+- com o teclado aberto na tela de treino, o `+` abre o picker;
+- o picker e multi-selecao: escolhe varios templates e confirma no check;
+- cada exercicio de cada template vira uma `Entry` nova, via `addEntry`;
+- so o nome volta. Series ficam em branco para o usuario preencher.
+
+Apagar, dois caminhos:
+
+- desmarcar o bookmark na entrada de origem (so alcanca template de exercicio);
+- a lixeira em Ajustes > Treinos > Treinos salvos (alcanca exercicio e dia).
+
+## 13. Undo e Retry
 
 Undo:
 

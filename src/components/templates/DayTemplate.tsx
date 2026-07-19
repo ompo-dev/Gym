@@ -19,6 +19,7 @@ import { FoodMediaActionMenu } from '@/components/organisms/FoodMediaActionMenu'
 import type { FoodMediaDraft } from '@/components/organisms/FoodMediaDraftTray';
 import { NotesList } from '@/components/organisms/NotesList';
 import { TotalsDock } from '@/components/organisms/TotalsDock';
+import { WorkoutProgressSheet } from '@/components/organisms/WorkoutProgressSheet';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
 import { APP_MODAL_TRANSITION_MS, canOpenAppModal } from '@/core/appModals';
 import { enrich } from '@/core/enrich/client';
@@ -29,9 +30,11 @@ import type { Entry, EntryMediaAttachment, FoodMediaAction } from '@/core/types'
 import { newId } from '@/core/utils';
 import { EntryRepository } from '@/data/EntryRepository';
 import { SavedMealRepository, type SavedMeal } from '@/data/SavedMealRepository';
+import { SavedWorkoutRepository, type SavedWorkout } from '@/data/SavedWorkoutRepository';
 import { mergeDuplicateFoodItems, mergeFoodEdit, type FoodTotals } from '@/domains/food';
-import { foodEditSchema, foodSchema, type FoodData, type FoodItem } from '@/domains/schemas';
+import { foodEditSchema, foodSchema, type FoodData, type FoodItem, type WorkoutData } from '@/domains/schemas';
 import type { DomainConfig } from '@/domains/types';
+import { type WorkoutTotals, uniqueWorkoutExerciseNames } from '@/domains/workout';
 import { useColors } from '@/hooks/use-colors';
 import { useDay } from '@/hooks/useDay';
 import { useTotals } from '@/hooks/useTotals';
@@ -253,6 +256,7 @@ export function DayTemplate<TData, TTotals>({
   const [foodReasoningLoadingId, setFoodReasoningLoadingId] = useState<string | null>(null);
   const [foodMediaMenuVisible, setFoodMediaMenuVisible] = useState(false);
   const [foodMediaDrafts, setFoodMediaDrafts] = useState<FoodMediaDraft[]>([]);
+  const [savedWorkoutEntryIds, setSavedWorkoutEntryIds] = useState<Set<string>>(new Set());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const barcodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingBarcodeDraft = useRef<{ text: string; data: FoodData; imageUri?: string } | null>(null);
@@ -266,6 +270,7 @@ export function DayTemplate<TData, TTotals>({
   const activeModal = modalStack.at(-1);
   const activeDomainModal = activeModal?.domain === config.id ? activeModal : null;
   const foodGoalsVisible = activeDomainModal?.id === 'food.goals';
+  const workoutProgressVisible = activeDomainModal?.id === 'workout.progress';
   const foodDetailModal = [...modalStack]
     .reverse()
     .find(
@@ -311,6 +316,7 @@ export function DayTemplate<TData, TTotals>({
   useEffect(() => {
     if (keyboardVisible) {
       closeAppModal('food.goals');
+      closeAppModal('workout.progress');
     } else {
       setFoodMediaMenuVisible(false);
     }
@@ -346,6 +352,20 @@ export function DayTemplate<TData, TTotals>({
     };
   }, [isFood, selectedFoodEntryData, selectedFoodEntryId, selectedFoodEntryMedia, selectedFoodEntryText]);
 
+  useEffect(() => {
+    if (isFood) return;
+    let active = true;
+    void SavedWorkoutRepository.all().then((workouts) => {
+      if (!active) return;
+      setSavedWorkoutEntryIds(
+        new Set(workouts.flatMap((workout) => (workout.sourceEntryId ? [workout.sourceEntryId] : []))),
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [isFood, entries]);
+
   const handleDelete = useCallback(
     (entry: Entry) => {
       deleteEntry(entry);
@@ -354,6 +374,32 @@ export function DayTemplate<TData, TTotals>({
       timer.current = setTimeout(() => setUndoVisible(false), UNDO_MS);
     },
     [deleteEntry],
+  );
+
+  const handleSaveWorkoutExercise = useCallback(
+    async (entry: Entry, saved: boolean) => {
+      if (isFood || entry.status !== 'done' || !entry.data || !('sets' in entry.data)) return false;
+      if (!saved) {
+        await SavedWorkoutRepository.deleteBySourceEntryId(entry.id);
+        setSavedWorkoutEntryIds((current) => {
+          const next = new Set(current);
+          next.delete(entry.id);
+          return next;
+        });
+        return true;
+      }
+      const exercises = uniqueWorkoutExerciseNames(
+        [{ text: entry.text, data: entry.data as WorkoutData }],
+        getLang(),
+      );
+      const exercise = exercises[0];
+      if (!exercise) return false;
+      const workout = await SavedWorkoutRepository.save('exercise', exercise, [exercise], entry.id);
+      if (!workout) return false;
+      setSavedWorkoutEntryIds((current) => new Set(current).add(entry.id));
+      return true;
+    },
+    [isFood],
   );
 
   const handleUndo = useCallback(() => {
@@ -661,6 +707,12 @@ export function DayTemplate<TData, TTotals>({
     replaceAppModal({ id: 'food.savedMealPicker', domain: 'food' });
   }, [replaceAppModal]);
 
+  const openSavedWorkoutPicker = useCallback(() => {
+    if (!canOpenAppModal('day.root', 'workout.savedWorkoutPicker')) return;
+    Keyboard.dismiss();
+    replaceAppModal({ id: 'workout.savedWorkoutPicker', domain: 'workout' });
+  }, [replaceAppModal]);
+
   const handleSelectSavedMeals = useCallback((meals: SavedMeal[]) => {
     closeAppModal('food.savedMealPicker');
     const now = Date.now();
@@ -680,6 +732,13 @@ export function DayTemplate<TData, TTotals>({
       entries.forEach((entry) => useAppStore.getState().upsertEntry('food', entry));
     })();
   }, [closeAppModal, date]);
+
+  const handleSelectSavedWorkouts = useCallback((workouts: SavedWorkout[]) => {
+    closeAppModal('workout.savedWorkoutPicker');
+    workouts.forEach((workout) => {
+      workout.exercises.forEach((exercise) => addEntry(exercise));
+    });
+  }, [addEntry, closeAppModal]);
 
   const handleFoodAiEdit = useCallback(
     async (entry: Entry, instruction: string) => {
@@ -711,17 +770,24 @@ export function DayTemplate<TData, TTotals>({
 
   const totalItems = config.describeTotals(totals);
   const foodTotals = isFood ? (totals as FoodTotals) : null;
+  const workoutTotals = !isFood ? (totals as WorkoutTotals) : null;
   const footerPaddingBottom = keyboardVisible ? Spacing.two : insets.bottom + TAB_BAR_CLEARANCE;
   const toggleFoodGoals = () => {
     if (!canOpenAppModal('day.root', 'food.goals')) return;
     if (foodGoalsVisible) closeAppModal('food.goals');
     else replaceAppModal({ id: 'food.goals', domain: 'food' });
   };
-  const dismissFoodGoalsResponder = useCallback(() => {
-    if (!foodGoalsVisible) return false;
+  const toggleWorkoutProgress = () => {
+    if (!canOpenAppModal('day.root', 'workout.progress')) return;
+    if (workoutProgressVisible) closeAppModal('workout.progress');
+    else replaceAppModal({ id: 'workout.progress', domain: 'workout' });
+  };
+  const dismissStatsPanelResponder = useCallback(() => {
+    if (!foodGoalsVisible && !workoutProgressVisible) return false;
     closeAppModal('food.goals');
+    closeAppModal('workout.progress');
     return true;
-  }, [closeAppModal, foodGoalsVisible]);
+  }, [closeAppModal, foodGoalsVisible, workoutProgressVisible]);
 
   return (
     <KeyboardAvoidingView
@@ -730,7 +796,7 @@ export function DayTemplate<TData, TTotals>({
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
         <View
           style={styles.paddedHeader}
-          onStartShouldSetResponderCapture={dismissFoodGoalsResponder}>
+          onStartShouldSetResponderCapture={dismissStatsPanelResponder}>
           <DayHeader
             date={date}
             canNext={canGoNext}
@@ -743,7 +809,7 @@ export function DayTemplate<TData, TTotals>({
 
         <View
           style={styles.paddedBody}
-          onStartShouldSetResponderCapture={dismissFoodGoalsResponder}>
+          onStartShouldSetResponderCapture={dismissStatsPanelResponder}>
           <NotesList
             entries={entries}
             config={config}
@@ -762,6 +828,8 @@ export function DayTemplate<TData, TTotals>({
             onEdit={editEntry}
             onDelete={handleDelete}
             onRetry={retryEntry}
+            onSaveWorkoutExercise={!isFood ? handleSaveWorkoutExercise : undefined}
+            savedWorkoutEntryIds={!isFood ? savedWorkoutEntryIds : undefined}
             onOpenFoodDetails={isFood ? openFoodEntryDetails : undefined}
           />
         </View>
@@ -771,6 +839,14 @@ export function DayTemplate<TData, TTotals>({
 
           <View style={styles.footerStack}>
             {foodTotals ? <FoodGoalsSheet totals={foodTotals} visible={foodGoalsVisible} /> : null}
+            {workoutTotals ? (
+              <WorkoutProgressSheet
+                date={date}
+                entries={entries}
+                totals={workoutTotals}
+                visible={workoutProgressVisible}
+              />
+            ) : null}
 
             {keyboardVisible ? (
               <>
@@ -789,7 +865,10 @@ export function DayTemplate<TData, TTotals>({
                       items={
                         isFood
                           ? totalItems.filter((item) => item.key === 'cal' || item.key === 'h')
-                          : totalItems
+                          : totalItems.filter(
+                              (item) =>
+                                item.key === 'sets' || item.key === 'vol' || item.key === 'dist',
+                            )
                       }
                       compact
                     />
@@ -817,7 +896,17 @@ export function DayTemplate<TData, TTotals>({
                         </GlassSurface>
                       </Pressable>
                     </>
-                  ) : null}
+                  ) : (
+                    <Pressable
+                      onPress={openSavedWorkoutPicker}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('media.addSavedWorkout')}>
+                      <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
+                        <AppIcon name="plus" color={colors.accent} size={20} />
+                      </GlassSurface>
+                    </Pressable>
+                  )}
 
                   {Platform.OS === 'ios' ? (
                     <Pressable
@@ -835,7 +924,7 @@ export function DayTemplate<TData, TTotals>({
             ) : (
               <TotalsDock
                 items={totalItems}
-                onPress={isFood ? toggleFoodGoals : undefined}
+                onPress={isFood ? toggleFoodGoals : toggleWorkoutProgress}
               />
             )}
           </View>
@@ -856,6 +945,7 @@ export function DayTemplate<TData, TTotals>({
         onFoodCaptureDismiss={handleFoodCaptureDismiss}
         onSaveBarcodeFood={handleSaveBarcodeFood}
         onSelectSavedMeals={handleSelectSavedMeals}
+        onSelectSavedWorkouts={handleSelectSavedWorkouts}
       />
     </KeyboardAvoidingView>
   );

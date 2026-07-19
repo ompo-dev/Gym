@@ -44,12 +44,25 @@ import {
   type OnboardingProfile,
 } from "@/core/onboarding";
 import type { Domain, Entry, EntryMediaAttachment } from "@/core/types";
+import { EntryRepository } from "@/data/EntryRepository";
 import {
   SavedMealRepository,
   type SavedMeal,
 } from "@/data/SavedMealRepository";
+import {
+  SavedWorkoutRepository,
+  type SavedWorkout,
+} from "@/data/SavedWorkoutRepository";
 import { formatWaterMl, mergeFoodEdit, sumFoodData } from "@/domains/food";
-import { foodEditSchema, foodSchema, type FoodData } from "@/domains/schemas";
+import { foodEditSchema, foodSchema, type FoodData, type WorkoutData } from "@/domains/schemas";
+import {
+  formatWorkoutDistance,
+  formatWorkoutDuration,
+  inferWorkoutKind,
+  uniqueWorkoutExerciseNames,
+  WORKOUT_METRIC_COLORS,
+  workoutConfig,
+} from "@/domains/workout";
 import { useColors } from "@/hooks/use-colors";
 import { useFoodGoals } from "@/hooks/useFoodGoals";
 import { getLang, t } from "@/i18n";
@@ -592,6 +605,415 @@ export function SavedMealsSheet({
         selectedIds={selectedIds}
       />
     </SheetFrame>
+  );
+}
+
+interface WorkoutAggregate {
+  name: string;
+  sessions: number;
+  sets: number;
+  volumeKg: number;
+  durationSeconds: number;
+  distanceMeters: number;
+  lastDate: string;
+}
+
+function isWorkoutData(data: Entry["data"]): data is WorkoutData {
+  return Boolean(data && "sets" in data);
+}
+
+function aggregateWorkoutEntries(entries: Entry[]): WorkoutAggregate[] {
+  const byExercise = new Map<string, WorkoutAggregate>();
+
+  entries.forEach((entry) => {
+    if (entry.status !== "done" || !isWorkoutData(entry.data)) return;
+    const exercise = uniqueWorkoutExerciseNames([
+      { text: entry.text, data: entry.data },
+    ])[0];
+    if (!exercise) return;
+
+    const key = exercise.toLocaleLowerCase();
+    const current =
+      byExercise.get(key) ??
+      {
+        name: exercise,
+        sessions: 0,
+        sets: 0,
+        volumeKg: 0,
+        durationSeconds: 0,
+        distanceMeters: 0,
+        lastDate: entry.date,
+      };
+    const totals = workoutConfig.addToTotals(workoutConfig.emptyTotals, entry.data);
+    byExercise.set(key, {
+      ...current,
+      sessions: current.sessions + 1,
+      sets: current.sets + totals.sets,
+      volumeKg: current.volumeKg + totals.volumeKg,
+      durationSeconds: current.durationSeconds + totals.durationSeconds,
+      distanceMeters: current.distanceMeters + totals.distanceMeters,
+      lastDate: entry.date > current.lastDate ? entry.date : current.lastDate,
+    });
+  });
+
+  return [...byExercise.values()].sort((a, b) => b.lastDate.localeCompare(a.lastDate));
+}
+
+function WorkoutMetricLine({ aggregate }: { aggregate: WorkoutAggregate }) {
+  const colors = useColors();
+  const metrics = [
+    `${aggregate.sessions}x`,
+    `${aggregate.sets} ${t("totals.sets")}`,
+    aggregate.volumeKg > 0 ? `${Math.round(aggregate.volumeKg)} kg` : "",
+    aggregate.durationSeconds > 0 ? formatWorkoutDuration(aggregate.durationSeconds) : "",
+    aggregate.distanceMeters > 0 ? formatWorkoutDistance(aggregate.distanceMeters) : "",
+  ].filter(Boolean);
+
+  return (
+    <SettingsRow
+      icon="dumbbell"
+      iconColor={colors.accent}
+      title={aggregate.name}
+      subtitle={metrics.join("  \u00b7  ")}
+      trailing={
+        <AppText variant="caption" color={colors.textTertiary}>
+          {aggregate.lastDate}
+        </AppText>
+      }
+    />
+  );
+}
+
+function SavedWorkoutRow({
+  workout,
+  onDelete,
+  onPress,
+  selectable = false,
+  selected = false,
+}: {
+  workout: SavedWorkout;
+  onDelete?: (workout: SavedWorkout) => void;
+  onPress?: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+}) {
+  const colors = useColors();
+  const savedKind = workout.exercises.some(
+    (exercise) => inferWorkoutKind({ sets: [] }, exercise) === "cardio",
+  )
+    ? "cardio"
+    : "strength";
+  const row = (
+    <View style={styles.savedMealRow}>
+      <View style={styles.summaryIcon}>
+        <AppIcon
+          name={savedKind === "cardio" ? "navigation" : "dumbbell"}
+          color={
+            savedKind === "cardio"
+              ? WORKOUT_METRIC_COLORS.distance
+              : WORKOUT_METRIC_COLORS.sets
+          }
+          size={18}
+        />
+      </View>
+      <View style={styles.savedMealContent}>
+        <AppText variant="body" numberOfLines={1} style={styles.savedMealName}>
+          {workout.name}
+        </AppText>
+        <AppText variant="caption" color={colors.textSecondary} numberOfLines={2}>
+          {workout.exercises.join("  \u00b7  ")}
+        </AppText>
+      </View>
+      {selectable ? (
+        <View
+          style={[
+            styles.savedMealSelectIcon,
+            {
+              borderColor: colors.accent,
+              backgroundColor: selected ? colors.accent : "transparent",
+            },
+          ]}
+        >
+          <AppIcon
+            name={selected ? "check" : "plus"}
+            color={selected ? "#FFFFFF" : colors.accent}
+            size={18}
+          />
+        </View>
+      ) : onDelete ? (
+        <Pressable
+          onPress={() => onDelete(workout)}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={t("settings.workout.deleteSaved")}
+        >
+          <AppIcon name="trash" color={colors.danger} size={18} />
+        </Pressable>
+      ) : (
+        <Chevron />
+      )}
+    </View>
+  );
+
+  if (!onPress) return row;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={selectable ? { selected } : undefined}
+      style={({ pressed }) => [pressed && styles.pressed]}
+    >
+      {row}
+    </Pressable>
+  );
+}
+
+function SavedWorkoutsContent({
+  workouts,
+  onDelete,
+  onSelect,
+  selectable = false,
+  selectedIds = [],
+}: {
+  workouts: SavedWorkout[];
+  onDelete?: (workout: SavedWorkout) => void;
+  onSelect?: (workout: SavedWorkout) => void;
+  selectable?: boolean;
+  selectedIds?: string[];
+}) {
+  const colors = useColors();
+  if (workouts.length === 0) {
+    return (
+      <View
+        style={[
+          styles.card,
+          styles.emptySavedMeals,
+          { backgroundColor: colors.backgroundElement },
+        ]}
+      >
+        <AppText variant="body" color={colors.textSecondary}>
+          {t("settings.workout.emptySaved")}
+        </AppText>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.backgroundElement }]}>
+      {workouts.map((workout, index) => (
+        <View key={workout.id}>
+          {index > 0 ? <Divider /> : null}
+          <SavedWorkoutRow
+            workout={workout}
+            onDelete={onDelete}
+            onPress={onSelect ? () => onSelect(workout) : undefined}
+            selectable={selectable}
+            selected={selectedIds.includes(workout.id)}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+export function SavedWorkoutsSheet({
+  visible,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (workouts: SavedWorkout[]) => void;
+}) {
+  const colors = useColors();
+  const [workouts, setWorkouts] = useState<SavedWorkout[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSelectedIds([]);
+      return;
+    }
+    void SavedWorkoutRepository.all().then(setWorkouts);
+  }, [visible]);
+
+  const toggleWorkout = (workout: SavedWorkout) => {
+    setSelectedIds((current) =>
+      current.includes(workout.id)
+        ? current.filter((id) => id !== workout.id)
+        : [...current, workout.id],
+    );
+  };
+
+  const confirmSelection = () => {
+    const selectedWorkouts = workouts.filter((workout) => selectedIds.includes(workout.id));
+    if (selectedWorkouts.length === 0) return;
+    onSelect(selectedWorkouts);
+  };
+  const hasSelection = selectedIds.length > 0;
+
+  return (
+    <SheetFrame
+      visible={visible}
+      title={t("settings.workout.saved")}
+      onClose={onClose}
+      centerTitle
+      hideDefaultClose={hasSelection}
+      headerLeading={
+        hasSelection ? (
+          <Pressable
+            onPress={onClose}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={t("common.close")}
+          >
+            <GlassSurface
+              glass="regular"
+              isInteractive
+              style={styles.savedMealHeaderButton}
+            >
+              <AppIcon name="x" color={colors.textSecondary} size={18} />
+            </GlassSurface>
+          </Pressable>
+        ) : null
+      }
+      headerTrailing={
+        hasSelection ? (
+          <Pressable
+            onPress={confirmSelection}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={t("settings.done")}
+            style={({ pressed }) => [
+              styles.savedMealConfirm,
+              { backgroundColor: colors.accent },
+              pressed && styles.pressed,
+            ]}
+          >
+            <AppIcon name="check" color="#FFFFFF" size={18} />
+          </Pressable>
+        ) : null
+      }
+      size="full"
+    >
+      <SavedWorkoutsContent
+        workouts={workouts}
+        onSelect={toggleWorkout}
+        selectable
+        selectedIds={selectedIds}
+      />
+    </SheetFrame>
+  );
+}
+
+function WorkoutMonitorSheet({
+  visible,
+  onClose,
+  onSaveDay,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSaveDay: () => Promise<void>;
+}) {
+  const colors = useColors();
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [saving, setSaving] = useState(false);
+  const doneEntries = entries.filter((entry) => entry.status === "done" && isWorkoutData(entry.data));
+  const aggregates = aggregateWorkoutEntries(entries);
+  const days = new Set(doneEntries.map((entry) => entry.date)).size;
+  const totals = doneEntries.reduce(
+    (current, entry) =>
+      isWorkoutData(entry.data) ? workoutConfig.addToTotals(current, entry.data) : current,
+    workoutConfig.emptyTotals,
+  );
+
+  useEffect(() => {
+    if (!visible) return;
+    void EntryRepository.findAll("workout").then(setEntries);
+  }, [visible]);
+
+  const saveDay = async () => {
+    setSaving(true);
+    try {
+      await onSaveDay();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <PageSheet visible={visible} title={t("settings.workout.monitor")} onClose={onClose}>
+      <Section label={t("settings.workout.summary")}>
+        <View style={[styles.card, { backgroundColor: colors.backgroundElement }]}>
+          <SettingsRow title={t("settings.workout.days")} subtitle={`${days}`} />
+          <Divider />
+          <SettingsRow title={t("totals.sets")} subtitle={`${totals.sets}`} />
+          <Divider />
+          <SettingsRow title={t("totals.vol")} subtitle={`${Math.round(totals.volumeKg)} kg`} />
+          {totals.durationSeconds > 0 ? (
+            <>
+              <Divider />
+              <SettingsRow
+                title={t("totals.time")}
+                subtitle={formatWorkoutDuration(totals.durationSeconds)}
+              />
+            </>
+          ) : null}
+          {totals.distanceMeters > 0 ? (
+            <>
+              <Divider />
+              <SettingsRow
+                title={t("totals.dist")}
+                subtitle={formatWorkoutDistance(totals.distanceMeters)}
+              />
+            </>
+          ) : null}
+        </View>
+      </Section>
+
+      <Pressable
+        onPress={saveDay}
+        disabled={saving}
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          styles.primaryAction,
+          { backgroundColor: colors.accent },
+          pressed && styles.pressed,
+        ]}
+      >
+        <View style={styles.inlineAction}>
+          <AppIcon name="bookmark" color="#FFFFFF" size={18} />
+          <AppText variant="heading" color="#FFFFFF">
+            {saving ? t("details.mealSaved") : t("settings.workout.saveToday")}
+          </AppText>
+        </View>
+      </Pressable>
+
+      <Section label={t("settings.workout.byExercise")}>
+        {aggregates.length > 0 ? (
+          <View style={[styles.card, { backgroundColor: colors.backgroundElement }]}>
+            {aggregates.map((aggregate, index) => (
+              <View key={aggregate.name}>
+                {index > 0 ? <Divider /> : null}
+                <WorkoutMetricLine aggregate={aggregate} />
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.card,
+              styles.emptySavedMeals,
+              { backgroundColor: colors.backgroundElement },
+            ]}
+          >
+            <AppText variant="body" color={colors.textSecondary}>
+              {t("settings.workout.emptyMonitor")}
+            </AppText>
+          </View>
+        )}
+      </Section>
+    </PageSheet>
   );
 }
 
@@ -2092,6 +2514,8 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const signOut = useAppStore((s) => s.signOut);
   const profile =
     useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
+  const workoutDay = useAppStore((s) => s.workout);
+  const lang = getLang();
   const settingsStack = visible
     ? modalStack.filter(
         (modal) => modal.domain === domain && modal.id.startsWith("settings."),
@@ -2104,6 +2528,8 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const [autoTimezone, setAutoTimezone] = useState(true);
   const [savedMealsCount, setSavedMealsCount] = useState(0);
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
+  const [savedWorkoutsCount, setSavedWorkoutsCount] = useState(0);
+  const [savedWorkouts, setSavedWorkouts] = useState<SavedWorkout[]>([]);
   const themeRowRef = useRef<View>(null);
   const [settingsOptionMenu, setSettingsOptionMenu] = useState<
     "theme" | null
@@ -2152,9 +2578,13 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     activeSettingsId === "settings.registerWeight" ||
     activeSettingsId === "settings.registerWeightPicker";
   const estimationBiasVisible = activeSettingsId === "settings.estimationBias";
+  const workoutMonitorVisible = activeSettingsId === "settings.workoutMonitor";
+  const savedWorkoutsVisible = activeSettingsId === "settings.savedWorkouts";
 
   useEffect(() => {
-    if (visible) void SavedMealRepository.count().then(setSavedMealsCount);
+    if (!visible) return;
+    void SavedMealRepository.count().then(setSavedMealsCount);
+    void SavedWorkoutRepository.count().then(setSavedWorkoutsCount);
   }, [visible]);
 
   useEffect(() => {
@@ -2170,10 +2600,27 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     setSavedMealsCount(meals.length);
   };
 
+  const loadSavedWorkouts = async () => {
+    const workouts = await SavedWorkoutRepository.all();
+    setSavedWorkouts(workouts);
+    setSavedWorkoutsCount(workouts.length);
+  };
+
   const openSavedMeals = () => {
     if (!canOpenAppModal("settings.root", "settings.savedMeals")) return;
     openAppModal({ id: "settings.savedMeals", domain });
     void loadSavedMeals();
+  };
+
+  const openWorkoutMonitor = () => {
+    if (!canOpenAppModal("settings.root", "settings.workoutMonitor")) return;
+    openAppModal({ id: "settings.workoutMonitor", domain });
+  };
+
+  const openSavedWorkouts = () => {
+    if (!canOpenAppModal("settings.root", "settings.savedWorkouts")) return;
+    openAppModal({ id: "settings.savedWorkouts", domain });
+    void loadSavedWorkouts();
   };
 
   const closeSettings = () => {
@@ -2230,6 +2677,39 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
 
   const closeEstimationBias = () => {
     closeAppModal("settings.estimationBias");
+  };
+
+  const closeWorkoutMonitor = () => {
+    closeAppModal("settings.workoutMonitor");
+  };
+
+  const closeSavedWorkouts = () => {
+    closeAppModal("settings.savedWorkouts");
+  };
+
+  const saveWorkoutDay = async () => {
+    const exercises = uniqueWorkoutExerciseNames(
+      workoutDay.entries
+        .filter((entry) => entry.status === "done" && isWorkoutData(entry.data))
+        .map((entry) => ({
+          text: entry.text,
+          data: entry.data as WorkoutData,
+        })),
+      lang,
+    );
+    await SavedWorkoutRepository.save(
+      "day",
+      formatDate(workoutDay.date, lang).replace(".", ""),
+      exercises,
+      undefined,
+      workoutDay.date,
+    );
+    await loadSavedWorkouts();
+  };
+
+  const deleteSavedWorkout = async (workout: SavedWorkout) => {
+    await SavedWorkoutRepository.delete(workout.id);
+    await loadSavedWorkouts();
   };
 
   const openSavedMealDetails = (meal: SavedMeal) => {
@@ -2398,16 +2878,38 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
               />
             </Section>
 
-            <Section label={t("settings.section.meals")}>
-              <SettingsRow
-                icon="utensils"
-                iconColor={colors.carbs}
-                title={t("settings.meals.manage")}
-                subtitle={`${savedMealsCount} ${t("settings.meals.saved")}`}
-                trailing={<Chevron />}
-                onPress={openSavedMeals}
-              />
-            </Section>
+            {domain === "workout" ? (
+              <Section label={t("settings.section.workout")}>
+                <SettingsRow
+                  icon="dumbbell"
+                  iconColor={colors.accent}
+                  title={t("settings.workout.monitor")}
+                  subtitle={t("settings.workout.monitorHint")}
+                  trailing={<Chevron />}
+                  onPress={openWorkoutMonitor}
+                />
+                <Divider />
+                <SettingsRow
+                  icon="bookmark"
+                  iconColor={colors.water}
+                  title={t("settings.workout.saved")}
+                  subtitle={`${savedWorkoutsCount} ${t("settings.workout.savedCount")}`}
+                  trailing={<Chevron />}
+                  onPress={openSavedWorkouts}
+                />
+              </Section>
+            ) : (
+              <Section label={t("settings.section.meals")}>
+                <SettingsRow
+                  icon="utensils"
+                  iconColor={colors.carbs}
+                  title={t("settings.meals.manage")}
+                  subtitle={`${savedMealsCount} ${t("settings.meals.saved")}`}
+                  trailing={<Chevron />}
+                  onPress={openSavedMeals}
+                />
+              </Section>
+            )}
 
             <Section label={t("settings.section.prefs")}>
               <SettingsRow
@@ -2592,6 +3094,25 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
         visible={estimationBiasVisible}
         onClose={closeEstimationBias}
       />
+
+      <WorkoutMonitorSheet
+        visible={workoutMonitorVisible}
+        onClose={closeWorkoutMonitor}
+        onSaveDay={saveWorkoutDay}
+      />
+
+      <SheetFrame
+        visible={savedWorkoutsVisible}
+        title={t("settings.workout.saved")}
+        onClose={closeSavedWorkouts}
+        centerTitle
+        size="full"
+      >
+        <SavedWorkoutsContent
+          workouts={savedWorkouts}
+          onDelete={deleteSavedWorkout}
+        />
+      </SheetFrame>
 
       <FoodEntryDetailSheet
         visible={savedMealDetailVisible}

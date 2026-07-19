@@ -87,6 +87,15 @@ export const EntryRepository = {
     return rows.map(toEntry);
   },
 
+  async findAll(domain: Domain): Promise<Entry[]> {
+    const db = await getDb();
+    const rows = await db.getAllAsync<Row>(
+      'SELECT * FROM entries WHERE domain = ? ORDER BY date DESC, createdAt DESC',
+      [domain],
+    );
+    return rows.map(toEntry);
+  },
+
   async insert(entry: Entry): Promise<void> {
     const db = await getDb();
     await db.runAsync(

@@ -23,6 +23,8 @@ interface NoteRowProps<TData, TTotals> {
   onEdit: (entry: Entry, text: string) => void;
   onDelete: (entry: Entry) => void;
   onRetry: (entry: Entry) => void;
+  onSaveWorkoutExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
+  workoutExerciseSaved?: boolean;
   onOpenFoodDetails?: (entry: Entry) => void;
   onFocusNewWorkoutExercise?: () => void;
   onDeleteWorkoutExercise?: () => void;
@@ -140,6 +142,8 @@ function NoteRowInner<TData, TTotals>(props: NoteRowProps<TData, TTotals>) {
     onEdit,
     onDelete,
     onRetry,
+    onSaveWorkoutExercise,
+    workoutExerciseSaved,
     onFocusNewWorkoutExercise,
     onDeleteWorkoutExercise,
     onFocusWorkoutLine,
@@ -158,6 +162,8 @@ function NoteRowInner<TData, TTotals>(props: NoteRowProps<TData, TTotals>) {
           onEdit={onEdit}
           onDelete={onDelete}
           onRetry={onRetry}
+          onSaveExercise={onSaveWorkoutExercise}
+          initialExerciseSaved={workoutExerciseSaved}
           onFocusNewExercise={onFocusNewWorkoutExercise}
           onDeleteExercise={onDeleteWorkoutExercise}
           onFocusLine={onFocusWorkoutLine}

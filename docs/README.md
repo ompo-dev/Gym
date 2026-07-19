@@ -58,3 +58,6 @@ principalmente para enriquecimento por IA e consulta de codigo de barras.
 - Contratos de comida/treino: `src/domains/schemas.ts`.
 - Metas e calculos nutricionais: `src/core/onboarding.ts` e `src/domains/food.ts`.
 - UI de detalhes de comida: `src/components/organisms/FoodEntryDetailSheet.tsx`.
+- Parser de treino, series e cardio: `src/domains/workout.ts`.
+- Progresso e PR de treino: `src/components/organisms/WorkoutProgressSheet.tsx`.
+- Treinos salvos: `src/data/SavedWorkoutRepository.ts`.

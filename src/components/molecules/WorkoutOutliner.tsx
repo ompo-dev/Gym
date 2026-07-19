@@ -17,11 +17,15 @@ import { Metrics, Radii, Spacing } from '@/constants/theme';
 import type { Entry, EntryStatus } from '@/core/types';
 import type { WorkoutData, WorkoutSet } from '@/domains/schemas';
 import {
-  formatWorkoutSet,
+  formatWorkoutNumber,
+  formatWorkoutSetPace,
+  formatWorkoutSetSummary,
   formatWorkoutSetVolume,
+  getWorkoutSetVolume,
   normalizeWorkoutExercise,
   parseWorkoutSetLines,
   serializeWorkoutLines,
+  WORKOUT_METRIC_COLORS,
 } from '@/domains/workout';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
@@ -29,8 +33,6 @@ import { t } from '@/i18n';
 const RECENT_MS = 4_000;
 const BLUR_COMMIT_MS = 40;
 const FOCUS_RETRY_MS = 16;
-const WEIGHT_COLOR = '#4D8DFF';
-
 interface WorkoutOutlinerProps {
   entry: Entry;
   previousEntry?: Entry;
@@ -39,6 +41,8 @@ interface WorkoutOutlinerProps {
   onEdit: (entry: Entry, text: string) => void;
   onDelete: (entry: Entry) => void;
   onRetry: (entry: Entry) => void;
+  onSaveExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
+  initialExerciseSaved?: boolean;
   onFocusNewExercise?: () => void;
   onDeleteExercise?: () => void;
   onFocusLine?: (layout: { screenY: number; height: number }) => void;
@@ -102,6 +106,75 @@ function FlexMarker({ animationNonce }: { animationNonce: number }) {
   return <Animated.Text style={[styles.flexMarker, animatedStyle]}>{'\uD83D\uDCAA'}</Animated.Text>;
 }
 
+function formatWorkoutSetEffort(set: WorkoutSet): string | null {
+  const pace = formatWorkoutSetPace(set);
+  if (pace) return pace;
+  return getWorkoutSetVolume(set) > 0 ? formatWorkoutSetVolume(set) : null;
+}
+
+function SetSummaryText({
+  set,
+  fallback,
+  color,
+}: {
+  set: WorkoutSet | null;
+  fallback: string;
+  color: string;
+}) {
+  const colors = useColors();
+  if (!set) {
+    return <Text style={[styles.setValueText, { color }]}>{fallback}</Text>;
+  }
+
+  if (set.weight !== undefined && set.reps !== undefined) {
+    return (
+      <Text style={[styles.setValueText, { color }]}>
+        <Text style={{ color: WORKOUT_METRIC_COLORS.volume }}>
+          {`${formatWorkoutNumber(set.weight)} ${set.unit ?? 'kg'}`}
+        </Text>
+        <Text style={{ color: colors.textSecondary }}>{' x '}</Text>
+        <Text style={{ color: WORKOUT_METRIC_COLORS.reps }}>{set.reps}</Text>
+      </Text>
+    );
+  }
+
+  if (set.reps !== undefined) {
+    return (
+      <Text style={[styles.setValueText, { color }]}>
+        <Text style={{ color: WORKOUT_METRIC_COLORS.reps }}>{set.reps}</Text>
+        <Text>{' reps'}</Text>
+      </Text>
+    );
+  }
+
+  const parts: { key: string; text: string; color: string }[] = [];
+  if (set.durationSeconds) {
+    parts.push({
+      key: 'time',
+      text: formatWorkoutSetSummary({ durationSeconds: set.durationSeconds }),
+      color: WORKOUT_METRIC_COLORS.duration,
+    });
+  }
+  if (set.distanceMeters) {
+    parts.push({
+      key: 'dist',
+      text: formatWorkoutSetSummary({ distanceMeters: set.distanceMeters }),
+      color: WORKOUT_METRIC_COLORS.distance,
+    });
+  }
+
+  return (
+    <Text style={[styles.setValueText, { color }]}>
+      {parts.map((part, index) => (
+        <Text key={part.key}>
+          {index > 0 ? <Text style={{ color: colors.textSecondary }}>{' / '}</Text> : null}
+          <Text style={{ color: part.color }}>{part.text}</Text>
+        </Text>
+      ))}
+    </Text>
+  );
+}
+
 function SetDisplay({
   set,
   fallback,
@@ -123,18 +196,16 @@ function SetDisplay({
     );
   }
 
+  const effort = formatWorkoutSetEffort(set);
   return (
     <Pressable onPress={onPress} hitSlop={6} style={styles.setValuePress}>
       <View style={styles.setValueRow}>
-        <Text style={[styles.setValueText, { color: colors.text }]}>
-          <Text style={{ color: WEIGHT_COLOR }}>{set.weight}</Text>
-          <Text style={{ color: WEIGHT_COLOR }}>{` ${set.unit}`}</Text>
-          <Text>{' x '}</Text>
-          <Text style={{ color: colors.success }}>{set.reps}</Text>
-        </Text>
-        <AppText variant="label" color={volumeColor} style={styles.setVolume}>
-          {formatWorkoutSetVolume(set)}
-        </AppText>
+        <SetSummaryText set={set} fallback={fallback} color={colors.text} />
+        {effort ? (
+          <AppText variant="label" color={volumeColor} style={styles.setVolume}>
+            {effort}
+          </AppText>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -148,6 +219,8 @@ export function WorkoutOutliner({
   onEdit,
   onDelete,
   onRetry,
+  onSaveExercise,
+  initialExerciseSaved = false,
   onFocusNewExercise,
   onDeleteExercise,
   onFocusLine,
@@ -159,6 +232,7 @@ export function WorkoutOutliner({
   const [focused, setFocused] = useState<number | null>(null);
   const [pendingFocus, setPendingFocus] = useState<number | null>(null);
   const [activeLine, setActiveLine] = useState(0);
+  const [exerciseSaved, setExerciseSaved] = useState(initialExerciseSaved);
   const [animatedMarker, setAnimatedMarker] = useState<{ index: number; nonce: number } | null>(
     null,
   );
@@ -177,7 +251,7 @@ export function WorkoutOutliner({
 
   const parsedSetLines = parseWorkoutSetLines(lines.slice(1));
   const resolvedSignature = parsedSetLines
-    .map((set) => formatWorkoutSet(set?.weight ?? 0, set?.unit ?? 'kg', set?.reps ?? 0))
+    .map((set) => (set ? formatWorkoutSetSummary(set) : ''))
     .join('|');
   const isPending = entry.status === 'thinking' || entry.status === 'queued';
   const latestResolvedSet = parsedSetLines.reduce((last, set, idx) => (set ? idx : last), -1);
@@ -194,6 +268,10 @@ export function WorkoutOutliner({
       setLines(splitLines(entry.text));
     }
   }, [entry.text]);
+
+  useEffect(() => {
+    setExerciseSaved(initialExerciseSaved);
+  }, [entry.id, initialExerciseSaved]);
 
   useEffect(() => {
     const isRecent = Date.now() - entry.createdAt < RECENT_MS;
@@ -387,6 +465,17 @@ export function WorkoutOutliner({
     onDelete(entry);
   };
 
+  const toggleSaveExercise = () => {
+    if (!onSaveExercise) return;
+    const next = !exerciseSaved;
+    setExerciseSaved(next);
+    void Promise.resolve(onSaveExercise(entry, next))
+      .then((confirmed) => {
+        if (confirmed === false) setExerciseSaved(!next);
+      })
+      .catch(() => setExerciseSaved(!next));
+  };
+
   const exerciseValue = focused === 0 ? lines[0] : formattedExercise(entry, lines[0] ?? '');
 
   return (
@@ -475,7 +564,7 @@ export function WorkoutOutliner({
                     />
                     {parsedSet ? (
                       <AppText variant="label" color={accent} style={styles.setVolume}>
-                        {formatWorkoutSetVolume(parsedSet)}
+                        {formatWorkoutSetEffort(parsedSet) ?? formatWorkoutSetSummary(parsedSet)}
                       </AppText>
                     ) : null}
                   </View>
@@ -501,15 +590,53 @@ export function WorkoutOutliner({
             </AppText>
           </Pressable>
         ) : isPending ? null : (
-          <Pressable
-            onPress={() => addSetAfter(lines.length - 1)}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={t('workout.addSet')}>
-            <GlassSurface glass="regular" style={styles.addButton}>
-              <AppIcon name="plus" color={colors.textSecondary} size={14} />
-            </GlassSurface>
-          </Pressable>
+          <>
+            {entry.status === 'done' && onSaveExercise ? (
+              <View style={styles.actionGroup}>
+                <Pressable
+                  onPress={toggleSaveExercise}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: exerciseSaved }}
+                  accessibilityLabel={t('workout.saveExercise')}>
+                  <GlassSurface
+                    glass="regular"
+                    style={[
+                      styles.actionSegment,
+                      styles.actionSegmentLeft,
+                    ]}>
+                    <View style={[styles.actionIcon, exerciseSaved && styles.actionIconSaved]}>
+                      <AppIcon
+                        name="bookmark"
+                        color={exerciseSaved ? colors.background : colors.textSecondary}
+                        size={14}
+                      />
+                    </View>
+                  </GlassSurface>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => addSetAfter(lines.length - 1)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('workout.addSet')}>
+                  <GlassSurface glass="regular" style={[styles.actionSegment, styles.actionSegmentRight]}>
+                    <AppIcon name="plus" color={colors.textSecondary} size={14} />
+                  </GlassSurface>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => addSetAfter(lines.length - 1)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={t('workout.addSet')}>
+                <GlassSurface glass="regular" style={styles.addButton}>
+                  <AppIcon name="plus" color={colors.textSecondary} size={14} />
+                </GlassSurface>
+              </Pressable>
+            )}
+          </>
         )}
         <EntryMeta entry={entry} previousEntry={previousEntry} />
       </View>
@@ -605,7 +732,39 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     gap: Spacing.one,
     paddingTop: Spacing.half,
-    minWidth: 74,
+    minWidth: 92,
+  },
+  actionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: Radii.pill,
+    overflow: 'hidden',
+  },
+  actionSegment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 36,
+    height: Metrics.iconButton - 16,
+    overflow: 'hidden',
+  },
+  actionSegmentLeft: {
+    borderTopLeftRadius: Radii.pill,
+    borderBottomLeftRadius: Radii.pill,
+  },
+  actionSegmentRight: {
+    borderTopRightRadius: Radii.pill,
+    borderBottomRightRadius: Radii.pill,
+  },
+  actionIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionIconSaved: {
+    backgroundColor: '#FFFFFF',
   },
   addButton: {
     flexDirection: 'row',

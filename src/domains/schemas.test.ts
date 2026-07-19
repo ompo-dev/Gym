@@ -63,10 +63,29 @@ test('food schema allows empty items and rejects items missing a label', () => {
 test('workout schema parses shorthand and coerces reps', () => {
   const result = workoutSchema.parse({
     exercise: null,
+    kind: 'série',
     sets: [{ weight: 95, unit: 'kg', reps: '7' }],
   });
 
+  expect(result.kind).toBe('strength');
   expect(result.sets[0].reps).toBe(7);
+});
+
+test('workout schema normalizes accented strength kind aliases', () => {
+  expect(workoutSchema.parse({ exercise: 'supino', kind: 'força', sets: [] }).kind).toBe(
+    'strength',
+  );
+  expect(
+    workoutSchema.parse({ exercise: 'leg press', kind: 'musculação', sets: [] }).kind,
+  ).toBe('strength');
+});
+
+test('workout schema defaults missing sets from exercise-only AI responses', () => {
+  expect(workoutSchema.parse({ exercise: 'Supino reto', kind: 'series' })).toEqual({
+    exercise: 'Supino reto',
+    kind: 'strength',
+    sets: [],
+  });
 });
 
 test('workout schema allows a set-less exercise but rejects bad units', () => {
@@ -76,4 +95,33 @@ test('workout schema allows a set-less exercise but rejects bad units', () => {
     workoutSchema.safeParse({ exercise: null, sets: [{ weight: 1, unit: 'stone', reps: 1 }] })
       .success,
   ).toBe(false);
+});
+
+test('workout schema accepts cardio metrics without load', () => {
+  expect(
+    workoutSchema.safeParse({
+      exercise: 'run',
+      kind: 'cardio',
+      sets: [{ distanceMeters: 5000, durationSeconds: 1500 }],
+    }).success,
+  ).toBe(true);
+});
+
+test('workout schema rejects load without reps', () => {
+  expect(
+    workoutSchema.safeParse({
+      exercise: 'bench',
+      kind: 'series',
+      sets: [{ weight: 100, unit: 'kg' }],
+    }).success,
+  ).toBe(false);
+});
+
+test('workout schema treats null optional metrics as omitted', () => {
+  expect(
+    workoutSchema.parse({
+      exercise: 'run',
+      sets: [{ unit: null, reps: null, distanceMeters: 5000, durationSeconds: null }],
+    }).sets[0],
+  ).toEqual({ distanceMeters: 5000 });
 });

@@ -13,10 +13,12 @@ const EN_WORKOUT_REPLACERS: readonly (readonly [RegExp, string])[] = [
   [/\blat\s*pd\b/gi, 'lat pulldown'],
 ];
 const PT_WORKOUT_REPLACERS: readonly (readonly [RegExp, string])[] = [
+  [/\b(?:sipini|sipino|supini)\b/gi, 'supino'],
   [/\bsup\b(?!\s*ino)/gi, 'supino'],
   [/\bdesenv\b/gi, 'desenvolvimento'],
   [/\bagach\b/gi, 'agachamento'],
   [/\brem\b(?!\s*ada)/gi, 'remada'],
+  [/\blp\b/gi, 'leg press'],
 ];
 
 interface NormalizeOptions {

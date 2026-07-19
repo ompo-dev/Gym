@@ -33,6 +33,15 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
           sourceEntryId TEXT,
           createdAt INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS saved_workouts (
+          id TEXT PRIMARY KEY NOT NULL,
+          kind TEXT NOT NULL,
+          name TEXT NOT NULL,
+          exercises TEXT NOT NULL,
+          sourceEntryId TEXT,
+          sourceDate TEXT,
+          createdAt INTEGER NOT NULL
+        );
       `);
       const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(entries)');
       if (!columns.some((column) => column.name === 'media')) {
@@ -49,6 +58,12 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
         CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_meals_source
           ON saved_meals (sourceEntryId)
           WHERE sourceEntryId IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_workouts_source
+          ON saved_workouts (sourceEntryId)
+          WHERE sourceEntryId IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_workouts_day
+          ON saved_workouts (sourceDate)
+          WHERE sourceDate IS NOT NULL AND kind = 'day';
       `);
       return db;
     })();

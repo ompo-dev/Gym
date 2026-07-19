@@ -110,22 +110,102 @@ Uso:
 
 ```ts
 interface WorkoutSet {
-  weight: number;
-  unit: "kg" | "lb";
-  reps: number;
+  weight?: number;
+  unit?: "kg" | "lb";
+  reps?: number;
+  durationSeconds?: number;
+  distanceMeters?: number;
 }
+
+type WorkoutKind = "strength" | "cardio";
 
 interface WorkoutData {
   exercise: string | null;
+  kind?: WorkoutKind;
   sets: WorkoutSet[];
 }
 ```
 
-Volume:
+Todos os campos de `WorkoutSet` sao opcionais porque a mesma estrutura serve
+para musculacao e cardio. Duas regras de `.refine` em `setSchema` garantem que a
+serie ainda faca sentido:
+
+1. a serie precisa de pelo menos uma metrica (`weight`, `reps`,
+   `durationSeconds` ou `distanceMeters`);
+2. `weight` sem `reps` e invalido — carga sem repeticao nao gera volume.
+
+Outras regras do schema:
+
+- `null` em qualquer campo opcional e tratado como ausente (`nullToUndefined`),
+  porque a IA costuma devolver `null` em vez de omitir a chave.
+- `kind` aceita aliases e normaliza antes de validar: `serie`, `series`,
+  `strength`, `forca` e `musculacao` viram `strength`; `cardio` fica `cardio`.
+  A comparacao ignora acento e caixa.
+- `sets` tem `.default([])`, entao uma resposta so com nome de exercicio
+  (`{ exercise: "Supino reto", kind: "series" }`) valida.
+- Zero series continua valido: o outliner cria o exercicio antes das linhas.
+
+Volume (so conta series com carga e repeticao):
 
 ```ts
-volumeKg = sum(toKg(weight, unit) * reps)
+volumeKg = sum(toKg(weight, unit ?? "kg") * reps)
 ```
+
+Cardio nao entra no volume. Duracao e distancia somam em campos proprios, e o
+pace e derivado, nunca armazenado:
+
+```ts
+paceSecondsPerKm = durationSeconds / (distanceMeters / 1000)
+```
+
+## WorkoutTotals
+
+```ts
+interface WorkoutTotals {
+  sets: number;
+  volumeKg: number;
+  durationSeconds: number;
+  distanceMeters: number;
+}
+```
+
+`describeTotals` sempre devolve as quatro chaves (`sets`, `vol`, `time`,
+`dist`), mesmo zeradas. Quem quiser esconder metrica vazia filtra na tela.
+
+## SavedWorkout
+
+```ts
+type SavedWorkoutKind = "exercise" | "day";
+
+interface SavedWorkout {
+  id: string;
+  kind: SavedWorkoutKind;
+  name: string;
+  exercises: string[];
+  sourceEntryId?: string;
+  sourceDate?: string;
+  createdAt: number;
+}
+```
+
+Uso:
+
+- `kind: "exercise"`: um exercicio salvo pelo bookmark do outliner.
+  `sourceEntryId` aponta para a `Entry` de origem.
+- `kind: "day"`: o dia inteiro salvo pelo monitor de treino. `sourceDate`
+  guarda o dia de origem. O `name` e a data formatada do dia visivel, sem ponto
+  final, nao um titulo escolhido pelo usuario.
+- `exercises` guarda so nomes, nao series. Reaplicar um template cria entradas
+  novas e vazias para o usuario preencher.
+- Nomes sao limpos antes de salvar: `trim`, remocao de vazios e dedupe
+  case-insensitive. Se sobrar lista vazia, `save` devolve `null` e nao grava.
+- Na leitura, `toSavedWorkout` descarta row com `kind` desconhecido, com
+  `exercises` que nao faz parse, ou que fica sem exercicio depois da limpeza.
+  A row sai de `all()` calada. `count()` e um `COUNT(*)` cru, entao pode
+  divergir de `all().length` quando alguma row e descartada.
+- `save` e idempotente por origem: se ja existe registro com o mesmo
+  `sourceEntryId` (ou o mesmo `sourceDate` para `kind: "day"`), devolve o
+  existente em vez de duplicar.
 
 ## EnrichRequest
 
@@ -312,9 +392,48 @@ CREATE TABLE saved_meals (
   id TEXT PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
   data TEXT NOT NULL,
+  media TEXT,
+  sourceEntryId TEXT,
   createdAt INTEGER NOT NULL
 );
+CREATE UNIQUE INDEX idx_saved_meals_source
+  ON saved_meals (sourceEntryId)
+  WHERE sourceEntryId IS NOT NULL;
 ```
+
+Tabela `saved_workouts`:
+
+```sql
+CREATE TABLE saved_workouts (
+  id TEXT PRIMARY KEY NOT NULL,
+  kind TEXT NOT NULL,
+  name TEXT NOT NULL,
+  exercises TEXT NOT NULL,
+  sourceEntryId TEXT,
+  sourceDate TEXT,
+  createdAt INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX idx_saved_workouts_source
+  ON saved_workouts (sourceEntryId)
+  WHERE sourceEntryId IS NOT NULL;
+CREATE UNIQUE INDEX idx_saved_workouts_day
+  ON saved_workouts (sourceDate)
+  WHERE sourceDate IS NOT NULL AND kind = 'day';
+```
+
+`exercises` e um array JSON de strings.
+
+A idempotencia de `SavedWorkoutRepository.save` vem do SELECT-antes-do-INSERT no
+proprio repository, que devolve o registro existente por `sourceEntryId` (ou por
+`kind = 'day'` + `sourceDate`) em vez de inserir de novo. Os dois indices unicos
+parciais sao a garantia no nivel do banco contra corrida — um exercicio por
+`Entry`, um template de dia por data. Como o `INSERT` nao tem `ON CONFLICT` nem
+`try/catch`, violar esses indices propaga erro em vez de devolver o existente.
+Nao tirar o SELECT achando que o indice cobre.
+
+`db.ts` roda migracao aditiva ao abrir: colunas faltantes (`entries.media`,
+`saved_meals.media`, `saved_meals.sourceEntryId`) sao adicionadas via
+`ALTER TABLE` antes da criacao dos indices.
 
 ## Prompt de Food Parse
 
@@ -407,3 +526,36 @@ Regras:
 - Se usuario pede mais de um item que ja existe, editar o item existente e
   ajustar quantidade/macros.
 - Raciocinio deve ser refeito do zero, sem mencionar a edicao.
+
+## Prompt de Workout Parse
+
+Forma pedida ao modelo:
+
+```json
+{
+  "exercise": "Supino reto",
+  "kind": "series",
+  "sets": [{ "weight": 100, "unit": "kg", "reps": 8 }]
+}
+```
+
+O prompt pede `"series" | "cardio"` porque o modelo responde melhor em termos
+do dominio; `normalizeWorkoutKind` traduz para o enum interno
+`"strength" | "cardio"` na validacao. Nao "consertar" essa diferenca alinhando
+os dois lados sem trocar as duas pontas.
+
+Obrigatorio no prompt:
+
+- Corrigir erro de digitacao no nome do exercicio, sem ecoar a grafia errada.
+- Expandir abreviacoes pt-BR/en-US (`bp` -> bench press, `sup` -> supino,
+  `LP` -> leg press).
+- Texto so com nome de exercicio ainda devolve nome + `kind` + `sets` vazio.
+- `kind: "cardio"` para corrida, bike, caminhada, natacao, remo, esteira,
+  eliptico e HIIT; o resto e `"series"`.
+- Cardio devolve `durationSeconds` e `distanceMeters` (`1h/5km` -> `3600` e
+  `5000`).
+- Campo ausente e omitido, nunca preenchido com `0`.
+- Nunca calcular totais nem volume.
+
+Na pratica o `CommandBus` so aproveita `exercise` e `kind` da resposta: as
+series vem sempre do parser local. Ver `docs/data-flows.md` secao 10.

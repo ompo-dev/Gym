@@ -41,7 +41,9 @@ import {
   Star,
   Target,
   Trash2,
+  Trophy,
   Utensils,
+  Zap,
   Wheat,
   X,
 } from 'lucide-react-native';
@@ -90,7 +92,9 @@ const icons = {
   star: Star,
   target: Target,
   trash: Trash2,
+  trophy: Trophy,
   utensils: Utensils,
+  zap: Zap,
   wheat: Wheat,
   x: X,
 } as const;

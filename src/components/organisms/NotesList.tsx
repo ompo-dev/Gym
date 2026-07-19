@@ -22,6 +22,8 @@ interface NotesListProps<TData, TTotals> {
   onEdit: (entry: Entry, text: string) => void;
   onDelete: (entry: Entry) => void;
   onRetry: (entry: Entry) => void;
+  onSaveWorkoutExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
+  savedWorkoutEntryIds?: Set<string>;
   onOpenFoodDetails?: (entry: Entry) => void;
 }
 
@@ -107,6 +109,8 @@ export function NotesList<TData, TTotals>({
   onEdit,
   onDelete,
   onRetry,
+  onSaveWorkoutExercise,
+  savedWorkoutEntryIds,
   onOpenFoodDetails,
 }: NotesListProps<TData, TTotals>) {
   const containerRef = useRef<View | null>(null);
@@ -302,6 +306,12 @@ export function NotesList<TData, TTotals>({
               onEdit={onEdit}
               onDelete={onDelete}
               onRetry={onRetry}
+              onSaveWorkoutExercise={
+                config.id === 'workout' ? onSaveWorkoutExercise : undefined
+              }
+              workoutExerciseSaved={
+                config.id === 'workout' ? savedWorkoutEntryIds?.has(item.id) ?? false : false
+              }
               onOpenFoodDetails={onOpenFoodDetails}
               onFocusNewWorkoutExercise={config.id === 'workout' ? focusNewExercise : undefined}
               onDeleteWorkoutExercise={

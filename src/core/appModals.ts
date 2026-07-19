@@ -26,6 +26,8 @@ export type AppModalId =
   | "settings.registerWeight"
   | "settings.registerWeightPicker"
   | "settings.estimationBias"
+  | "settings.workoutMonitor"
+  | "settings.savedWorkouts"
   | "settings.savedMeals"
   | "settings.savedMealDetails"
   | "settings.savedMealActionMenu"
@@ -40,6 +42,8 @@ export type AppModalId =
   | "food.mediaCapture"
   | "food.barcodeNutritionEdit"
   | "food.mediaDraftTray"
+  | "workout.progress"
+  | "workout.savedWorkoutPicker"
   | "onboarding.root"
   | "onboarding.picker"
   | "onboarding.birthDatePicker"
@@ -58,6 +62,8 @@ export const APP_MODAL_LABELS: Record<AppModalId, string> = {
   "settings.registerWeight": "Registrar peso",
   "settings.registerWeightPicker": "Seletor de peso",
   "settings.estimationBias": "Viés de estimativa",
+  "settings.workoutMonitor": "Monitoramento de treino",
+  "settings.savedWorkouts": "Treinos salvos",
   "settings.savedMeals": "Refeições salvas",
   "settings.savedMealDetails": "Detalhes da refeição salva",
   "settings.savedMealActionMenu": "Menu da refeição salva",
@@ -72,6 +78,8 @@ export const APP_MODAL_LABELS: Record<AppModalId, string> = {
   "food.mediaCapture": "Capturar alimento",
   "food.barcodeNutritionEdit": "Nutrição por código de barras",
   "food.mediaDraftTray": "Mídias adicionadas",
+  "workout.progress": "Progresso do treino",
+  "workout.savedWorkoutPicker": "Selecionar treinos salvos",
   "onboarding.root": "Onboarding",
   "onboarding.picker": "Seletor do onboarding",
   "onboarding.birthDatePicker": "Data de nascimento",
@@ -88,12 +96,16 @@ export const APP_MODAL_LINKS: Partial<
     "food.entryDetail",
     "food.mediaCapture",
     "food.mediaDraftTray",
+    "workout.progress",
+    "workout.savedWorkoutPicker",
   ],
   "settings.root": [
     "settings.nutritionGoals",
     "settings.healthProfile",
     "settings.weightControl",
     "settings.estimationBias",
+    "settings.workoutMonitor",
+    "settings.savedWorkouts",
     "settings.savedMeals",
   ],
   "settings.nutritionGoals": [
@@ -154,6 +166,8 @@ export type AppModal =
   | { id: "settings.registerWeight"; domain: Domain }
   | { id: "settings.registerWeightPicker"; domain: Domain }
   | { id: "settings.estimationBias"; domain: Domain }
+  | { id: "settings.workoutMonitor"; domain: Domain }
+  | { id: "settings.savedWorkouts"; domain: Domain }
   | { id: "settings.savedMeals"; domain: Domain }
   | { id: "settings.savedMealDetails"; domain: Domain; mealId: string }
   | { id: "settings.savedMealActionMenu"; domain: Domain; mealId: string; anchor: AppModalAnchor | null }
@@ -168,6 +182,8 @@ export type AppModal =
   | { id: "food.mediaCapture"; domain: "food"; mode: FoodMediaAction }
   | { id: "food.barcodeNutritionEdit"; domain: "food"; draft: BarcodeNutritionDraft }
   | { id: "food.mediaDraftTray"; domain: "food" }
+  | { id: "workout.progress"; domain: "workout" }
+  | { id: "workout.savedWorkoutPicker"; domain: "workout" }
   | { id: "onboarding.picker"; domain: "onboarding"; kind: OnboardingPickerKind }
   | { id: "onboarding.birthDatePicker"; domain: "onboarding" }
   | { id: "onboarding.goalDatePicker"; domain: "onboarding" };

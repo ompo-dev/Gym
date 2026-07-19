@@ -32,7 +32,13 @@ Use condicional por dominio so quando o fluxo e realmente especifico, como:
 - foto/cardapio/barcode;
 - detalhes nutricionais;
 - metas alimentares;
-- outliner de treino.
+- outliner de treino;
+- progresso/PR de treino;
+- treinos salvos.
+
+Ajustes tambem e condicional por dominio: aberto pela dieta mostra a secao de
+refeicoes salvas, aberto pelo treino mostra a secao de treinos. O resto das
+secoes e igual nos dois.
 
 ## CommandBus Para Mutacoes de Entry
 
@@ -57,6 +63,12 @@ Padrao atual:
 - `EntryRepository`
 - `SettingsRepository`
 - `SavedMealRepository`
+- `SavedWorkoutRepository`
+
+Repository de "salvo" (`SavedMeal`, `SavedWorkout`) é idempotente por origem:
+salvar duas vezes a mesma `Entry` devolve o registro existente em vez de
+duplicar. Isso vive no repository, apoiado por indice unico parcial, nao em
+checagem na UI.
 
 ## Imutabilidade
 
@@ -121,6 +133,51 @@ O perfil controla quais aparecem/calculam via `micronutrients`. Quando nenhum
 esta ativo, a IA deve retornar esses campos como `0` e a UI fica igual ao fluxo
 de macros. Quando ativos, incluir no `userContext`, em detalhes, edicao manual,
 edicao por IA, barcode/Open Food Facts e metas do dia.
+
+## Treino: Series e Cardio
+
+Musculacao e cardio compartilham `WorkoutSet`. Nao criar tipo separado.
+
+- Carga vive em `weight` + `unit` + `reps`.
+- Cardio vive em `durationSeconds` + `distanceMeters`.
+- Todo campo e opcional; as duas regras de `.refine` no schema seguram o que
+  nao faz sentido (serie sem nenhuma metrica, carga sem repeticao).
+- Nunca preencher metrica ausente com `0`. `0` significa "zero medido", ausente
+  significa "nao se aplica". Volume e totais dependem dessa diferenca.
+- `kind` e dica de apresentacao, nao regra de validacao. Uma entrada `cardio`
+  com carga continua valida.
+- Pace e sempre derivado de duracao + distancia. Nao guardar.
+
+Formato visual, sempre pelos helpers de `src/domains/workout.ts`:
+
+- duracao: abaixo de 1 minuto `30 s`; depois `45 min`; acima de uma hora
+  `1 h 30 min`, ou so `2 h` quando nao sobra minuto;
+- distancia: abaixo de 1000 m em `m`, de 1000 para cima em `km`;
+- pace: `5:00/km`, com segundo sempre em dois digitos;
+- resumo de uma serie: partes juntadas por ` - `.
+
+Cores de metrica de treino vivem em `WORKOUT_METRIC_COLORS`, no mesmo arquivo,
+e sao hex fixos, nao tokens de `Colors`. Toda a UI de treino puxa dali:
+outliner, painel de progresso e linhas de treino salvo. Nao repetir hex no
+componente.
+
+O parser local e a fonte de verdade das series. A IA so normaliza `exercise` e
+`kind`. Ao mexer no parser, mexer tambem em `src/domains/workout.test.ts` —
+essa e a rede de seguranca do formato de entrada.
+
+## Como Adicionar Nova Metrica de Treino
+
+Ordem minima:
+
+1. atualizar `setSchema` e, se preciso, as regras de `.refine`;
+2. atualizar `WorkoutTotals`, `emptyTotals` e `addToTotals`;
+3. atualizar o parser (`parseWorkoutSetLine`) e o formatador
+   (`formatWorkoutSetSummary`);
+4. registrar a cor em `WORKOUT_METRIC_COLORS`;
+5. atualizar `describeTotals` e o icone em `TotalsDock`;
+6. atualizar o prompt de treino;
+7. decidir se vira PR em `WorkoutProgressSheet` e se soma no monitor;
+8. atualizar docs e testes de schema/workout/totals.
 
 ## Raciocinio da IA
 
@@ -223,14 +280,28 @@ Testes unitarios atuais ficam junto do dominio/componente:
 
 - `src/domains/food.test.ts`
 - `src/domains/schemas.test.ts`
+- `src/domains/totals.test.ts`
+- `src/domains/workout.test.ts`
 - `src/core/command/CommandBus.test.ts`
+- `src/core/enrich/normalize.test.ts`
 - `src/core/food/openFoodFacts.test.ts`
+- `src/core/appModals.test.ts`
+- `src/core/onboarding.test.ts`
+- `src/core/cache/lru.test.ts`
+- `src/core/date.test.ts`
+- `src/core/utils.test.ts`
+- `src/app/api/enrich+api.test.ts`
+- `src/store/useAppModalStore.test.ts`
 - `src/components/molecules/WorkoutOutliner.test.ts`
+
+`testMatch` pega so `src/**/*.test.ts`. Teste em `.tsx` nao roda.
 
 Priorizar testes em logica pura:
 
 - merge de duplicatas;
 - calculos de metas;
 - mapping de Open Food Facts;
-- parsing de treino;
-- command bus e retry.
+- parsing de treino, incluindo cardio e as unidades de tempo/distancia;
+- normalizacao de abreviacao e erro de digitacao de exercicio;
+- command bus e retry;
+- registro de modais.
