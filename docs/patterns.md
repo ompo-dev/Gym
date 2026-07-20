@@ -27,6 +27,15 @@ de quebrar renderizacao.
 Quando algo serve para dieta e treino, adicionar no `DomainConfig` ou em
 componente compartilhado.
 
+Tripwire, medido: hoje existem **48 ramificacoes por dominio** (`isFood`,
+`config.id ===`, `domain === '...'`), concentradas em `DayTemplate`,
+`NotesList` e `NoteRow`. Estava em 41 antes das rotinas e do salvar-o-dia — a
+conta so sobe. Com dois dominios isso ainda e mais barato que a
+abstracao que eliminaria. Um **terceiro** dominio nao seria "adicionar um
+`DomainConfig`": exigiria editar `DayTemplate`, `NotesList`, `NoteRow`,
+`AppModalHost` e `appModals.ts`. Se chegar a esse ponto, revisar antes de
+comecar.
+
 Use condicional por dominio so quando o fluxo e realmente especifico, como:
 
 - foto/cardapio/barcode;
@@ -36,9 +45,10 @@ Use condicional por dominio so quando o fluxo e realmente especifico, como:
 - progresso/PR de treino;
 - treinos salvos.
 
-Ajustes tambem e condicional por dominio: aberto pela dieta mostra a secao de
-refeicoes salvas, aberto pelo treino mostra a secao de treinos. O resto das
-secoes e igual nos dois.
+Ajustes **nao** e condicional por dominio: e uma tela unica do app e mostra as
+duas secoes (Treinos e Dietas) independente da aba que abriu. A aba de origem
+so decide o `domain` usado como chave de roteamento na pilha de modais — o
+conteudo mostrado nao depende dela.
 
 ## CommandBus Para Mutacoes de Entry
 
@@ -63,12 +73,21 @@ Padrao atual:
 - `EntryRepository`
 - `SettingsRepository`
 - `SavedMealRepository`
-- `SavedWorkoutRepository`
+- `SavedExerciseRepository` — o exercicio avulso salvo pelo bookmark
+- `SavedRoutineRepository` — o dia salvo, nos dois dominios
 
-Repository de "salvo" (`SavedMeal`, `SavedWorkout`) é idempotente por origem:
+Repository de "salvo" (`SavedMeal`, `SavedExercise`) é idempotente por origem:
 salvar duas vezes a mesma `Entry` devolve o registro existente em vez de
 duplicar. Isso vive no repository, apoiado por indice unico parcial, nao em
 checagem na UI.
+
+Essa idempotencia e **load-bearing**, nao arrumacao: o bookmark do outliner
+mantem booleano otimista proprio, entao duplo-toque rapido chama `save()` duas
+vezes. Devolver o existente e o que torna isso inofensivo. Os indices unicos
+lancariam erro, nao deduplicariam — nao ha `ON CONFLICT`.
+
+Escrita em lote usa transacao: `EntryRepository.insertMany` grava tudo ou nada.
+Aplicar tres refeicoes salvas nao pode deixar o dia com uma so.
 
 ## Imutabilidade
 
@@ -134,6 +153,21 @@ esta ativo, a IA deve retornar esses campos como `0` e a UI fica igual ao fluxo
 de macros. Quando ativos, incluir no `userContext`, em detalhes, edicao manual,
 edicao por IA, barcode/Open Food Facts e metas do dia.
 
+## Vocabulario de Treino
+
+Tres palavras que o app usa com sentido fixo. Trocar uma pela outra ja causou
+bug de produto, entao vale a disciplina:
+
+| Palavra | Significa | Onde vive |
+| --- | --- | --- |
+| **Volume** | series por musculo por semana | `MuscleVolume.weeklySets` |
+| **Carga** | tonelagem, peso x reps | `loadKg`, `volumeKg` |
+| **Serie** | uma serie executada | `WorkoutSet` |
+
+Volume **nunca** e tonelagem. A diferenca importa porque so o volume tem faixa
+de referencia (8-12/semana); tonelagem nao responde "estou treinando o
+suficiente?". Ver `docs/data-contracts.md` para as regras completas.
+
 ## Treino: Series e Cardio
 
 Musculacao e cardio compartilham `WorkoutSet`. Nao criar tipo separado.
@@ -161,9 +195,11 @@ e sao hex fixos, nao tokens de `Colors`. Toda a UI de treino puxa dali:
 outliner, painel de progresso e linhas de treino salvo. Nao repetir hex no
 componente.
 
-O parser local e a fonte de verdade das series. A IA so normaliza `exercise` e
-`kind`. Ao mexer no parser, mexer tambem em `src/domains/workout.test.ts` —
-essa e a rede de seguranca do formato de entrada.
+O parser local e a fonte de verdade das series; numeros nunca vem da IA. A IA
+contribui com o que o parser nao tem como saber: `exercise` corrigido, `kind`,
+e a classificacao anatomica (`primary`, `synergists`, `stabilizers`). Ao mexer
+no parser, mexer tambem em `src/domains/workout.test.ts` — essa e a rede de
+seguranca do formato de entrada.
 
 ## Como Adicionar Nova Metrica de Treino
 
@@ -305,3 +341,56 @@ Priorizar testes em logica pura:
 - normalizacao de abreviacao e erro de digitacao de exercicio;
 - command bus e retry;
 - registro de modais.
+
+## Graficos
+
+Tres componentes, um proposito cada:
+
+| Componente | Eixos | Usado em |
+| --- | --- | --- |
+| `MultiLineChart` | tempo x valor | volume por musculo, pace de cardio |
+| `ScatterLineChart` | valor x valor | series x carga |
+| `ProgressRing` | proporcao | metas de dieta |
+
+Regras que ja custaram bug:
+
+- **Barra pode ser `View`, linha inclinada nao.** Barra e caixa com largura, o
+  layout engine faz. Linha entre pontos vai em `react-native-svg`, que ja e
+  dependencia do `ProgressRing` — posicionar segmentos na mao e a esperteza que
+  alguem decodifica as 3h.
+- **`null` e lacuna, `0` e zero.** Pace sem distancia nao e "infinitamente
+  rapido"; serie antes do primeiro registro do exercicio nao e "voce pulou".
+  `trimLeadingGaps` limpa a pre-historia; a linha quebra em segmentos.
+- **Escala nao fica presa no zero.** `niceDomain` ajusta o eixo a faixa dos
+  dados, senao cargas de 100-110 kg viram linha reta num eixo 0-120. Contagem
+  passa `zeroBased` porque ali o zero e valor real.
+- **Poucos pontos precisam de folga.** Duas leituras num eixo justo colam nas
+  bordas e leem como grafico cortado.
+- **Tempo nao arredonda em dez.** Eixo de pace usa a escada de tempo
+  (15s/30s/60s), senao os ticks saem `4:48`, `5:25`.
+- **Todo tick e multiplo do passo.** Dividir o intervalo em N partes iguais
+  deixa os extremos redondos e o meio quebrado.
+
+Cores seguem `WORKOUT_METRIC_COLORS`: series amarelo, carga azul, tempo laranja,
+distancia verde. Sao cores **por metrica**, nao por identidade — linha de
+modalidade de cardio e de grupamento muscular usam paleta propria.
+
+## UI Nativa: Segmented
+
+`NativeSegmented` e o padrao para escolha entre poucas opcoes. Usa o segmented
+control do iOS via `@expo/ui` quando disponivel e cai para pills React Native
+quando nao. Mesma API nos dois casos — quem chama nunca ramifica por plataforma.
+
+Segue a regra geral de UI nativa: nada importa `@expo/ui/swift-ui` direto,
+sempre pelo lazy guard de `onboardingNative.ts`.
+
+## Streak
+
+Dias **consecutivos** treinados, contando de hoje para tras. Tres regras:
+
+- nao ter treinado ainda hoje nao quebra streak vivo de ontem;
+- streak quebrado e `0`, nunca o recorde antigo — mostrar 3 celebraria algo ja
+  perdido;
+- varias entradas no mesmo dia contam um dia.
+
+Dias de cardio contam no streak de treino. Cardio tem streak proprio tambem.

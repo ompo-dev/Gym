@@ -90,12 +90,20 @@ function MacroStat({
   );
 }
 
+/** Shared by the per-item rows and the meal totals card — both carry the same
+ *  three micronutrient fields, so one definition drives both. */
+interface MicroSource {
+  sugarG: number;
+  fiberG: number;
+  sodiumMg: number;
+}
+
 const MICRO_STATS: {
   key: OnboardingMicronutrient;
   icon: AppIconName;
   color: string;
   labelKey: 'goals.sugar' | 'goals.fiber' | 'goals.sodium';
-  value: (item: FoodData['items'][number]) => string;
+  value: (item: MicroSource) => string;
 }[] = [
   { key: 'sugar', icon: 'squareStack', color: '#2E9BFF', labelKey: 'goals.sugar', value: (item) => `${item.sugarG.toFixed(1)} g` },
   { key: 'fiber', icon: 'apple', color: '#34C759', labelKey: 'goals.fiber', value: (item) => `${item.fiberG.toFixed(1)} g` },
@@ -417,6 +425,20 @@ export function FoodEntryDetailSheet({
                   value={`${totals.fat.toFixed(1)} g`}
                 />
               </View>
+
+              {microStats.length ? (
+                <View style={styles.macroRow}>
+                  {microStats.map((stat) => (
+                    <MacroStat
+                      key={stat.key}
+                      icon={stat.icon}
+                      color={stat.color}
+                      label={t(stat.labelKey)}
+                      value={stat.value(totals)}
+                    />
+                  ))}
+                </View>
+              ) : null}
             </GlassSurface>
           </View>
 

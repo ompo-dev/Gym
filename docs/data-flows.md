@@ -78,6 +78,16 @@ Regras:
 - Se a IA ignora texto, `fallbackFoodItemsFromText` cria itens textuais zerados
   para nao perder a anotacao.
 
+Falha da IA (rede caiu, resposta nao valida) e caso separado dos fallbacks
+acima:
+
+- sem barcode, a entrada vira `error` — nao existe numero real para salvar, e
+  gravar `done` com tudo zerado seria um almoco de 0 kcal somando no dia;
+- com barcode, continua `done`: os itens do barcode sao dado real;
+- entrada com midia em `error` **nao** oferece "tentar de novo". `runEnrich` so
+  reenvia `text`, entao o retry reconstruiria a refeicao sem as fotos. A UI
+  mostra `falhou` e o usuario refaz a nota.
+
 ## 4. Codigo de Barras
 
 ```mermaid
@@ -326,17 +336,15 @@ Como o PR e apurado:
 
 O painel recarrega o historico toda vez que fica visivel. Nao ha cache.
 
-## 12. Treinos Salvos
+## 12. Exercicios Salvos
 
 Dois jeitos de criar um template:
 
 ```mermaid
 flowchart TD
   A["Bookmark no outliner"] --> B["save(kind=exercise, sourceEntryId)"]
-  C["Salvar treino de hoje no monitor"] --> D["save(kind=day, sourceDate)"]
   B --> E["saved_workouts"]
-  D --> E
-  E --> F["Picker de treino salvo"]
+  E --> F["Picker de exercicio salvo"]
   F --> G["addEntry por exercicio"]
 ```
 
@@ -348,11 +356,11 @@ Salvar:
   chama `deleteBySourceEntryId` e **apaga o template de vez**, sem confirmacao
   e sem undo;
 - o estado preenchido nao e da sessao. `DayTemplate` recarrega
-  `SavedWorkoutRepository.all()` a cada mudanca de dia ou de entradas e monta
+  `SavedExerciseRepository.all()` a cada mudanca de dia ou de entradas e monta
   `savedWorkoutEntryIds`, entao o bookmark continua preenchido depois de
   fechar o app;
-- `Salvar treino de hoje` junta os nomes distintos do dia visivel em um
-  template `day`, com `sourceDate`;
+- salvar o dia inteiro nao mora mais aqui: virou o botao do header, gravando
+  em `saved_routines`. `kind = day` continua legivel, mas ninguem escreve;
 - a UI e otimista: o icone marca na hora e reverte se o repository devolver
   falso ou lancar;
 - salvar de novo a mesma origem nao duplica, os indices unicos parciais
@@ -374,10 +382,16 @@ Apagar, dois caminhos:
 
 Undo:
 
-1. Delete chama `CommandBus.deleteEntry`.
+1. Delete chama `CommandBus.deleteEntry`, que **devolve o comando**.
 2. Entrada sai do repository e da store.
-3. `UndoToast` aparece por 4 segundos.
-4. Undo re-insere a entrada anterior.
+3. `UndoToast` aparece por 4 segundos, ja carregando esse comando.
+4. Undo passa o comando de volta: `CommandBus.undo(comando)` so desempilha se
+   ele ainda for o topo. Se o usuario fez outra coisa depois (adicionou nota,
+   editou), o undo devolve `null` e nao mexe em nada.
+
+O bus e singleton compartilhado por dieta e treino, entao sem esse vinculo o
+toast de uma tela desfaria a acao da outra. A pilha guarda no maximo 20
+comandos.
 
 Retry:
 

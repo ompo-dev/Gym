@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 
 import { bus } from '@/core/command/bus';
+import type { Command } from '@/core/command/Command';
 import { addDays, todayISO } from '@/core/date';
 import type { Domain, Entry, EntryMediaAttachment } from '@/core/types';
 import { EntryRepository } from '@/data/EntryRepository';
@@ -30,9 +31,9 @@ export function useDay(domain: Domain) {
     (entry: Entry, text: string) => void bus.editEntry(entry, text),
     [],
   );
-  const deleteEntry = useCallback((entry: Entry) => void bus.deleteEntry(entry), []);
+  const deleteEntry = useCallback((entry: Entry) => bus.deleteEntry(entry), []);
   const retryEntry = useCallback((entry: Entry) => bus.retry(entry), []);
-  const undo = useCallback(() => bus.undo(), []);
+  const undo = useCallback((expected?: Command) => bus.undo(expected), []);
   const goPrev = useCallback(
     () => setDate(domain, addDays(day.date, -1)),
     [domain, day.date, setDate],

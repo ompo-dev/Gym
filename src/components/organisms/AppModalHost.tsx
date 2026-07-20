@@ -3,13 +3,13 @@ import { useEffect } from 'react';
 import type { FoodMediaAction, Domain, Entry } from '@/core/types';
 import type { FoodData } from '@/domains/schemas';
 import type { SavedMeal } from '@/data/SavedMealRepository';
-import type { SavedWorkout } from '@/data/SavedWorkoutRepository';
+import type { SavedExercise } from '@/data/SavedExerciseRepository';
 import { useAppModalStore } from '@/store/useAppModalStore';
 
 import { FoodEntryDetailSheet } from './FoodEntryDetailSheet';
 import { FoodMediaCaptureSheet } from './FoodMediaCaptureSheet';
 import { FoodNutritionEditSheet } from './FoodNutritionEditSheet';
-import { SavedMealsSheet, SavedWorkoutsSheet, SettingsSheet } from './SettingsSheet';
+import { SavedMealsSheet, SavedExercisesSheet, SettingsSheet } from './SettingsSheet';
 
 type CapturedFoodPhoto = {
   kind: Extract<FoodMediaAction, 'foodPhoto' | 'menuPhoto'>;
@@ -32,7 +32,7 @@ interface AppModalHostProps {
   onFoodCaptureDismiss: () => void;
   onSaveBarcodeFood: (text: string, data: FoodData) => Promise<void> | void;
   onSelectSavedMeals: (meals: SavedMeal[]) => void;
-  onSelectSavedWorkouts: (workouts: SavedWorkout[]) => void;
+  onSelectSavedExercises: (workouts: SavedExercise[]) => void;
 }
 
 export function AppModalHost({
@@ -49,7 +49,7 @@ export function AppModalHost({
   onFoodCaptureDismiss,
   onSaveBarcodeFood,
   onSelectSavedMeals,
-  onSelectSavedWorkouts,
+  onSelectSavedExercises,
 }: AppModalHostProps) {
   const activeModal = useAppModalStore((state) => state.stack.at(-1));
   const stack = useAppModalStore((state) => state.stack);
@@ -107,12 +107,12 @@ export function AppModalHost({
     );
   }
 
-  if (modal.id === 'workout.savedWorkoutPicker') {
+  if (modal.id === 'workout.savedExercisePicker') {
     return (
-      <SavedWorkoutsSheet
+      <SavedExercisesSheet
         visible
-        onClose={() => closeAppModal('workout.savedWorkoutPicker')}
-        onSelect={onSelectSavedWorkouts}
+        onClose={() => closeAppModal('workout.savedExercisePicker')}
+        onSelect={onSelectSavedExercises}
       />
     );
   }

@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import type { Domain } from '@/core/types';
 
+import { isValidPortion } from './anatomy';
+
 export const foodItemSchema = z.object({
   label: z.string().min(1),
   mediaId: z.string().trim().min(1).optional().catch(undefined),
@@ -86,8 +88,39 @@ export const setSchema = z.object({
 ).refine((set) => set.weight === undefined || set.reps !== undefined);
 export type WorkoutSet = z.infer<typeof setSchema>;
 
+const muscleRefShape = z.object({
+  muscle: z.string(),
+  portion: z.string().optional(),
+});
+
+/**
+ * Drop references the anatomy vocabulary does not know instead of rejecting the
+ * whole entry. A hallucinated muscle must not cost the user the exercise-name
+ * correction that came in the same response.
+ */
+function keepKnownMuscles(value: unknown): unknown {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item) => {
+    const parsed = muscleRefShape.safeParse(item);
+    return parsed.success && isValidPortion(parsed.data.muscle, parsed.data.portion);
+  });
+}
+
+function keepKnownMuscle(value: unknown): unknown {
+  const parsed = muscleRefShape.safeParse(value);
+  if (!parsed.success) return undefined;
+  return isValidPortion(parsed.data.muscle, parsed.data.portion) ? value : undefined;
+}
+
+export const muscleRefSchema = muscleRefShape;
+export type MuscleRef = z.infer<typeof muscleRefSchema>;
+
 export const workoutSchema = z.object({
   exercise: z.string().nullable(),
+  /** The muscle the exercise is for. */
+  primary: z.preprocess(keepKnownMuscle, muscleRefShape.optional()),
+  synergists: z.preprocess(keepKnownMuscles, z.array(muscleRefShape).default([])),
+  stabilizers: z.preprocess(keepKnownMuscles, z.array(muscleRefShape).default([])),
   kind: z.preprocess(normalizeWorkoutKind, z.enum(['strength', 'cardio']).optional()),
   // Zero sets is valid: the outliner creates an exercise first, then you add
   // sets line by line, so a set-less exercise is a normal transient state.
@@ -96,6 +129,27 @@ export const workoutSchema = z.object({
 export type WorkoutData = z.infer<typeof workoutSchema>;
 
 export type EnrichData = FoodData | WorkoutData;
+
+/**
+ * A saved day. Workout keeps only the exercise names — reapplying it should
+ * give you the session to fill in, not last week's loads. Diet keeps the full
+ * nutrition, because repeating a meal means repeating its numbers.
+ */
+export const routineWorkoutItemsSchema = z.array(z.string().trim().min(1));
+
+export const routineFoodItemsSchema = z.array(
+  z.object({
+    text: z.string(),
+    data: foodSchema,
+  }),
+);
+
+export type RoutineFoodItem = z.infer<typeof routineFoodItemsSchema>[number];
+
+export const routineItemsSchemaByDomain = {
+  food: routineFoodItemsSchema,
+  workout: routineWorkoutItemsSchema,
+} satisfies Record<Domain, z.ZodType>;
 
 export const schemaByDomain = {
   food: foodSchema,

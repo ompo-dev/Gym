@@ -33,6 +33,17 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
           sourceEntryId TEXT,
           createdAt INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS saved_routines (
+          id TEXT PRIMARY KEY NOT NULL,
+          domain TEXT NOT NULL,
+          name TEXT NOT NULL,
+          weekday INTEGER,
+          items TEXT NOT NULL,
+          sourceDate TEXT,
+          createdAt INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_saved_routines_domain
+          ON saved_routines (domain, createdAt DESC);
         CREATE TABLE IF NOT EXISTS saved_workouts (
           id TEXT PRIMARY KEY NOT NULL,
           kind TEXT NOT NULL,

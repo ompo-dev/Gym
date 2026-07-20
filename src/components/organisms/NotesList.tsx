@@ -22,8 +22,8 @@ interface NotesListProps<TData, TTotals> {
   onEdit: (entry: Entry, text: string) => void;
   onDelete: (entry: Entry) => void;
   onRetry: (entry: Entry) => void;
-  onSaveWorkoutExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
-  savedWorkoutEntryIds?: Set<string>;
+  onSaveExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
+  savedExerciseEntryIds?: Set<string>;
   onOpenFoodDetails?: (entry: Entry) => void;
 }
 
@@ -109,8 +109,8 @@ export function NotesList<TData, TTotals>({
   onEdit,
   onDelete,
   onRetry,
-  onSaveWorkoutExercise,
-  savedWorkoutEntryIds,
+  onSaveExercise,
+  savedExerciseEntryIds,
   onOpenFoodDetails,
 }: NotesListProps<TData, TTotals>) {
   const containerRef = useRef<View | null>(null);
@@ -306,11 +306,11 @@ export function NotesList<TData, TTotals>({
               onEdit={onEdit}
               onDelete={onDelete}
               onRetry={onRetry}
-              onSaveWorkoutExercise={
-                config.id === 'workout' ? onSaveWorkoutExercise : undefined
+              onSaveExercise={
+                config.id === 'workout' ? onSaveExercise : undefined
               }
-              workoutExerciseSaved={
-                config.id === 'workout' ? savedWorkoutEntryIds?.has(item.id) ?? false : false
+              exerciseSaved={
+                config.id === 'workout' ? savedExerciseEntryIds?.has(item.id) ?? false : false
               }
               onOpenFoodDetails={onOpenFoodDetails}
               onFocusNewWorkoutExercise={config.id === 'workout' ? focusNewExercise : undefined}

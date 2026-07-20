@@ -12,6 +12,20 @@ const MAX_ATTEMPTS = 5;
 const BACKOFF_BASE_MS = 1_000;
 const BACKOFF_MAX_MS = 30_000;
 const CACHE_SIZE = 200;
+// ponytail: undo is a toast affordance, not history. 20 is far past what any
+// toast can still be offering; the cap just stops the stack growing forever.
+const MAX_UNDO = 20;
+
+/**
+ * Entry.error is diagnostic only — no screen renders it, the UI keys off
+ * `status === 'error'` alone. Stable keys, not prose, so nothing reads like a
+ * user-facing string that was never translated.
+ */
+export const ENRICH_ERROR = {
+  parse: 'enrich.parse',
+  offline: 'enrich.offline',
+  failed: 'enrich.failed',
+} as const;
 
 /** Minimal surface the bus needs from the visible-day store — keeps it testable. */
 export interface StorePort {
@@ -49,16 +63,24 @@ export class CommandBus {
 
   // ---- command dispatch + undo -------------------------------------------
 
-  async run(cmd: Command): Promise<void> {
+  async run(cmd: Command): Promise<Command> {
     await cmd.execute();
     this.undoStack.push(cmd);
+    if (this.undoStack.length > MAX_UNDO) this.undoStack.shift();
+    return cmd;
   }
 
   get canUndo(): boolean {
     return this.undoStack.length > 0;
   }
 
-  async undo(): Promise<string | null> {
+  /**
+   * Undo the most recent command. Pass the command you mean to undo — the bus is
+   * shared by both verticals, so without it an undo toast for a deleted food
+   * entry would happily undo a workout entry added while the toast was up.
+   */
+  async undo(expected?: Command): Promise<string | null> {
+    if (expected && this.undoStack.at(-1) !== expected) return null;
     const cmd = this.undoStack.pop();
     if (!cmd) return null;
     await cmd.undo();
@@ -84,8 +106,9 @@ export class CommandBus {
     await this.run(new AddEntryCommand(this, entry));
   }
 
-  async deleteEntry(entry: Entry): Promise<void> {
-    await this.run(new DeleteEntryCommand(this, entry));
+  /** Returns the command so the caller can undo exactly this delete. */
+  async deleteEntry(entry: Entry): Promise<Command> {
+    return this.run(new DeleteEntryCommand(this, entry));
   }
 
   /** Change an entry's text and re-enrich it (notes-block editing). */
@@ -199,6 +222,11 @@ export class CommandBus {
           ...localData,
           exercise: aiData.exercise ?? localData.exercise,
           kind: aiData.kind ?? localData.kind,
+          // Anatomy only ever comes from the model — the local parser reads
+          // numbers, not what a movement trains.
+          primary: aiData.primary ?? localData.primary,
+          synergists: aiData.synergists.length ? aiData.synergists : localData.synergists,
+          stabilizers: aiData.stabilizers.length ? aiData.stabilizers : localData.stabilizers,
         };
         this.cache.set(key, data);
         await this.applyResolved(entry, data);
@@ -234,7 +262,7 @@ export class CommandBus {
       }
       const parsed = schemaByDomain[entry.domain].safeParse(res.data);
       if (!parsed.success) {
-        await this.setError(entry.domain, entry.id, 'Could not read the AI response');
+        await this.setError(entry.domain, entry.id, ENRICH_ERROR.parse);
         return;
       }
       const data = parsed.data as EnrichData;
@@ -251,7 +279,7 @@ export class CommandBus {
     const attempt = (this.attempts.get(entry.id) ?? 0) + 1;
     this.attempts.set(entry.id, attempt);
     if (attempt >= MAX_ATTEMPTS) {
-      await this.setError(entry.domain, entry.id, 'Offline — tap to retry');
+      await this.setError(entry.domain, entry.id, ENRICH_ERROR.offline);
       return;
     }
     await this.setStatus(entry.domain, entry.id, 'queued');

@@ -1,7 +1,7 @@
 import Slider from "@react-native-community/slider";
 import Constants from "expo-constants";
 import type { ReactNode, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -14,10 +14,13 @@ import {
 import { AppIcon, type AppIconName } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
 import { GlassSurface } from "@/components/atoms/GlassSurface";
+import { MultiLineChart } from "@/components/molecules/MultiLineChart";
+import { NativeSegmented } from "@/components/molecules/NativeSegmented";
+import { ScatterLineChart } from "@/components/molecules/ScatterLineChart";
 import { SettingsRow } from "@/components/molecules/SettingsRow";
 import {
-  BIAS_DOT_COLORS,
   activityOptions,
+  BIAS_DOT_COLORS,
   biasMeta,
   copy,
   genderOptions,
@@ -34,6 +37,7 @@ import { Metrics, Radii, Spacing } from "@/constants/theme";
 import { canOpenAppModal, type AppModalAnchor } from "@/core/appModals";
 import { addDays, todayISO } from "@/core/date";
 import { enrich } from "@/core/enrich/client";
+import type { ApiKeyMode } from "@/core/enrich/types";
 import {
   buildOnboardingPromptContext,
   buildOnboardingSummary,
@@ -46,23 +50,42 @@ import {
 import type { Domain, Entry, EntryMediaAttachment } from "@/core/types";
 import { EntryRepository } from "@/data/EntryRepository";
 import {
+  SavedExerciseRepository,
+  type SavedExercise,
+} from "@/data/SavedExerciseRepository";
+import {
   SavedMealRepository,
   type SavedMeal,
 } from "@/data/SavedMealRepository";
 import {
-  SavedWorkoutRepository,
-  type SavedWorkout,
-} from "@/data/SavedWorkoutRepository";
+  SavedRoutineRepository,
+  type SavedRoutine,
+} from "@/data/SavedRoutineRepository";
+import {
+  GROUP_COLORS,
+  GROUP_ORDER,
+  muscleById,
+  MUSCLES,
+  WEEKLY_SET_TARGET,
+  type MuscleGroupId,
+} from "@/domains/anatomy";
+import { trimLeadingGaps } from "@/domains/chartScale";
 import { formatWaterMl, mergeFoodEdit, sumFoodData } from "@/domains/food";
-import { foodEditSchema, foodSchema, type FoodData, type WorkoutData } from "@/domains/schemas";
+import { routineSummary } from "@/domains/routines";
+import { foodEditSchema, foodSchema, type FoodData } from "@/domains/schemas";
 import {
   formatWorkoutDistance,
   formatWorkoutDuration,
+  formatWorkoutPace,
   inferWorkoutKind,
-  uniqueWorkoutExerciseNames,
   WORKOUT_METRIC_COLORS,
-  workoutConfig,
 } from "@/domains/workout";
+import {
+  buildMonitorReport,
+  type CardioModality,
+  type MonitorFocus,
+  type MonitorPeriod,
+} from "@/domains/workoutMonitor";
 import { useColors } from "@/hooks/use-colors";
 import { useFoodGoals } from "@/hooks/useFoodGoals";
 import { getLang, t } from "@/i18n";
@@ -251,10 +274,7 @@ function OptionMenu<T extends string>({
   );
   const menuPosition = {
     top: anchor
-      ? Math.max(
-          Spacing.two,
-          Math.round(anchor.y + anchor.height - menuHeight),
-        )
+      ? Math.max(Spacing.two, Math.round(anchor.y + anchor.height - menuHeight))
       : Spacing.eight,
     right,
   };
@@ -608,91 +628,15 @@ export function SavedMealsSheet({
   );
 }
 
-interface WorkoutAggregate {
-  name: string;
-  sessions: number;
-  sets: number;
-  volumeKg: number;
-  durationSeconds: number;
-  distanceMeters: number;
-  lastDate: string;
-}
-
-function isWorkoutData(data: Entry["data"]): data is WorkoutData {
-  return Boolean(data && "sets" in data);
-}
-
-function aggregateWorkoutEntries(entries: Entry[]): WorkoutAggregate[] {
-  const byExercise = new Map<string, WorkoutAggregate>();
-
-  entries.forEach((entry) => {
-    if (entry.status !== "done" || !isWorkoutData(entry.data)) return;
-    const exercise = uniqueWorkoutExerciseNames([
-      { text: entry.text, data: entry.data },
-    ])[0];
-    if (!exercise) return;
-
-    const key = exercise.toLocaleLowerCase();
-    const current =
-      byExercise.get(key) ??
-      {
-        name: exercise,
-        sessions: 0,
-        sets: 0,
-        volumeKg: 0,
-        durationSeconds: 0,
-        distanceMeters: 0,
-        lastDate: entry.date,
-      };
-    const totals = workoutConfig.addToTotals(workoutConfig.emptyTotals, entry.data);
-    byExercise.set(key, {
-      ...current,
-      sessions: current.sessions + 1,
-      sets: current.sets + totals.sets,
-      volumeKg: current.volumeKg + totals.volumeKg,
-      durationSeconds: current.durationSeconds + totals.durationSeconds,
-      distanceMeters: current.distanceMeters + totals.distanceMeters,
-      lastDate: entry.date > current.lastDate ? entry.date : current.lastDate,
-    });
-  });
-
-  return [...byExercise.values()].sort((a, b) => b.lastDate.localeCompare(a.lastDate));
-}
-
-function WorkoutMetricLine({ aggregate }: { aggregate: WorkoutAggregate }) {
-  const colors = useColors();
-  const metrics = [
-    `${aggregate.sessions}x`,
-    `${aggregate.sets} ${t("totals.sets")}`,
-    aggregate.volumeKg > 0 ? `${Math.round(aggregate.volumeKg)} kg` : "",
-    aggregate.durationSeconds > 0 ? formatWorkoutDuration(aggregate.durationSeconds) : "",
-    aggregate.distanceMeters > 0 ? formatWorkoutDistance(aggregate.distanceMeters) : "",
-  ].filter(Boolean);
-
-  return (
-    <SettingsRow
-      icon="dumbbell"
-      iconColor={colors.accent}
-      title={aggregate.name}
-      subtitle={metrics.join("  \u00b7  ")}
-      trailing={
-        <AppText variant="caption" color={colors.textTertiary}>
-          {aggregate.lastDate}
-        </AppText>
-      }
-    />
-  );
-}
-
-function SavedWorkoutRow({
+function SavedExerciseRow({
   workout,
   onDelete,
   onPress,
   selectable = false,
   selected = false,
 }: {
-  workout: SavedWorkout;
-  onDelete?: (workout: SavedWorkout) => void;
+  workout: SavedExercise;
+  onDelete?: (workout: SavedExercise) => void;
   onPress?: () => void;
   selectable?: boolean;
   selected?: boolean;
@@ -720,7 +664,11 @@ function SavedWorkoutRow({
         <AppText variant="body" numberOfLines={1} style={styles.savedMealName}>
           {workout.name}
         </AppText>
-        <AppText variant="caption" color={colors.textSecondary} numberOfLines={2}>
+        <AppText
+          variant="caption"
+          color={colors.textSecondary}
+          numberOfLines={2}
+        >
           {workout.exercises.join("  \u00b7  ")}
         </AppText>
       </View>
@@ -768,16 +716,16 @@ function SavedWorkoutRow({
   );
 }
 
-function SavedWorkoutsContent({
+function SavedExercisesContent({
   workouts,
   onDelete,
   onSelect,
   selectable = false,
   selectedIds = [],
 }: {
-  workouts: SavedWorkout[];
-  onDelete?: (workout: SavedWorkout) => void;
-  onSelect?: (workout: SavedWorkout) => void;
+  workouts: SavedExercise[];
+  onDelete?: (workout: SavedExercise) => void;
+  onSelect?: (workout: SavedExercise) => void;
   selectable?: boolean;
   selectedIds?: string[];
 }) {
@@ -803,7 +751,7 @@ function SavedWorkoutsContent({
       {workouts.map((workout, index) => (
         <View key={workout.id}>
           {index > 0 ? <Divider /> : null}
-          <SavedWorkoutRow
+          <SavedExerciseRow
             workout={workout}
             onDelete={onDelete}
             onPress={onSelect ? () => onSelect(workout) : undefined}
@@ -816,17 +764,17 @@ function SavedWorkoutsContent({
   );
 }
 
-export function SavedWorkoutsSheet({
+export function SavedExercisesSheet({
   visible,
   onClose,
   onSelect,
 }: {
   visible: boolean;
   onClose: () => void;
-  onSelect: (workouts: SavedWorkout[]) => void;
+  onSelect: (workouts: SavedExercise[]) => void;
 }) {
   const colors = useColors();
-  const [workouts, setWorkouts] = useState<SavedWorkout[]>([]);
+  const [workouts, setWorkouts] = useState<SavedExercise[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -834,10 +782,10 @@ export function SavedWorkoutsSheet({
       setSelectedIds([]);
       return;
     }
-    void SavedWorkoutRepository.all().then(setWorkouts);
+    void SavedExerciseRepository.all().then(setWorkouts);
   }, [visible]);
 
-  const toggleWorkout = (workout: SavedWorkout) => {
+  const toggleWorkout = (workout: SavedExercise) => {
     setSelectedIds((current) =>
       current.includes(workout.id)
         ? current.filter((id) => id !== workout.id)
@@ -846,7 +794,9 @@ export function SavedWorkoutsSheet({
   };
 
   const confirmSelection = () => {
-    const selectedWorkouts = workouts.filter((workout) => selectedIds.includes(workout.id));
+    const selectedWorkouts = workouts.filter((workout) =>
+      selectedIds.includes(workout.id),
+    );
     if (selectedWorkouts.length === 0) return;
     onSelect(selectedWorkouts);
   };
@@ -896,7 +846,7 @@ export function SavedWorkoutsSheet({
       }
       size="full"
     >
-      <SavedWorkoutsContent
+      <SavedExercisesContent
         workouts={workouts}
         onSelect={toggleWorkout}
         selectable
@@ -906,113 +856,873 @@ export function SavedWorkoutsSheet({
   );
 }
 
-function WorkoutMonitorSheet({
+function SavedRoutinesSheet({
+  visible,
+  domain,
+  onClose,
+}: {
+  visible: boolean;
+  domain: Domain;
+  onClose: () => void;
+}) {
+  const colors = useColors();
+  const [routines, setRoutines] = useState<SavedRoutine[]>([]);
+
+  const load = useCallback(async () => {
+    setRoutines(await SavedRoutineRepository.byDomain(domain));
+  }, [domain]);
+
+  useEffect(() => {
+    if (visible) void load();
+  }, [visible, load]);
+
+  const remove = async (routine: SavedRoutine) => {
+    await SavedRoutineRepository.delete(routine.id);
+    await load();
+  };
+
+  return (
+    <PageSheet
+      visible={visible}
+      title={
+        domain === "food" ? t("routine.savedDiets") : t("routine.savedWorkouts")
+      }
+      onClose={onClose}
+    >
+      {routines.length === 0 ? (
+        <View
+          style={[
+            styles.card,
+            styles.emptySavedMeals,
+            { backgroundColor: colors.backgroundElement },
+          ]}
+        >
+          <AppText variant="body" color={colors.textSecondary}>
+            {t("routine.emptySaved")}
+          </AppText>
+        </View>
+      ) : (
+        <View
+          style={[styles.card, { backgroundColor: colors.backgroundElement }]}
+        >
+          {routines.map((routine, index) => (
+            <View key={routine.id}>
+              {index > 0 ? <Divider /> : null}
+              <View style={styles.savedMealRow}>
+                <View style={styles.summaryIcon}>
+                  <AppIcon
+                    name={domain === "food" ? "utensils" : "dumbbell"}
+                    color={domain === "food" ? colors.carbs : colors.accent}
+                    size={18}
+                  />
+                </View>
+                <View style={styles.savedMealContent}>
+                  <View style={styles.routineTitleRow}>
+                    <AppText
+                      variant="body"
+                      numberOfLines={1}
+                      style={styles.savedMealName}
+                    >
+                      {routine.name}
+                    </AppText>
+                    {routine.weekday !== null ? (
+                      <View
+                        style={[
+                          styles.routineWeekday,
+                          { borderColor: colors.border },
+                        ]}
+                      >
+                        <AppText variant="caption" color={colors.textSecondary}>
+                          {t(
+                            `weekday.long.${routine.weekday}` as "weekday.long.0",
+                          )}
+                        </AppText>
+                      </View>
+                    ) : null}
+                  </View>
+                  <AppText
+                    variant="caption"
+                    color={colors.textSecondary}
+                    numberOfLines={2}
+                  >
+                    {routineSummary(routine)}
+                  </AppText>
+                </View>
+                <Pressable
+                  onPress={() => void remove(routine)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("routine.deleteSaved")}
+                >
+                  <AppIcon name="trash" color={colors.danger} size={18} />
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </PageSheet>
+  );
+}
+
+function ApiKeyField({
+  label,
+  hint,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  const colors = useColors();
+  return (
+    <View style={styles.apiKeyField}>
+      <AppText variant="body">{label}</AppText>
+      {hint ? (
+        <AppText variant="caption" color={colors.textTertiary}>
+          {hint}
+        </AppText>
+      ) : null}
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textTertiary}
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        // Not a password field, but the value is a credential — keep it out of
+        // the keyboard's learned-words store and off the screen in plain sight.
+        secureTextEntry
+        style={[
+          styles.apiKeyInput,
+          { backgroundColor: colors.surfaceMuted, color: colors.text },
+        ]}
+      />
+    </View>
+  );
+}
+
+function ApiKeysSheet({
   visible,
   onClose,
-  onSaveDay,
 }: {
   visible: boolean;
   onClose: () => void;
-  onSaveDay: () => Promise<void>;
+}) {
+  const colors = useColors();
+  const apiKeys = useAppStore((s) => s.apiKeys);
+  const setApiKeys = useAppStore((s) => s.setApiKeys);
+  const [draft, setDraft] = useState(apiKeys);
+
+  useEffect(() => {
+    if (visible) setDraft(apiKeys);
+  }, [visible, apiKeys]);
+
+  const modes: { value: ApiKeyMode; title: string; subtitle: string }[] = [
+    {
+      value: "managed",
+      title: t("settings.api.managed"),
+      subtitle: t("settings.api.managedHint"),
+    },
+    {
+      value: "own",
+      title: t("settings.api.own"),
+      subtitle: t("settings.api.ownHint"),
+    },
+  ];
+
+  const save = () => {
+    void setApiKeys(draft);
+    onClose();
+  };
+
+  return (
+    <PageSheet
+      visible={visible}
+      title={t("settings.connect.api")}
+      onClose={onClose}
+      onSave={save}
+      keyboardAwareScroll
+    >
+      <Section label={t("settings.api.mode")}>
+        {modes.map((mode, index) => (
+          <View key={mode.value}>
+            {index > 0 ? <Divider /> : null}
+            <SettingsRow
+              title={mode.title}
+              subtitle={mode.subtitle}
+              trailing={
+                draft.mode === mode.value ? (
+                  <AppIcon name="check" color={colors.accent} size={18} />
+                ) : undefined
+              }
+              onPress={() =>
+                setDraft((current) => ({ ...current, mode: mode.value }))
+              }
+            />
+          </View>
+        ))}
+      </Section>
+
+      {draft.mode === "own" ? (
+        <Section label={t("settings.api.keys")}>
+          <ApiKeyField
+            label={t("settings.api.chatKey")}
+            hint={t("settings.api.chatKeyHint")}
+            value={draft.chat}
+            placeholder="sk-..."
+            onChange={(chat) => setDraft((current) => ({ ...current, chat }))}
+          />
+          <Divider />
+          <ApiKeyField
+            label={t("settings.api.imageKey")}
+            hint={t("settings.api.imageKeyHint")}
+            value={draft.image}
+            placeholder={t("settings.api.sameAsChat")}
+            onChange={(image) => setDraft((current) => ({ ...current, image }))}
+          />
+        </Section>
+      ) : null}
+    </PageSheet>
+  );
+}
+
+// Modalities have no group colour of their own; a small fixed ramp keeps the
+// lines distinguishable without inventing anatomy for a bike ride.
+const CARDIO_LINE_COLORS = ["#BF5AF2", "#64D2FF", "#FF922E", "#34C759"];
+
+const MONITOR_PERIODS: MonitorPeriod[] = [7, 15, 30];
+
+function DeltaBadge({ value }: { value?: number }) {
+  const colors = useColors();
+  if (value === undefined || value === 0) return null;
+  const up = value > 0;
+  return (
+    <AppText variant="label" color={up ? colors.success : colors.danger}>
+      {`${up ? "▲" : "▼"} ${Math.abs(value)}%`}
+    </AppText>
+  );
+}
+
+/**
+ * Labels are stored lowercase because several are used inside sentences
+ * ("3 séries"); the summary card is the one place they stand alone, so it
+ * capitalises at render instead of the dictionary carrying two variants.
+ */
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+function MonitorStat({
+  label,
+  value,
+  delta,
+  color,
+}: {
+  label: string;
+  value: string;
+  delta?: number;
+  /** Metric colour, the same one the notes rows and totals dock use. */
+  color?: string;
+}) {
+  const colors = useColors();
+  return (
+    <View style={styles.monitorStat}>
+      <AppText variant="caption" color={colors.textTertiary} numberOfLines={1}>
+        {capitalise(label)}
+      </AppText>
+      <AppText
+        variant="heading"
+        color={color}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
+        {value}
+      </AppText>
+      <DeltaBadge value={delta} />
+    </View>
+  );
+}
+
+function CardioModalityRow({
+  modality,
+  color,
+}: {
+  modality: CardioModality;
+  color: string;
+}) {
+  const colors = useColors();
+  // Each metric in its own colour, same as the notes rows and the dock: a
+  // joined grey string made distance, time and pace read as one blob.
+  const parts = [
+    modality.distanceMeters > 0
+      ? {
+          key: "dist",
+          text: formatWorkoutDistance(modality.distanceMeters),
+          color: WORKOUT_METRIC_COLORS.distance,
+        }
+      : null,
+    modality.durationSeconds > 0
+      ? {
+          key: "time",
+          text: formatWorkoutDuration(modality.durationSeconds),
+          color: WORKOUT_METRIC_COLORS.duration,
+        }
+      : null,
+    modality.avgPaceSecondsPerKm !== null
+      ? {
+          key: "pace",
+          text: formatWorkoutPace(modality.avgPaceSecondsPerKm),
+          color: WORKOUT_METRIC_COLORS.reps,
+        }
+      : null,
+  ].flatMap((part) => (part ? [part] : []));
+
+  return (
+    <View style={styles.exerciseRow}>
+      <View style={[styles.muscleDot, { backgroundColor: color }]} />
+      <View style={styles.exerciseText}>
+        <AppText variant="body" numberOfLines={1}>
+          {modality.name}
+        </AppText>
+        <View style={styles.modalityMetrics}>
+          <AppText variant="caption" color={colors.textTertiary}>
+            {`${modality.sessions}×`}
+          </AppText>
+          {parts.map((part) => (
+            <View key={part.key} style={styles.modalityMetrics}>
+              <AppText variant="caption" color={colors.textTertiary}>
+                {"·"}
+              </AppText>
+              <AppText variant="caption" color={part.color} numberOfLines={1}>
+                {part.text}
+              </AppText>
+            </View>
+          ))}
+        </View>
+      </View>
+      <View style={styles.exerciseRight}>
+        {modality.bestPaceSecondsPerKm !== null ? (
+          <AppText variant="label" color={colors.success}>
+            {formatWorkoutPace(modality.bestPaceSecondsPerKm)}
+          </AppText>
+        ) : null}
+        <AppText
+          variant="caption"
+          color={colors.textTertiary}
+          numberOfLines={1}
+        >
+          {modality.longestDistanceMeters > 0
+            ? `${t("monitor.longest")} ${formatWorkoutDistance(modality.longestDistanceMeters)}`
+            : `${t("monitor.longest")} ${formatWorkoutDuration(modality.longestDurationSeconds)}`}
+        </AppText>
+      </View>
+    </View>
+  );
+}
+
+function WorkoutMonitorSheet({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
 }) {
   const colors = useColors();
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [saving, setSaving] = useState(false);
-  const doneEntries = entries.filter((entry) => entry.status === "done" && isWorkoutData(entry.data));
-  const aggregates = aggregateWorkoutEntries(entries);
-  const days = new Set(doneEntries.map((entry) => entry.date)).size;
-  const totals = doneEntries.reduce(
-    (current, entry) =>
-      isWorkoutData(entry.data) ? workoutConfig.addToTotals(current, entry.data) : current,
-    workoutConfig.emptyTotals,
-  );
+  const [period, setPeriod] = useState<MonitorPeriod>(7);
+  const [tab, setTab] = useState<"strength" | "cardio">("strength");
+  const [focus, setFocus] = useState<MonitorFocus>({});
+  const [openSelect, setOpenSelect] = useState<
+    "group" | "muscle" | "portion" | null
+  >(null);
+  const [selectAnchor, setSelectAnchor] = useState<AppModalAnchor | null>(null);
+  const groupRowRef = useRef<View>(null);
+  const muscleRowRef = useRef<View>(null);
+  const portionRowRef = useRef<View>(null);
+  const today = useAppStore((s) => s.workout.date);
 
   useEffect(() => {
     if (!visible) return;
     void EntryRepository.findAll("workout").then(setEntries);
   }, [visible]);
 
-  const saveDay = async () => {
-    setSaving(true);
-    try {
-      await onSaveDay();
-    } finally {
-      setSaving(false);
+  const report = useMemo(
+    () => buildMonitorReport(entries, today, period, focus),
+    [entries, today, period, focus],
+  );
+
+  // Options cascade: each level only offers what lives under the level above.
+  const groupOptions: OptionMenuItem<string>[] = [
+    { value: "", label: t("monitor.allScopes") },
+    ...GROUP_ORDER.filter((group) => group !== "cardio").map((group) => ({
+      value: group,
+      label: t(`muscle.${group}` as "muscle.legs"),
+    })),
+  ];
+
+  const muscleOptions: OptionMenuItem<string>[] = focus.group
+    ? [
+        { value: "", label: t("monitor.allScopes") },
+        ...MUSCLES.filter((muscle) => muscle.group === focus.group).map(
+          (muscle) => ({
+            value: muscle.id,
+            label: t(`muscleName.${muscle.id}` as "muscleName.quadriceps"),
+          }),
+        ),
+      ]
+    : [];
+
+  const portionOptions: OptionMenuItem<string>[] = focus.muscle
+    ? (muscleById(focus.muscle)?.portions ?? []).length
+      ? [
+          { value: "", label: t("monitor.allScopes") },
+          ...(muscleById(focus.muscle)?.portions ?? []).map((portion) => ({
+            value: portion,
+            label: portion,
+          })),
+        ]
+      : []
+    : [];
+
+  const openScopeSelect = (
+    which: "group" | "muscle" | "portion",
+    ref: RefObject<View | null>,
+  ) => {
+    if (openSelect === which) {
+      setOpenSelect(null);
+      return;
     }
+    measureOptionAnchor(ref, (anchor) => {
+      setSelectAnchor(anchor);
+      setOpenSelect(which);
+    });
   };
 
-  return (
-    <PageSheet visible={visible} title={t("settings.workout.monitor")} onClose={onClose}>
-      <Section label={t("settings.workout.summary")}>
-        <View style={[styles.card, { backgroundColor: colors.backgroundElement }]}>
-          <SettingsRow title={t("settings.workout.days")} subtitle={`${days}`} />
-          <Divider />
-          <SettingsRow title={t("totals.sets")} subtitle={`${totals.sets}`} />
-          <Divider />
-          <SettingsRow title={t("totals.vol")} subtitle={`${Math.round(totals.volumeKg)} kg`} />
-          {totals.durationSeconds > 0 ? (
-            <>
-              <Divider />
-              <SettingsRow
-                title={t("totals.time")}
-                subtitle={formatWorkoutDuration(totals.durationSeconds)}
-              />
-            </>
-          ) : null}
-          {totals.distanceMeters > 0 ? (
-            <>
-              <Divider />
-              <SettingsRow
-                title={t("totals.dist")}
-                subtitle={formatWorkoutDistance(totals.distanceMeters)}
-              />
-            </>
-          ) : null}
-        </View>
-      </Section>
+  // Narrowing resets everything below it — a porcao from another muscle would
+  // silently filter the chart to nothing.
+  const selectScope = (value: string) => {
+    setFocus((current) => {
+      if (openSelect === "group")
+        return value ? { group: value as MuscleGroupId } : {};
+      if (openSelect === "muscle") {
+        return value
+          ? { group: current.group, muscle: value }
+          : { group: current.group };
+      }
+      return value
+        ? { ...current, portion: value }
+        : { group: current.group, muscle: current.muscle };
+    });
+    setOpenSelect(null);
+  };
 
-      <Pressable
-        onPress={saveDay}
-        disabled={saving}
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.primaryAction,
-          { backgroundColor: colors.accent },
-          pressed && styles.pressed,
-        ]}
-      >
-        <View style={styles.inlineAction}>
-          <AppIcon name="bookmark" color="#FFFFFF" size={18} />
-          <AppText variant="heading" color="#FFFFFF">
-            {saving ? t("details.mealSaved") : t("settings.workout.saveToday")}
+  // A line is a grupamento, a musculo or a porcao depending on how far the
+  // user has drilled; each one labels differently.
+  const seriesLabel = (series: {
+    key: string;
+    kind: "group" | "muscle" | "portion";
+  }) => {
+    if (series.kind === "group")
+      return t(`muscle.${series.key}` as "muscle.legs");
+    if (series.kind === "muscle")
+      return t(`muscleName.${series.key}` as "muscleName.quadriceps");
+    return series.key;
+  };
+  // "18/07" for days and weeks, "07" for months — the axis has room for one
+  // short token per point and nothing more.
+  const bucketLabel = (bucketStart: string) =>
+    `${bucketStart.slice(8)}/${bucketStart.slice(5, 7)}`;
+
+  return (
+    <PageSheet
+      visible={visible}
+      title={t("settings.workout.monitor")}
+      onClose={onClose}
+      overlay={
+        <OptionMenu
+          visible={openSelect !== null}
+          anchor={selectAnchor}
+          selectedValue={
+            (openSelect === "group"
+              ? focus.group
+              : openSelect === "muscle"
+                ? focus.muscle
+                : focus.portion) ?? ""
+          }
+          options={
+            openSelect === "group"
+              ? groupOptions
+              : openSelect === "muscle"
+                ? muscleOptions
+                : portionOptions
+          }
+          onSelect={selectScope}
+          onClose={() => setOpenSelect(null)}
+        />
+      }
+    >
+      {/* Native segmented control on iOS; the same API falls back to pills
+          elsewhere, so nothing here branches on platform. */}
+      <View style={styles.monitorControls}>
+        <NativeSegmented
+          options={[
+            { value: "strength" as const, label: t("monitor.tabStrength") },
+            { value: "cardio" as const, label: t("monitor.tabCardio") },
+          ]}
+          value={tab}
+          onChange={setTab}
+          accessibilityLabel={t("settings.workout.monitor")}
+        />
+        <NativeSegmented
+          options={MONITOR_PERIODS.map((value) => ({
+            value: String(value),
+            label: t(`monitor.period${value}` as "monitor.period7"),
+          }))}
+          value={String(period)}
+          onChange={(next) => setPeriod(Number(next) as MonitorPeriod)}
+        />
+      </View>
+
+      {!report.hasData ? (
+        <View
+          style={[
+            styles.card,
+            styles.emptySavedMeals,
+            { backgroundColor: colors.backgroundElement },
+          ]}
+        >
+          <AppText variant="body" color={colors.textSecondary}>
+            {t("settings.workout.emptyMonitor")}
           </AppText>
         </View>
-      </Pressable>
-
-      <Section label={t("settings.workout.byExercise")}>
-        {aggregates.length > 0 ? (
-          <View style={[styles.card, { backgroundColor: colors.backgroundElement }]}>
-            {aggregates.map((aggregate, index) => (
-              <View key={aggregate.name}>
-                {index > 0 ? <Divider /> : null}
-                <WorkoutMetricLine aggregate={aggregate} />
-              </View>
-            ))}
-          </View>
-        ) : (
+      ) : (
+        <>
           <View
             style={[
               styles.card,
-              styles.emptySavedMeals,
+              styles.monitorStatsCard,
               { backgroundColor: colors.backgroundElement },
             ]}
           >
-            <AppText variant="body" color={colors.textSecondary}>
-              {t("settings.workout.emptyMonitor")}
-            </AppText>
+            {/* The summary follows the tab — tonnage on the cardio tab was
+                answering a question nobody asked there. */}
+            {tab === "cardio" && report.cardio ? (
+              <>
+                <MonitorStat
+                  label={t("monitor.streak")}
+                  value={`${report.cardio.streak}`}
+                />
+                <MonitorStat
+                  label={t("totals.dist")}
+                  value={formatWorkoutDistance(report.cardio.distanceMeters)}
+                  delta={report.cardio.distanceDeltaPct}
+                  color={WORKOUT_METRIC_COLORS.distance}
+                />
+                <MonitorStat
+                  label={t("totals.time")}
+                  value={formatWorkoutDuration(report.cardio.durationSeconds)}
+                  color={WORKOUT_METRIC_COLORS.duration}
+                />
+                <MonitorStat
+                  label={t("monitor.avgPace")}
+                  value={
+                    report.cardio.avgPaceSecondsPerKm !== null
+                      ? formatWorkoutPace(
+                          report.cardio.avgPaceSecondsPerKm,
+                        ).replace("/km", "")
+                      : "—"
+                  }
+                  delta={report.cardio.paceDeltaPct}
+                  color={WORKOUT_METRIC_COLORS.reps}
+                />
+              </>
+            ) : (
+              <>
+                <MonitorStat
+                  label={t("monitor.streak")}
+                  value={`${report.streak}`}
+                />
+                <MonitorStat
+                  label={t("totals.sets")}
+                  value={`${report.totals.sets}`}
+                  color={WORKOUT_METRIC_COLORS.sets}
+                />
+                <MonitorStat
+                  label={t("monitor.load")}
+                  value={`${Math.round(report.totals.volumeKg)} kg`}
+                  delta={report.volumeDeltaPct}
+                  color={WORKOUT_METRIC_COLORS.volume}
+                />
+              </>
+            )}
           </View>
-        )}
-      </Section>
+
+          {tab === "strength" ? (
+            <>
+              {/* Never gate the selects on the data: narrowing to a grupamento
+                  with no work in the period would hide the very control needed
+                  to widen again. */}
+              <View style={styles.section}>
+                {/* Cascading selects, same pattern as "Tipo de meta":
+                      grupamento -> musculo daquele grupamento -> porcao daquele
+                      musculo. Each one only appears once the one above it is
+                      chosen, so the panorama narrows macro -> micro. */}
+                <View
+                  style={[
+                    styles.card,
+                    { backgroundColor: colors.backgroundElement },
+                  ]}
+                >
+                  <View ref={groupRowRef} collapsable={false}>
+                    <SettingsRow
+                      title={t("monitor.levelGroup")}
+                      trailing={
+                        <ValueTrailing
+                          label={
+                            focus.group
+                              ? t(`muscle.${focus.group}` as "muscle.legs")
+                              : t("monitor.allScopes")
+                          }
+                        />
+                      }
+                      onPress={() => openScopeSelect("group", groupRowRef)}
+                    />
+                  </View>
+
+                  {focus.group ? (
+                    <>
+                      <Divider />
+                      <View ref={muscleRowRef} collapsable={false}>
+                        <SettingsRow
+                          title={t("monitor.levelMuscle")}
+                          trailing={
+                            <ValueTrailing
+                              label={
+                                focus.muscle
+                                  ? t(
+                                      `muscleName.${focus.muscle}` as "muscleName.quadriceps",
+                                    )
+                                  : t("monitor.allScopes")
+                              }
+                            />
+                          }
+                          onPress={() =>
+                            openScopeSelect("muscle", muscleRowRef)
+                          }
+                        />
+                      </View>
+                    </>
+                  ) : null}
+
+                  {portionOptions.length ? (
+                    <>
+                      <Divider />
+                      <View ref={portionRowRef} collapsable={false}>
+                        <SettingsRow
+                          title={t("monitor.levelPortion")}
+                          trailing={
+                            <ValueTrailing
+                              label={focus.portion ?? t("monitor.allScopes")}
+                            />
+                          }
+                          onPress={() =>
+                            openScopeSelect("portion", portionRowRef)
+                          }
+                        />
+                      </View>
+                    </>
+                  ) : null}
+                </View>
+
+                {report.series.length ? (
+                  <View
+                    style={[
+                      styles.card,
+                      styles.chartCard,
+                      { backgroundColor: colors.backgroundElement },
+                    ]}
+                  >
+                    <MultiLineChart
+                      labels={report.buckets.map(bucketLabel)}
+                      lines={report.series.map((series) => ({
+                        key: series.key,
+                        label: seriesLabel(series),
+                        color: GROUP_COLORS[series.group],
+                        points: trimLeadingGaps(series.points),
+                      }))}
+                      formatValue={(value) =>
+                        `${Math.round(value)} ${t("totals.sets")}`
+                      }
+                      // Sets are a count: a day with none is a real zero, not a
+                      // reason to rescale the axis away from the origin.
+                      zeroBased
+                      xLabel={t("monitor.axisDate")}
+                      yLabel={t("totals.sets")}
+                      yLabelColor={WORKOUT_METRIC_COLORS.sets}
+                      // The 8-12 prescription is weekly, so the band only means
+                      // something when the buckets are weeks.
+                      band={
+                        report.granularity === "week"
+                          ? {
+                              min: WEEKLY_SET_TARGET.min,
+                              max: WEEKLY_SET_TARGET.max,
+                              label: `${WEEKLY_SET_TARGET.min}-${WEEKLY_SET_TARGET.max}/sem`,
+                            }
+                          : undefined
+                      }
+                    />
+                  </View>
+                ) : (
+                  <View
+                    style={[
+                      styles.card,
+                      styles.emptySavedMeals,
+                      { backgroundColor: colors.backgroundElement },
+                    ]}
+                  >
+                    <AppText variant="body" color={colors.textSecondary}>
+                      {t("monitor.emptyScope")}
+                    </AppText>
+                  </View>
+                )}
+                {report.unclassifiedShare >= 0.15 ? (
+                  <AppText
+                    variant="caption"
+                    color={colors.textTertiary}
+                    style={styles.monitorNote}
+                  >
+                    {t("monitor.unclassified")}
+                  </AppText>
+                ) : null}
+              </View>
+
+              {report.exerciseSeries.length ? (
+                <View style={styles.section}>
+                  <AppText
+                    variant="caption"
+                    color={colors.textTertiary}
+                    style={styles.sectionLabel}
+                  >
+                    {t("monitor.loadProgress")}
+                  </AppText>
+                  <View
+                    style={[
+                      styles.card,
+                      styles.chartCard,
+                      { backgroundColor: colors.backgroundElement },
+                    ]}
+                  >
+                    {/* Sets against load: a point per training day, so a set
+                        that got heavier and a set that got longer are visibly
+                        different kinds of progress. */}
+                    <ScatterLineChart
+                      series={report.exerciseSeries
+                        .slice(0, 6)
+                        .map((series) => ({
+                          key: series.name,
+                          label: series.name,
+                          color: GROUP_COLORS[series.group],
+                          points: series.sets
+                            .map((sets, i) => ({
+                              x: sets,
+                              y: series.loadKg[i],
+                            }))
+                            .filter((point) => point.x > 0 || point.y > 0),
+                        }))}
+                      xLabel={t("monitor.axisSets")}
+                      yLabel={t("monitor.axisLoad")}
+                      xLabelColor={WORKOUT_METRIC_COLORS.sets}
+                      yLabelColor={WORKOUT_METRIC_COLORS.volume}
+                      formatX={(value) => `${Math.round(value)}`}
+                      formatY={(value) => `${Math.round(value)}`}
+                    />
+                  </View>
+                </View>
+              ) : null}
+            </>
+          ) : null}
+
+          {tab === "cardio" && report.cardio ? (
+            <>
+              <Section label={t("monitor.cardio")}>
+                {report.cardioSeries.length ? (
+                  <View
+                    style={[
+                      styles.card,
+                      styles.chartCard,
+                      { backgroundColor: colors.backgroundElement },
+                    ]}
+                  >
+                    {/* Pace over time. Lower is faster, so an improving athlete
+                        produces a descending line — the axis is inverted in
+                        meaning, not in drawing. Buckets without a complete
+                        distance+time pair are gaps, never zeros. */}
+                    <MultiLineChart
+                      labels={report.buckets.map(bucketLabel)}
+                      lines={report.cardioSeries.map((series, index) => ({
+                        key: series.name,
+                        label: series.name,
+                        color:
+                          CARDIO_LINE_COLORS[index % CARDIO_LINE_COLORS.length],
+                        points: series.paceSecPerKm.map((pace) =>
+                          pace > 0 ? pace : null,
+                        ),
+                      }))}
+                      formatValue={(value) => formatWorkoutPace(value)}
+                      formatTick={(value) =>
+                        formatWorkoutPace(value).replace("/km", "")
+                      }
+                      scale="time"
+                      yAxisWidth={40}
+                      xLabel={t("monitor.axisDate")}
+                      yLabel={t("monitor.avgPace")}
+                      yLabelColor={WORKOUT_METRIC_COLORS.reps}
+                      summary="average"
+                    />
+                  </View>
+                ) : null}
+
+                <View
+                  style={[
+                    styles.card,
+                    { backgroundColor: colors.backgroundElement },
+                  ]}
+                >
+                  {report.cardio.modalities.map((modality, index) => (
+                    <View key={modality.name}>
+                      {index > 0 ? <Divider /> : null}
+                      <CardioModalityRow
+                        modality={modality}
+                        color={
+                          CARDIO_LINE_COLORS[index % CARDIO_LINE_COLORS.length]
+                        }
+                      />
+                    </View>
+                  ))}
+                </View>
+              </Section>
+            </>
+          ) : null}
+
+          {tab === "cardio" && !report.cardio ? (
+            <View
+              style={[
+                styles.card,
+                styles.emptySavedMeals,
+                { backgroundColor: colors.backgroundElement },
+              ]}
+            >
+              <AppText variant="body" color={colors.textSecondary}>
+                {t("monitor.emptyCardio")}
+              </AppText>
+            </View>
+          ) : null}
+        </>
+      )}
     </PageSheet>
   );
 }
@@ -1357,9 +2067,9 @@ function NutritionGoalsSheet({
   const [goalTypeAnchor, setGoalTypeAnchor] = useState<AppModalAnchor | null>(
     null,
   );
-  const [micros, setMicros] = useState<Record<OnboardingMicronutrient, boolean>>(
-    () => draft.micronutrients,
-  );
+  const [micros, setMicros] = useState<
+    Record<OnboardingMicronutrient, boolean>
+  >(() => draft.micronutrients);
   const [goalWeightPickerOpen, setGoalWeightPickerOpen] = useState(false);
   const [goalDatePickerOpen, setGoalDatePickerOpen] = useState(false);
   const goalWeightOpen =
@@ -1754,7 +2464,6 @@ function NutritionGoalsSheet({
           ) : null}
         </Section>
       </PageSheet>
-
     </>
   );
 }
@@ -1823,7 +2532,9 @@ function HealthProfileSheet({
     setDraft((current) => ({ ...current, birthDate: birthDateDraft }));
     closeAppModal("settings.birthDatePicker");
   };
-  const openProfilePicker = (kind: Extract<PickerKind, "height" | "weight">) => {
+  const openProfilePicker = (
+    kind: Extract<PickerKind, "height" | "weight">,
+  ) => {
     if (
       !canOpenAppModal("settings.healthProfile", "settings.healthProfilePicker")
     )
@@ -2000,7 +2711,6 @@ function HealthProfileSheet({
           </View>
         </View>
       </Section>
-
     </PageSheet>
   );
 }
@@ -2248,9 +2958,6 @@ function WeightControlSheet({
       size="full"
     >
       <View style={styles.weightHero}>
-        <View style={[styles.scaleBadge, { backgroundColor: TINT.purple }]}>
-          <AppIcon name="scale" color="#111111" size={28} strokeWidth={2.8} />
-        </View>
         <AppText variant="metric" style={styles.weightHeroValue}>
           {formatWeight(profile.weightKg)}
         </AppText>
@@ -2493,7 +3200,6 @@ function RegisterWeightSheet({
           Save Weight
         </AppText>
       </Pressable>
-
     </PageSheet>
   );
 }
@@ -2514,8 +3220,6 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const signOut = useAppStore((s) => s.signOut);
   const profile =
     useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
-  const workoutDay = useAppStore((s) => s.workout);
-  const lang = getLang();
   const settingsStack = visible
     ? modalStack.filter(
         (modal) => modal.domain === domain && modal.id.startsWith("settings."),
@@ -2528,12 +3232,12 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const [autoTimezone, setAutoTimezone] = useState(true);
   const [savedMealsCount, setSavedMealsCount] = useState(0);
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
-  const [savedWorkoutsCount, setSavedWorkoutsCount] = useState(0);
-  const [savedWorkouts, setSavedWorkouts] = useState<SavedWorkout[]>([]);
+  const [savedExercisesCount, setSavedExercisesCount] = useState(0);
+  const [savedExercises, setSavedWorkouts] = useState<SavedExercise[]>([]);
   const themeRowRef = useRef<View>(null);
-  const [settingsOptionMenu, setSettingsOptionMenu] = useState<
-    "theme" | null
-  >(null);
+  const [settingsOptionMenu, setSettingsOptionMenu] = useState<"theme" | null>(
+    null,
+  );
   const [settingsOptionAnchor, setSettingsOptionAnchor] =
     useState<AppModalAnchor | null>(null);
   const showSavedMeals = hasSettingsModal("settings.savedMeals");
@@ -2579,12 +3283,34 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     activeSettingsId === "settings.registerWeightPicker";
   const estimationBiasVisible = activeSettingsId === "settings.estimationBias";
   const workoutMonitorVisible = activeSettingsId === "settings.workoutMonitor";
-  const savedWorkoutsVisible = activeSettingsId === "settings.savedWorkouts";
+  const savedExercisesVisible = activeSettingsId === "settings.savedExercises";
+  const apiKeysVisible = activeSettingsId === "settings.apiKeys";
+  const routinesVisible = activeSettingsId === "settings.routines";
+  const [routineCounts, setRoutineCounts] = useState({ food: 0, workout: 0 });
+  // Which domain's routines the sheet shows. Separate from the modal's `domain`,
+  // which is the routing key the stack filters on — Settings shows both
+  // sections regardless of the tab it was opened from.
+  const [routinesDomain, setRoutinesDomain] = useState<Domain>(domain);
+
+  const openRoutines = (target: Domain) => {
+    if (!canOpenAppModal("settings.root", "settings.routines")) return;
+    setRoutinesDomain(target);
+    openAppModal({ id: "settings.routines", domain });
+  };
+  const apiKeys = useAppStore((s) => s.apiKeys);
+  const apiKeysLabel =
+    apiKeys.mode === "own"
+      ? t("settings.api.usingOwn")
+      : t("settings.api.usingManaged");
 
   useEffect(() => {
     if (!visible) return;
     void SavedMealRepository.count().then(setSavedMealsCount);
-    void SavedWorkoutRepository.count().then(setSavedWorkoutsCount);
+    void SavedExerciseRepository.count().then(setSavedExercisesCount);
+    void Promise.all([
+      SavedRoutineRepository.count("food"),
+      SavedRoutineRepository.count("workout"),
+    ]).then(([food, workout]) => setRoutineCounts({ food, workout }));
   }, [visible]);
 
   useEffect(() => {
@@ -2600,10 +3326,10 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     setSavedMealsCount(meals.length);
   };
 
-  const loadSavedWorkouts = async () => {
-    const workouts = await SavedWorkoutRepository.all();
+  const loadSavedExercises = async () => {
+    const workouts = await SavedExerciseRepository.all();
     setSavedWorkouts(workouts);
-    setSavedWorkoutsCount(workouts.length);
+    setSavedExercisesCount(workouts.length);
   };
 
   const openSavedMeals = () => {
@@ -2617,10 +3343,15 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     openAppModal({ id: "settings.workoutMonitor", domain });
   };
 
-  const openSavedWorkouts = () => {
-    if (!canOpenAppModal("settings.root", "settings.savedWorkouts")) return;
-    openAppModal({ id: "settings.savedWorkouts", domain });
-    void loadSavedWorkouts();
+  const openSavedExercises = () => {
+    if (!canOpenAppModal("settings.root", "settings.savedExercises")) return;
+    openAppModal({ id: "settings.savedExercises", domain });
+    void loadSavedExercises();
+  };
+
+  const openApiKeys = () => {
+    if (!canOpenAppModal("settings.root", "settings.apiKeys")) return;
+    openAppModal({ id: "settings.apiKeys", domain });
   };
 
   const closeSettings = () => {
@@ -2683,33 +3414,13 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     closeAppModal("settings.workoutMonitor");
   };
 
-  const closeSavedWorkouts = () => {
-    closeAppModal("settings.savedWorkouts");
+  const closeSavedExercises = () => {
+    closeAppModal("settings.savedExercises");
   };
 
-  const saveWorkoutDay = async () => {
-    const exercises = uniqueWorkoutExerciseNames(
-      workoutDay.entries
-        .filter((entry) => entry.status === "done" && isWorkoutData(entry.data))
-        .map((entry) => ({
-          text: entry.text,
-          data: entry.data as WorkoutData,
-        })),
-      lang,
-    );
-    await SavedWorkoutRepository.save(
-      "day",
-      formatDate(workoutDay.date, lang).replace(".", ""),
-      exercises,
-      undefined,
-      workoutDay.date,
-    );
-    await loadSavedWorkouts();
-  };
-
-  const deleteSavedWorkout = async (workout: SavedWorkout) => {
-    await SavedWorkoutRepository.delete(workout.id);
-    await loadSavedWorkouts();
+  const deleteSavedExercise = async (workout: SavedExercise) => {
+    await SavedExerciseRepository.delete(workout.id);
+    await loadSavedExercises();
   };
 
   const openSavedMealDetails = (meal: SavedMeal) => {
@@ -2878,38 +3589,56 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
               />
             </Section>
 
-            {domain === "workout" ? (
-              <Section label={t("settings.section.workout")}>
-                <SettingsRow
-                  icon="dumbbell"
-                  iconColor={colors.accent}
-                  title={t("settings.workout.monitor")}
-                  subtitle={t("settings.workout.monitorHint")}
-                  trailing={<Chevron />}
-                  onPress={openWorkoutMonitor}
-                />
-                <Divider />
-                <SettingsRow
-                  icon="bookmark"
-                  iconColor={colors.water}
-                  title={t("settings.workout.saved")}
-                  subtitle={`${savedWorkoutsCount} ${t("settings.workout.savedCount")}`}
-                  trailing={<Chevron />}
-                  onPress={openSavedWorkouts}
-                />
-              </Section>
-            ) : (
-              <Section label={t("settings.section.meals")}>
-                <SettingsRow
-                  icon="utensils"
-                  iconColor={colors.carbs}
-                  title={t("settings.meals.manage")}
-                  subtitle={`${savedMealsCount} ${t("settings.meals.saved")}`}
-                  trailing={<Chevron />}
-                  onPress={openSavedMeals}
-                />
-              </Section>
-            )}
+            {/* Both sections always: Settings is one screen for the whole app,
+                so which tab opened it should not hide half the saved data. */}
+            <Section label={t("settings.section.workout")}>
+              <SettingsRow
+                icon="dumbbell"
+                iconColor={colors.accent}
+                title={t("settings.workout.monitor")}
+                subtitle={t("settings.workout.monitorHint")}
+                trailing={<Chevron />}
+                onPress={openWorkoutMonitor}
+              />
+              <Divider />
+              <SettingsRow
+                icon="bookmark"
+                iconColor={colors.water}
+                title={t("settings.workout.saved")}
+                subtitle={`${savedExercisesCount} ${t("settings.workout.savedCount")}`}
+                trailing={<Chevron />}
+                onPress={openSavedExercises}
+              />
+              <Divider />
+              <SettingsRow
+                icon="calendar"
+                iconColor={colors.protein}
+                title={t("routine.savedWorkouts")}
+                subtitle={`${routineCounts.workout} ${t("routine.savedCount")}`}
+                trailing={<Chevron />}
+                onPress={() => openRoutines("workout")}
+              />
+            </Section>
+
+            <Section label={t("settings.section.meals")}>
+              <SettingsRow
+                icon="utensils"
+                iconColor={colors.carbs}
+                title={t("settings.meals.manage")}
+                subtitle={`${savedMealsCount} ${t("settings.meals.saved")}`}
+                trailing={<Chevron />}
+                onPress={openSavedMeals}
+              />
+              <Divider />
+              <SettingsRow
+                icon="calendar"
+                iconColor={colors.protein}
+                title={t("routine.savedDiets")}
+                subtitle={`${routineCounts.food} ${t("routine.savedCount")}`}
+                trailing={<Chevron />}
+                onPress={() => openRoutines("food")}
+              />
+            </Section>
 
             <Section label={t("settings.section.prefs")}>
               <SettingsRow
@@ -3004,10 +3733,8 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
               <Divider />
               <SettingsRow
                 title={t("settings.connect.api")}
-                trailing={
-                  <ValueTrailing label={t("settings.connect.apiKeys")} />
-                }
-                onPress={noop}
+                trailing={<ValueTrailing label={apiKeysLabel} />}
+                onPress={openApiKeys}
               />
             </Section>
 
@@ -3098,19 +3825,29 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
       <WorkoutMonitorSheet
         visible={workoutMonitorVisible}
         onClose={closeWorkoutMonitor}
-        onSaveDay={saveWorkoutDay}
+      />
+
+      <ApiKeysSheet
+        visible={apiKeysVisible}
+        onClose={() => closeAppModal("settings.apiKeys")}
+      />
+
+      <SavedRoutinesSheet
+        visible={routinesVisible}
+        domain={routinesDomain}
+        onClose={() => closeAppModal("settings.routines")}
       />
 
       <SheetFrame
-        visible={savedWorkoutsVisible}
+        visible={savedExercisesVisible}
         title={t("settings.workout.saved")}
-        onClose={closeSavedWorkouts}
+        onClose={closeSavedExercises}
         centerTitle
         size="full"
       >
-        <SavedWorkoutsContent
-          workouts={savedWorkouts}
-          onDelete={deleteSavedWorkout}
+        <SavedExercisesContent
+          workouts={savedExercises}
+          onDelete={deleteSavedExercise}
         />
       </SheetFrame>
 
@@ -3517,8 +4254,10 @@ const styles = StyleSheet.create({
   },
   chartCard: {
     borderRadius: Radii.lg,
-    padding: Spacing.four,
-    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.four,
+    paddingBottom: Spacing.three,
+    gap: Spacing.two,
     overflow: "hidden",
   },
   chartTabs: {
@@ -3656,6 +4395,144 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.6,
+  },
+  monitorControls: {
+    gap: Spacing.two,
+  },
+  periodRow: {
+    flexDirection: "row",
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+  },
+  periodPill: {
+    flex: 1,
+    height: 36,
+    borderWidth: 1,
+    borderRadius: Radii.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  monitorStatsCard: {
+    flexDirection: "row",
+    paddingVertical: Spacing.four,
+    paddingHorizontal: Spacing.three,
+    gap: Spacing.two,
+  },
+  monitorStat: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    gap: Spacing.one,
+  },
+  monitorNote: {
+    paddingTop: Spacing.one,
+  },
+  muscleList: {
+    gap: Spacing.five,
+    padding: Spacing.four,
+  },
+  muscleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+  },
+  muscleRowName: {
+    flex: 1,
+    minWidth: 0,
+  },
+  muscleName: {
+    width: 96,
+  },
+  muscleTrack: {
+    flex: 1,
+    height: 10,
+    borderRadius: Radii.pill,
+    overflow: "hidden",
+  },
+  muscleFill: {
+    height: "100%",
+    borderRadius: Radii.pill,
+  },
+  muscleSynergist: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    borderWidth: 1,
+    borderRadius: Radii.pill,
+    opacity: 0.55,
+  },
+  muscleGroupBlock: {
+    gap: Spacing.two,
+  },
+  muscleGroupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    paddingBottom: Spacing.one,
+  },
+  muscleGroupName: {
+    flex: 1,
+    minWidth: 0,
+  },
+  muscleBand: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    opacity: 0.9,
+  },
+  muscleValue: {
+    width: 62,
+    textAlign: "right",
+  },
+  muscleDot: {
+    width: 10,
+    height: 10,
+    borderRadius: Radii.pill,
+  },
+  exerciseRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+    minHeight: 56,
+  },
+  exerciseText: {
+    flex: 1,
+    minWidth: 0,
+    gap: Spacing.one,
+  },
+  modalityMetrics: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.one,
+  },
+  exerciseRight: {
+    alignItems: "flex-end",
+    gap: Spacing.one,
+  },
+  routineTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+  },
+  routineWeekday: {
+    minHeight: 22,
+    borderWidth: 1,
+    borderRadius: Radii.pill,
+    justifyContent: "center",
+    paddingHorizontal: Spacing.two,
+  },
+  apiKeyField: {
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+  },
+  apiKeyInput: {
+    minHeight: 44,
+    borderRadius: Radii.md,
+    paddingHorizontal: Spacing.three,
+    fontSize: 16,
   },
   connectTop: {
     gap: Spacing.three,

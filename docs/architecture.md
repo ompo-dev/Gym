@@ -55,10 +55,26 @@ persistencia para ambos os dominios.
 Cada dominio ainda tem seus fluxos exclusivos:
 
 - comida: midia, barcode, detalhes nutricionais e metas;
-- treino: outliner de series, painel de progresso/PR e treinos salvos.
+- treino: outliner de series, painel de progresso/PR, exercicios salvos e o
+  monitor de treino/cardio.
 
 O dock de totais e o mesmo componente nos dois: em comida abre
 `FoodGoalsSheet`, em treino abre `WorkoutProgressSheet`.
+
+## Modulos de Dominio de Treino
+
+| Arquivo | Responsabilidade |
+| --- | --- |
+| `workout.ts` | parser de series/cardio, totais, formatadores |
+| `anatomy.ts` | vocabulario grupamento -> musculo -> porcao, meta semanal |
+| `muscles.ts` | tabela de palavras-chave, ponte para o historico sem classificacao |
+| `workoutProgress.ts` | PRs do dia, para o painel da tela de treino |
+| `workoutMonitor.ts` | agregacao do monitor: volume, series, cardio, streak |
+| `chartScale.ts` | escala de eixo e lacunas, compartilhada pelos graficos |
+| `routines.ts` | o que vira dia salvo em cada dominio |
+
+Todos puros e testados sem SQLite nem React — a UI so renderiza o que eles
+devolvem.
 
 ## Persistencia
 
@@ -67,7 +83,13 @@ O dock de totais e o mesmo componente nos dois: em comida abre
 - `entries`: notas de comida e treino.
 - `settings`: chave-valor para tema, idioma e onboarding.
 - `saved_meals`: refeicoes salvas.
-- `saved_workouts`: exercicios e dias de treino salvos como template.
+- `saved_exercises` (tabela `saved_workouts`): exercicios salvos avulsos.
+- `saved_routines`: dias salvos dos **dois** dominios, com `domain`, `name`,
+  `weekday` opcional e `items` JSON. Uma tabela so porque a diferenca entre
+  treino e dieta esta no conteudo de `items`, nao na forma.
+
+A antiga `kind = day` em `saved_workouts` e legado: nada escreve mais, o leitor
+ainda aceita.
 
 `EntryRepository` valida `data` ao ler. Se uma row antiga estava `done`, mas o
 JSON nao valida mais, ela volta como `error` para poder ser refeita em vez de
@@ -78,6 +100,10 @@ regra "so o dia visivel". Existe porque comparar PR e agregar evolucao precisa
 de todos os dias. Hoje so treino usa, em dois lugares: `WorkoutProgressSheet` e
 o monitor de treino em ajustes. Ambos leem sob demanda ao abrir o painel, nunca
 no caminho de digitacao.
+
+Efeito que le repository precisa ser chaveado por dia, nunca por `entries`:
+`entries` muda a cada upsert (cada tecla que dispara edicao, cada resolucao da
+IA), e leitura de tabela nessa frequencia e desperdicio puro.
 
 ## Estado
 
@@ -138,7 +164,9 @@ quebrar Expo Go ou plataformas sem Expo UI.
 Hoje o uso nativo aparece em:
 
 - onboarding: botoes, sheets, pickers e toggles quando disponivel;
-- menu de detalhes nutricionais: `SwiftMenu` para comportamento proximo de iOS.
+- menu de detalhes nutricionais: `SwiftMenu` para comportamento proximo de iOS;
+- monitor de treino: `NativeSegmented` para as abas e os periodos, com pills RN
+  como fallback.
 
 ## Temas e Cores
 
@@ -157,9 +185,23 @@ Os totais e inputs usam estes tokens; numeros principais ficam em texto do tema.
 - Login, pagamento e integracoes sao placeholders em ajustes.
 - Refeicoes salvas sao persistidas, mas gerenciamento completo ainda e visual.
 - Barcode depende de Open Food Facts e pode retornar valores por porcao ou por 100g/ml conforme disponibilidade.
-- Treino salvo guarda so nomes de exercicio, nao series. Reaplicar cria linhas
-  vazias.
-- PR e evolucao de treino sao calculados na hora, lendo o historico completo a
-  cada abertura do painel. Sem cache e sem tabela agregada.
+- Exercicio salvo guarda so o nome, nao series. Reaplicar cria linhas vazias.
+- Dia salvo (`saved_routines`) so tem ida: grava e lista em Ajustes, mas nenhum
+  picker aplica um treino ou dieta salvo a um dia.
+- PR, monitor e evolucao de treino sao calculados na hora, lendo o historico
+  completo a cada abertura do painel. Sem cache e sem tabela agregada.
+- A classificacao muscular vem da IA por entrada. Historico anterior cai na
+  tabela de palavras-chave de `muscles.ts`, que so acerta o grupamento — musculo
+  e porcao ficam vazios e a fatia sem classificacao aparece no monitor.
+- As chaves de API do usuario ficam em texto puro na tabela `settings`.
+- `SettingsSheet.tsx` passa de 4500 linhas e hospeda todos os sub-sheets de
+  ajustes, inclusive o monitor de treino inteiro. E o maior arquivo do projeto
+  e o proximo candidato obvio a quebrar por sheet.
+- `canOpenAppModal` e conselho, nao regra: e funcao pura que o chamador precisa
+  lembrar de invocar; a store nao verifica. Mover a checagem para dentro da
+  store nao e de graca — `day.root` e `onboarding.root` sao `AppModalId` mas
+  nao fazem parte da uniao `AppModal`, sao raizes virtuais nunca empilhadas.
+  Inferir a origem pelo topo da pilha daria `day.root` tambem no onboarding,
+  quebrando os pickers dele.
 - O dock de treino mostra tempo e distancia mesmo zerados em dia so de
   musculacao.

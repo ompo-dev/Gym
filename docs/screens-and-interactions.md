@@ -10,6 +10,33 @@ Estados:
 - `onboardingDone=false`: mostra `OnboardingFlow`.
 - `onboardingDone=true`: mostra tabs nativas com Dieta e Treino.
 
+## Salvar o Dia
+
+Arquivo: `SaveRoutineSheet.tsx`
+
+O botao fica no `DayHeader`, a **esquerda** do seletor de dias — o slot ja
+existia como `sideSpacer`. Aparece nos dois dominios e so quando ha algo
+resolvido para salvar; sem isso o slot fica vazio e a navegacao segue centrada.
+
+A sheet pede:
+
+- **nome**, com o dia da semana como padrao ("Segunda" le melhor que "19 de
+  jul" para algo que sera reutilizado);
+- **dia da semana**, opcional — tocar de novo no pill desmarca;
+- e mostra um **preview** do que sera salvo, com a contagem e a lista.
+
+O que cada dominio salva:
+
+- **Treino**: so os nomes dos exercicios. Carga, series, distancia e tempo
+  ficam de fora.
+- **Dieta**: as refeicoes com a nutricao inteira.
+
+Gerenciar em Ajustes > Dietas salvas / Treinos salvos. Hoje a listagem mostra
+nome, dia da semana e conteudo, e permite excluir.
+
+Ainda **nao existe** o caminho de volta: nenhum picker aplica um treino ou dieta
+salvo a um dia.
+
 ## Tabs
 
 Arquivo: `src/components/app-tabs.tsx`
@@ -242,28 +269,59 @@ Conteudo:
 - Resumo de metas.
 - Perfil de saude.
 - Controle de peso.
-- Refeicoes salvas (so quando aberto pela dieta).
-- Treinos: monitoramento e treinos salvos (so quando aberto pelo treino).
+- Treinos: monitoramento, exercicios salvos e treinos salvos.
+- Dietas: refeicoes salvas e dietas salvas.
 - Preferencias.
 - Aparencia e dispositivo.
 - Assinatura placeholder.
 - Connect GymNotes placeholder.
 - Feedback, legal e sair.
 
-Essa secao e a unica que muda por dominio: dieta mostra refeicoes salvas,
-treino mostra a secao de treinos. O resto e igual nos dois.
+As duas secoes aparecem sempre, venha a tela da dieta ou do treino — Ajustes e
+uma tela so do app, e esconder metade dos dados salvos conforme a aba de origem
+era confuso. Cada secao tem o mesmo par: o item avulso salvo (exercicio /
+refeicao) e o dia salvo (treino / dieta).
 
 ### Monitoramento de Treino
 
-Resumo do historico inteiro:
+Duas abas (`NativeSegmented`, segmented control nativo no iOS) e um seletor de
+periodo: **semana / 15 dias / 1 mes**. Janelas curtas de proposito — o painel
+responde "como esta o bloco", nao "conte minha historia". Todo bucket e diario;
+semanal daria 4 pontos e esconderia o padrao.
 
-- dias treinados, series e volume;
-- tempo e distancia, quando maiores que zero;
-- `Salvar treino de hoje`, que vira template do dia visivel;
-- lista por exercicio com sessoes, series, volume, tempo, distancia e data do
-  ultimo registro, ordenada pelo mais recente.
+Cada numero e comparado com o periodo **imediatamente anterior**. Sem isso e
+relatorio; com isso e progresso.
 
-### Treinos Salvos (ajustes)
+**Aba Treino**
+
+- Resumo: streak, series, carga.
+- Selects em cascata: grupamento -> musculo daquele grupamento -> porcao daquele
+  musculo. Cada nivel so aparece depois que o de cima e escolhido, e estreitar
+  reseta os de baixo.
+- Grafico **series x tempo**: uma linha por item do nivel selecionado. Com
+  "Todos" e uma linha por grupamento; escolhendo Costas, uma por musculo das
+  costas; escolhendo Trapezio, uma por porcao. A faixa 8-12 aparece so quando o
+  bucket e semanal, porque a prescricao e semanal.
+- Grafico **series x carga**, por exercicio, respeitando os mesmos selects.
+
+**Aba Cardio**
+
+- Resumo: streak, distancia, tempo, pace medio.
+- Grafico **pace x data**, uma linha por modalidade. Bucket sem distancia+tempo
+  completos e lacuna, nunca zero — zero desenharia no chao e leria como sessao
+  infinitamente rapida.
+- Listagem por modalidade: sessoes, distancia, tempo, pace medio e a sessao mais
+  longa. Cada metrica na sua cor, e a bolinha da modalidade na mesma cor da sua
+  linha no grafico.
+
+Os graficos tem tooltip por arrasto: o dedo e o cursor, nao ha hover. O eixo
+mostra o nome e a cor da metrica.
+
+O foco dos selects escopa **so** as linhas de volume e a progressao de carga. O
+eixo de tempo vem de todas as entradas do periodo — deriva-lo das series
+filtradas ja esvaziou o cardio inteiro ao escolher um grupamento.
+
+### Exercicios Salvos (ajustes)
 
 Lista dos templates persistidos, com icone de haltere para forca e de rota para
 cardio, e os exercicios do template embaixo do nome. A lixeira apaga o
@@ -275,8 +333,9 @@ Interacoes funcionais hoje:
   aplicada na hora e a linha mostra o modo atual.
 - Gerenciar metas nutricionais salva tipo de meta, peso-alvo, data-alvo,
   preferencias, metas e micronutrientes no perfil local.
-- Monitoramento de treino agrega o historico completo por exercicio.
-- Salvar treino de hoje e apagar treino salvo escrevem em `saved_workouts`.
+- Monitoramento de treino agrega o historico da janela escolhida.
+- Apagar exercicio salvo escreve em `saved_workouts`; salvar o dia escreve em
+  `saved_routines`.
 - Gerenciar informacoes de saude salva genero, data de nascimento, altura, peso
   e nivel de atividade; isso recalcula BMR/TDEE/metas via Harris-Benedict.
 - Controle de peso e registrar peso atualizam o peso do perfil local.
@@ -284,9 +343,29 @@ Interacoes funcionais hoje:
 - Sair limpa onboarding e volta para `OnboardingFlow`.
 - Contagem de refeicoes salvas e lida de SQLite.
 
+### GymNotes API
+
+Arquivo: `SettingsSheet.tsx` (`ApiKeysSheet`)
+
+Aberto por Connect GymNotes > GymNotes API. A linha mostra o modo ativo.
+
+Duas opcoes exclusivas:
+
+- **Usar a chave do GymNotes**: chave do servidor, incluso no plano.
+- **Usar minha propria chave**: revela dois campos, chave de chat e chave de
+  imagem. Podem ser a mesma — deixar imagem vazio usa a do chat.
+
+Regras:
+
+- Escolher "minha propria chave" sem chave salva volta sozinho para o modo
+  gerenciado, senao todo request falharia.
+- Os campos usam `secureTextEntry` e desligam autocorrecao, para a chave nao
+  entrar no dicionario do teclado.
+- Salvar e no check do header; o X descarta.
+
 Interacoes visuais ainda sem backend real:
 
-- Assinatura e API keys.
+- Assinatura.
 
 ## Tela de Treino
 

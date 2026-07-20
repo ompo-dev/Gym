@@ -23,8 +23,8 @@ interface NoteRowProps<TData, TTotals> {
   onEdit: (entry: Entry, text: string) => void;
   onDelete: (entry: Entry) => void;
   onRetry: (entry: Entry) => void;
-  onSaveWorkoutExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
-  workoutExerciseSaved?: boolean;
+  onSaveExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
+  exerciseSaved?: boolean;
   onOpenFoodDetails?: (entry: Entry) => void;
   onFocusNewWorkoutExercise?: () => void;
   onDeleteWorkoutExercise?: () => void;
@@ -51,6 +51,16 @@ function StatusBadge<TData, TTotals>({
   if (entry.status === 'thinking') return <ThinkingIndicator label={t('status.thinking')} />;
   if (entry.status === 'queued') return <ThinkingIndicator label={t('status.queued')} />;
   if (entry.status === 'error') {
+    // Retry re-enriches from `text` only, so offering it on an entry with
+    // photos/barcode would quietly rebuild the meal without them. Show the
+    // failed state, no affordance — the user re-adds it.
+    if (entry.media?.length) {
+      return (
+        <AppText variant="label" color={colors.danger}>
+          {t('status.failed')}
+        </AppText>
+      );
+    }
     return (
       <Pressable onPress={() => onRetry(entry)} hitSlop={10} accessibilityRole="button">
         <AppText variant="label" color={colors.danger}>
@@ -142,8 +152,8 @@ function NoteRowInner<TData, TTotals>(props: NoteRowProps<TData, TTotals>) {
     onEdit,
     onDelete,
     onRetry,
-    onSaveWorkoutExercise,
-    workoutExerciseSaved,
+    onSaveExercise,
+    exerciseSaved,
     onFocusNewWorkoutExercise,
     onDeleteWorkoutExercise,
     onFocusWorkoutLine,
@@ -162,8 +172,8 @@ function NoteRowInner<TData, TTotals>(props: NoteRowProps<TData, TTotals>) {
           onEdit={onEdit}
           onDelete={onDelete}
           onRetry={onRetry}
-          onSaveExercise={onSaveWorkoutExercise}
-          initialExerciseSaved={workoutExerciseSaved}
+          onSaveExercise={onSaveExercise}
+          initialExerciseSaved={exerciseSaved}
           onFocusNewExercise={onFocusNewWorkoutExercise}
           onDeleteExercise={onDeleteWorkoutExercise}
           onFocusLine={onFocusWorkoutLine}

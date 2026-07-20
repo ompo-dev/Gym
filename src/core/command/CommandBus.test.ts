@@ -143,6 +143,24 @@ test('undo removes the added entry from store and repo', async () => {
   expect(rows.size).toBe(0);
 });
 
+test('undo is bound to its command and ignores anything done after it', async () => {
+  const { bus, day, rows } = harness(async () => foodOk());
+  await bus.addEntry('burger', 'food');
+  await flush();
+
+  const deleted = day.food.entries[0];
+  const deleteCommand = await bus.deleteEntry(deleted);
+  await bus.addEntry('salad', 'food');
+  await flush();
+
+  // The undo toast for the delete is still on screen, but the user has since
+  // added an entry. Undoing must not take the salad away.
+  expect(await bus.undo(deleteCommand)).toBeNull();
+  expect(day.food.entries).toHaveLength(1);
+  expect(day.food.entries[0].text).toBe('salad');
+  expect(rows.size).toBe(1);
+});
+
 test('network failure queues, then a retry resolves it', async () => {
   let calls = 0;
   const { bus, day, scheduled } = harness(async () => {
@@ -179,6 +197,8 @@ test('workout entries are parsed locally without calling the AI', async () => {
   expect(day.workout.entries[0].status).toBe('done');
   expect(day.workout.entries[0].data).toEqual({
     exercise: null,
+    synergists: [],
+    stabilizers: [],
     kind: 'strength',
     sets: [{ weight: 100, unit: 'kg', reps: 8 }],
   });
@@ -199,6 +219,8 @@ test('workout entries use AI to correct the exercise name but keep local set par
   );
   expect(day.workout.entries[0].data).toEqual({
     exercise: 'Supino reto',
+    synergists: [],
+    stabilizers: [],
     kind: 'strength',
     sets: [{ weight: 100, unit: 'kg', reps: 8 }],
   });
@@ -219,6 +241,8 @@ test('workout entries use AI to classify cardio while keeping local cardio metri
   );
   expect(day.workout.entries[0].data).toEqual({
     exercise: 'Corrida',
+    synergists: [],
+    stabilizers: [],
     kind: 'cardio',
     sets: [{ distanceMeters: 5000, durationSeconds: 3600 }],
   });

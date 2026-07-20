@@ -27,8 +27,11 @@ export type AppModalId =
   | "settings.registerWeightPicker"
   | "settings.estimationBias"
   | "settings.workoutMonitor"
-  | "settings.savedWorkouts"
+  | "settings.savedExercises"
   | "settings.savedMeals"
+  | "settings.apiKeys"
+  | "settings.routines"
+  | "day.saveRoutine"
   | "settings.savedMealDetails"
   | "settings.savedMealActionMenu"
   | "settings.savedMealAiEdit"
@@ -43,7 +46,7 @@ export type AppModalId =
   | "food.barcodeNutritionEdit"
   | "food.mediaDraftTray"
   | "workout.progress"
-  | "workout.savedWorkoutPicker"
+  | "workout.savedExercisePicker"
   | "onboarding.root"
   | "onboarding.picker"
   | "onboarding.birthDatePicker"
@@ -63,8 +66,11 @@ export const APP_MODAL_LABELS: Record<AppModalId, string> = {
   "settings.registerWeightPicker": "Seletor de peso",
   "settings.estimationBias": "Viés de estimativa",
   "settings.workoutMonitor": "Monitoramento de treino",
-  "settings.savedWorkouts": "Treinos salvos",
+  "settings.savedExercises": "Exercícios salvos",
   "settings.savedMeals": "Refeições salvas",
+  "settings.apiKeys": "Chaves de API",
+  "settings.routines": "Dias salvos",
+  "day.saveRoutine": "Salvar o dia",
   "settings.savedMealDetails": "Detalhes da refeição salva",
   "settings.savedMealActionMenu": "Menu da refeição salva",
   "settings.savedMealAiEdit": "Editar refeição salva com IA",
@@ -79,7 +85,7 @@ export const APP_MODAL_LABELS: Record<AppModalId, string> = {
   "food.barcodeNutritionEdit": "Nutrição por código de barras",
   "food.mediaDraftTray": "Mídias adicionadas",
   "workout.progress": "Progresso do treino",
-  "workout.savedWorkoutPicker": "Selecionar treinos salvos",
+  "workout.savedExercisePicker": "Selecionar exercícios salvos",
   "onboarding.root": "Onboarding",
   "onboarding.picker": "Seletor do onboarding",
   "onboarding.birthDatePicker": "Data de nascimento",
@@ -97,7 +103,8 @@ export const APP_MODAL_LINKS: Partial<
     "food.mediaCapture",
     "food.mediaDraftTray",
     "workout.progress",
-    "workout.savedWorkoutPicker",
+    "workout.savedExercisePicker",
+    "day.saveRoutine",
   ],
   "settings.root": [
     "settings.nutritionGoals",
@@ -105,8 +112,10 @@ export const APP_MODAL_LINKS: Partial<
     "settings.weightControl",
     "settings.estimationBias",
     "settings.workoutMonitor",
-    "settings.savedWorkouts",
+    "settings.savedExercises",
     "settings.savedMeals",
+    "settings.apiKeys",
+    "settings.routines",
   ],
   "settings.nutritionGoals": [
     "settings.healthProfile",
@@ -167,8 +176,11 @@ export type AppModal =
   | { id: "settings.registerWeightPicker"; domain: Domain }
   | { id: "settings.estimationBias"; domain: Domain }
   | { id: "settings.workoutMonitor"; domain: Domain }
-  | { id: "settings.savedWorkouts"; domain: Domain }
+  | { id: "settings.savedExercises"; domain: Domain }
   | { id: "settings.savedMeals"; domain: Domain }
+  | { id: "settings.apiKeys"; domain: Domain }
+  | { id: "settings.routines"; domain: Domain }
+  | { id: "day.saveRoutine"; domain: Domain }
   | { id: "settings.savedMealDetails"; domain: Domain; mealId: string }
   | { id: "settings.savedMealActionMenu"; domain: Domain; mealId: string; anchor: AppModalAnchor | null }
   | { id: "settings.savedMealAiEdit"; domain: Domain; mealId: string }
@@ -183,7 +195,7 @@ export type AppModal =
   | { id: "food.barcodeNutritionEdit"; domain: "food"; draft: BarcodeNutritionDraft }
   | { id: "food.mediaDraftTray"; domain: "food" }
   | { id: "workout.progress"; domain: "workout" }
-  | { id: "workout.savedWorkoutPicker"; domain: "workout" }
+  | { id: "workout.savedExercisePicker"; domain: "workout" }
   | { id: "onboarding.picker"; domain: "onboarding"; kind: OnboardingPickerKind }
   | { id: "onboarding.birthDatePicker"; domain: "onboarding" }
   | { id: "onboarding.goalDatePicker"; domain: "onboarding" };

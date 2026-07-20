@@ -1,5 +1,14 @@
 import type { Domain } from '@/core/types';
 
+import { MUSCLES } from './anatomy';
+
+/** Compact enough to ride on every workout request without bloating it. */
+const MUSCLE_PROMPT_VOCABULARY = MUSCLES.map((muscle) =>
+  muscle.portions.length
+    ? `${muscle.group}/${muscle.id} [${muscle.portions.join('|')}]`
+    : `${muscle.group}/${muscle.id}`,
+).join('; ');
+
 export const promptByDomain: Record<Domain, string> = {
   food: [
     'You are a nutrition parser. The user writes a food entry in natural language.',
@@ -41,6 +50,16 @@ export const promptByDomain: Record<Domain, string> = {
     'If reps, load, duration, or distance are omitted, omit that field.',
     'Resolve arithmetic before returning JSON, but never calculate totals or volume.',
     'If the entry names no exercise, set exercise to null.',
+    // The vocabulary is closed on purpose: anything outside it is discarded by
+    // the schema, so inventing a muscle just loses the classification.
+    'Also classify the muscles worked, using ONLY these ids:',
+    MUSCLE_PROMPT_VOCABULARY,
+    'Return "primary" as { "muscle": id, "portion": id }, plus "synergists" and',
+    '"stabilizers" as arrays of the same shape. Omit "portion" when the muscle',
+    'has no portions listed or the exercise does not bias one.',
+    'primary is the muscle the exercise is for; synergists assist the movement;',
+    'stabilizers hold position without producing the motion.',
+    'For cardio use primary { "muscle": "cardiovascular" } and leave the arrays empty.',
     'Respond with JSON only, no prose.',
   ].join(' '),
 };

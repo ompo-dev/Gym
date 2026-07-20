@@ -63,6 +63,8 @@ test('food schema allows empty items and rejects items missing a label', () => {
 test('workout schema parses shorthand and coerces reps', () => {
   const result = workoutSchema.parse({
     exercise: null,
+    synergists: [],
+    stabilizers: [],
     kind: 'série',
     sets: [{ weight: 95, unit: 'kg', reps: '7' }],
   });
@@ -83,6 +85,8 @@ test('workout schema normalizes accented strength kind aliases', () => {
 test('workout schema defaults missing sets from exercise-only AI responses', () => {
   expect(workoutSchema.parse({ exercise: 'Supino reto', kind: 'series' })).toEqual({
     exercise: 'Supino reto',
+    synergists: [],
+    stabilizers: [],
     kind: 'strength',
     sets: [],
   });
@@ -101,6 +105,8 @@ test('workout schema accepts cardio metrics without load', () => {
   expect(
     workoutSchema.safeParse({
       exercise: 'run',
+      synergists: [],
+      stabilizers: [],
       kind: 'cardio',
       sets: [{ distanceMeters: 5000, durationSeconds: 1500 }],
     }).success,
@@ -111,6 +117,8 @@ test('workout schema rejects load without reps', () => {
   expect(
     workoutSchema.safeParse({
       exercise: 'bench',
+      synergists: [],
+      stabilizers: [],
       kind: 'series',
       sets: [{ weight: 100, unit: 'kg' }],
     }).success,

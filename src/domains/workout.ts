@@ -288,7 +288,7 @@ export function parseWorkoutText(
 
   if (rawLines.length === 0) {
     const exercise = fallbackExercise ?? null;
-    return { exercise, kind: inferWorkoutKind({ sets: [] }, exercise), sets: [] };
+    return { exercise, kind: inferWorkoutKind({ sets: [] }, exercise), sets: [], synergists: [], stabilizers: [] };
   }
 
   const exerciseFromFirstLine = getWorkoutExerciseLine(text);
@@ -306,7 +306,7 @@ export function parseWorkoutText(
   const exercise = normalizeWorkoutExercise(exerciseLine, locale) || fallbackExercise || null;
   const sets = parseWorkoutSetLines(setLines).filter((set): set is WorkoutSet => Boolean(set));
 
-  return { exercise, kind: inferWorkoutKind({ sets }, exercise), sets };
+  return { exercise, kind: inferWorkoutKind({ sets }, exercise), sets, synergists: [], stabilizers: [] };
 }
 
 export function serializeWorkoutLines(lines: string[]): string {

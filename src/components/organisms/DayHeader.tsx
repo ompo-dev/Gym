@@ -14,6 +14,9 @@ interface DayHeaderProps {
   onNext: () => void;
   onToday: () => void;
   onOpenSettings: () => void;
+  /** Absent (or with nothing to save) leaves the slot empty, keeping the nav centred. */
+  onSaveDay?: () => void;
+  canSaveDay?: boolean;
 }
 
 export function DayHeader({
@@ -23,12 +26,26 @@ export function DayHeader({
   onNext,
   onToday,
   onOpenSettings,
+  onSaveDay,
+  canSaveDay = false,
 }: DayHeaderProps) {
   const colors = useColors();
 
   return (
     <View style={styles.header}>
-      <View style={styles.sideSpacer} />
+      {onSaveDay && canSaveDay ? (
+        <Pressable
+          onPress={onSaveDay}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={t('routine.saveDay')}>
+          <GlassSurface glass="regular" isInteractive style={styles.settingsButton}>
+            <AppIcon name="bookmark" color={colors.textSecondary} size={18} />
+          </GlassSurface>
+        </Pressable>
+      ) : (
+        <View style={styles.sideSpacer} />
+      )}
       <DateNav date={date} canNext={canNext} onPrev={onPrev} onNext={onNext} onToday={onToday} />
       <Pressable
         onPress={onOpenSettings}

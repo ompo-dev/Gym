@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -18,10 +18,13 @@ import { FoodGoalsSheet } from '@/components/organisms/FoodGoalsSheet';
 import { FoodMediaActionMenu } from '@/components/organisms/FoodMediaActionMenu';
 import type { FoodMediaDraft } from '@/components/organisms/FoodMediaDraftTray';
 import { NotesList } from '@/components/organisms/NotesList';
+import { SaveRoutineSheet } from '@/components/organisms/SaveRoutineSheet';
 import { TotalsDock } from '@/components/organisms/TotalsDock';
 import { WorkoutProgressSheet } from '@/components/organisms/WorkoutProgressSheet';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
 import { APP_MODAL_TRANSITION_MS, canOpenAppModal } from '@/core/appModals';
+import { ENRICH_ERROR } from '@/core/command/CommandBus';
+import type { Command } from '@/core/command/Command';
 import { enrich } from '@/core/enrich/client';
 import type { EnrichMediaDescription, EnrichMediaInput } from '@/core/enrich/types';
 import { lookupOpenFoodFactsProduct } from '@/core/food/openFoodFacts';
@@ -30,11 +33,13 @@ import type { Entry, EntryMediaAttachment, FoodMediaAction } from '@/core/types'
 import { newId } from '@/core/utils';
 import { EntryRepository } from '@/data/EntryRepository';
 import { SavedMealRepository, type SavedMeal } from '@/data/SavedMealRepository';
-import { SavedWorkoutRepository, type SavedWorkout } from '@/data/SavedWorkoutRepository';
+import { SavedRoutineRepository, type Weekday } from '@/data/SavedRoutineRepository';
+import { SavedExerciseRepository, type SavedExercise } from '@/data/SavedExerciseRepository';
+import { routineItemsFor, weekdayOf } from '@/domains/routines';
 import { mergeDuplicateFoodItems, mergeFoodEdit, type FoodTotals } from '@/domains/food';
 import { foodEditSchema, foodSchema, type FoodData, type FoodItem, type WorkoutData } from '@/domains/schemas';
 import type { DomainConfig } from '@/domains/types';
-import { type WorkoutTotals, uniqueWorkoutExerciseNames } from '@/domains/workout';
+import { uniqueWorkoutExerciseNames } from '@/domains/workout';
 import { useColors } from '@/hooks/use-colors';
 import { useDay } from '@/hooks/useDay';
 import { useTotals } from '@/hooks/useTotals';
@@ -256,8 +261,9 @@ export function DayTemplate<TData, TTotals>({
   const [foodReasoningLoadingId, setFoodReasoningLoadingId] = useState<string | null>(null);
   const [foodMediaMenuVisible, setFoodMediaMenuVisible] = useState(false);
   const [foodMediaDrafts, setFoodMediaDrafts] = useState<FoodMediaDraft[]>([]);
-  const [savedWorkoutEntryIds, setSavedWorkoutEntryIds] = useState<Set<string>>(new Set());
+  const [savedExerciseEntryIds, setSavedExerciseEntryIds] = useState<Set<string>>(new Set());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const undoCommand = useRef<Promise<Command> | null>(null);
   const barcodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingBarcodeDraft = useRef<{ text: string; data: FoodData; imageUri?: string } | null>(null);
   const barcodeCaptureDismissed = useRef(false);
@@ -355,20 +361,27 @@ export function DayTemplate<TData, TTotals>({
   useEffect(() => {
     if (isFood) return;
     let active = true;
-    void SavedWorkoutRepository.all().then((workouts) => {
+    void SavedExerciseRepository.all().then((workouts) => {
       if (!active) return;
-      setSavedWorkoutEntryIds(
+      setSavedExerciseEntryIds(
         new Set(workouts.flatMap((workout) => (workout.sourceEntryId ? [workout.sourceEntryId] : []))),
       );
     });
     return () => {
       active = false;
     };
-  }, [isFood, entries]);
+    // Keyed on the day, not on `entries` — `entries` changes on every upsert
+    // (each keystroke-driven edit, each enrich resolution), and this is a full
+    // table read. The bookmark handler keeps the set in sync within a day.
+  }, [isFood, date]);
 
   const handleDelete = useCallback(
     (entry: Entry) => {
-      deleteEntry(entry);
+      // Keep the *promise*, assigned synchronously: the toast is on screen the
+      // instant the row goes, and tapping undo before the delete resolves still
+      // targets the right command. The bus is shared by both verticals, so an
+      // untargeted undo could revert whatever the user did next instead.
+      undoCommand.current = deleteEntry(entry);
       setUndoVisible(true);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setUndoVisible(false), UNDO_MS);
@@ -380,8 +393,8 @@ export function DayTemplate<TData, TTotals>({
     async (entry: Entry, saved: boolean) => {
       if (isFood || entry.status !== 'done' || !entry.data || !('sets' in entry.data)) return false;
       if (!saved) {
-        await SavedWorkoutRepository.deleteBySourceEntryId(entry.id);
-        setSavedWorkoutEntryIds((current) => {
+        await SavedExerciseRepository.deleteBySourceEntryId(entry.id);
+        setSavedExerciseEntryIds((current) => {
           const next = new Set(current);
           next.delete(entry.id);
           return next;
@@ -394,18 +407,20 @@ export function DayTemplate<TData, TTotals>({
       );
       const exercise = exercises[0];
       if (!exercise) return false;
-      const workout = await SavedWorkoutRepository.save('exercise', exercise, [exercise], entry.id);
+      const workout = await SavedExerciseRepository.save('exercise', exercise, [exercise], entry.id);
       if (!workout) return false;
-      setSavedWorkoutEntryIds((current) => new Set(current).add(entry.id));
+      setSavedExerciseEntryIds((current) => new Set(current).add(entry.id));
       return true;
     },
     [isFood],
   );
 
   const handleUndo = useCallback(() => {
-    void undo();
+    const pending = undoCommand.current;
+    undoCommand.current = null;
     setUndoVisible(false);
     if (timer.current) clearTimeout(timer.current);
+    if (pending) void pending.then((command) => undo(command));
   }, [undo]);
 
   const handleAddEntry = useCallback(
@@ -449,6 +464,7 @@ export function DayTemplate<TData, TTotals>({
 
         let parsedFood: FoodData | null = null;
         let describedMedia = entryMedia;
+        let enrichFailed = false;
 
         if (noteText || foodPhotoMedia?.length) {
           try {
@@ -465,26 +481,31 @@ export function DayTemplate<TData, TTotals>({
             });
             const parsed = response.ok ? foodSchema.safeParse(response.data) : null;
             parsedFood = parsed?.success && parsed.data.items.length ? parsed.data : null;
+            enrichFailed = !response.ok || !parsed?.success;
             describedMedia = response.ok
               ? withGeneratedDescriptions(entryMedia, response.mediaDescriptions)
               : entryMedia;
           } catch {
             parsedFood = null;
+            enrichFailed = true;
           }
         }
 
-        if (barcodeData.length === 0 && !parsedFood && !foodPhotoMedia?.length && !noteText) {
-          await EntryRepository.update(entry.id, {
+        // The AI is the only source of numbers here unless a barcode supplied
+        // some. Falling through on failure would save a "done" meal whose items
+        // are all zeros — a silent 0 kcal lunch. Mark it errored instead.
+        // ponytail: no retry affordance for these (NoteRow hides it when the
+        // entry has media) because runEnrich only re-sends `text` and would drop
+        // the photos. Upgrade path: move this path into CommandBus and re-read
+        // media[].uri so a retry can rebuild the composite request.
+        if (enrichFailed && barcodeData.length === 0) {
+          const failure = {
             media: describedMedia,
-            status: 'error',
-            error: t('details.aiEditFailed'),
-          });
-          useAppStore.getState().upsertEntry('food', {
-            ...entry,
-            media: describedMedia,
-            status: 'error',
-            error: t('details.aiEditFailed'),
-          });
+            status: 'error' as const,
+            error: ENRICH_ERROR.failed,
+          };
+          await EntryRepository.update(entry.id, failure);
+          useAppStore.getState().upsertEntry('food', { ...entry, ...failure });
           return;
         }
 
@@ -707,10 +728,29 @@ export function DayTemplate<TData, TTotals>({
     replaceAppModal({ id: 'food.savedMealPicker', domain: 'food' });
   }, [replaceAppModal]);
 
-  const openSavedWorkoutPicker = useCallback(() => {
-    if (!canOpenAppModal('day.root', 'workout.savedWorkoutPicker')) return;
+  const routineItems = useMemo(
+    () => routineItemsFor(config.id, entries, getLang()),
+    [config.id, entries],
+  );
+
+  const openSaveRoutine = useCallback(() => {
+    if (!canOpenAppModal('day.root', 'day.saveRoutine')) return;
     Keyboard.dismiss();
-    replaceAppModal({ id: 'workout.savedWorkoutPicker', domain: 'workout' });
+    replaceAppModal({ id: 'day.saveRoutine', domain: config.id });
+  }, [config.id, replaceAppModal]);
+
+  const handleSaveRoutine = useCallback(
+    (name: string, weekday: Weekday | null) => {
+      closeAppModal('day.saveRoutine');
+      void SavedRoutineRepository.save(config.id, name, routineItems, weekday, date);
+    },
+    [closeAppModal, config.id, date, routineItems],
+  );
+
+  const openSavedExercisePicker = useCallback(() => {
+    if (!canOpenAppModal('day.root', 'workout.savedExercisePicker')) return;
+    Keyboard.dismiss();
+    replaceAppModal({ id: 'workout.savedExercisePicker', domain: 'workout' });
   }, [replaceAppModal]);
 
   const handleSelectSavedMeals = useCallback((meals: SavedMeal[]) => {
@@ -728,13 +768,13 @@ export function DayTemplate<TData, TTotals>({
       createdAt: now + index,
     }));
     void (async () => {
-      await Promise.all(entries.map((entry) => EntryRepository.insert(entry)));
+      await EntryRepository.insertMany(entries);
       entries.forEach((entry) => useAppStore.getState().upsertEntry('food', entry));
     })();
   }, [closeAppModal, date]);
 
-  const handleSelectSavedWorkouts = useCallback((workouts: SavedWorkout[]) => {
-    closeAppModal('workout.savedWorkoutPicker');
+  const handleSelectSavedExercises = useCallback((workouts: SavedExercise[]) => {
+    closeAppModal('workout.savedExercisePicker');
     workouts.forEach((workout) => {
       workout.exercises.forEach((exercise) => addEntry(exercise));
     });
@@ -770,7 +810,6 @@ export function DayTemplate<TData, TTotals>({
 
   const totalItems = config.describeTotals(totals);
   const foodTotals = isFood ? (totals as FoodTotals) : null;
-  const workoutTotals = !isFood ? (totals as WorkoutTotals) : null;
   const footerPaddingBottom = keyboardVisible ? Spacing.two : insets.bottom + TAB_BAR_CLEARANCE;
   const toggleFoodGoals = () => {
     if (!canOpenAppModal('day.root', 'food.goals')) return;
@@ -798,6 +837,8 @@ export function DayTemplate<TData, TTotals>({
           style={styles.paddedHeader}
           onStartShouldSetResponderCapture={dismissStatsPanelResponder}>
           <DayHeader
+            onSaveDay={openSaveRoutine}
+            canSaveDay={routineItems.length > 0}
             date={date}
             canNext={canGoNext}
             onPrev={goPrev}
@@ -828,8 +869,8 @@ export function DayTemplate<TData, TTotals>({
             onEdit={editEntry}
             onDelete={handleDelete}
             onRetry={retryEntry}
-            onSaveWorkoutExercise={!isFood ? handleSaveWorkoutExercise : undefined}
-            savedWorkoutEntryIds={!isFood ? savedWorkoutEntryIds : undefined}
+            onSaveExercise={!isFood ? handleSaveWorkoutExercise : undefined}
+            savedExerciseEntryIds={!isFood ? savedExerciseEntryIds : undefined}
             onOpenFoodDetails={isFood ? openFoodEntryDetails : undefined}
           />
         </View>
@@ -839,11 +880,10 @@ export function DayTemplate<TData, TTotals>({
 
           <View style={styles.footerStack}>
             {foodTotals ? <FoodGoalsSheet totals={foodTotals} visible={foodGoalsVisible} /> : null}
-            {workoutTotals ? (
+            {!isFood ? (
               <WorkoutProgressSheet
                 date={date}
                 entries={entries}
-                totals={workoutTotals}
                 visible={workoutProgressVisible}
               />
             ) : null}
@@ -898,7 +938,7 @@ export function DayTemplate<TData, TTotals>({
                     </>
                   ) : (
                     <Pressable
-                      onPress={openSavedWorkoutPicker}
+                      onPress={openSavedExercisePicker}
                       hitSlop={10}
                       accessibilityRole="button"
                       accessibilityLabel={t('media.addSavedWorkout')}>
@@ -945,7 +985,23 @@ export function DayTemplate<TData, TTotals>({
         onFoodCaptureDismiss={handleFoodCaptureDismiss}
         onSaveBarcodeFood={handleSaveBarcodeFood}
         onSelectSavedMeals={handleSelectSavedMeals}
-        onSelectSavedWorkouts={handleSelectSavedWorkouts}
+        onSelectSavedExercises={handleSelectSavedExercises}
+      />
+
+      <SaveRoutineSheet
+        visible={activeDomainModal?.id === 'day.saveRoutine'}
+        domain={config.id}
+        itemCount={routineItems.length}
+        summary={routineItems
+          .map((item) => (typeof item === 'string' ? item : item.text))
+          .filter(Boolean)
+          .join('  ·  ')}
+        // The weekday reads better as a routine name than the date does: these
+        // get reused, so "Segunda" beats "19 de jul".
+        defaultName={t(`weekday.long.${weekdayOf(date)}` as 'weekday.long.0')}
+        defaultWeekday={weekdayOf(date)}
+        onClose={() => closeAppModal('day.saveRoutine')}
+        onSave={handleSaveRoutine}
       />
     </KeyboardAvoidingView>
   );

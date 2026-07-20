@@ -2,11 +2,16 @@ import { newId } from '@/core/utils';
 
 import { getDb } from './db';
 
-export type SavedWorkoutKind = 'exercise' | 'day';
+/**
+ * `day` is legacy: whole-day saving moved to `saved_routines`, and nothing
+ * writes this kind any more. The reader still accepts it so rows saved before
+ * the split keep showing up instead of silently vanishing.
+ */
+export type SavedExerciseKind = 'exercise' | 'day';
 
-export interface SavedWorkout {
+export interface SavedExercise {
   id: string;
-  kind: SavedWorkoutKind;
+  kind: SavedExerciseKind;
   name: string;
   exercises: string[];
   sourceEntryId?: string;
@@ -35,7 +40,7 @@ function cleanExercises(exercises: string[]): string[] {
   });
 }
 
-function toSavedWorkout(row: Row): SavedWorkout | null {
+function toSavedWorkout(row: Row): SavedExercise | null {
   if (row.kind !== 'exercise' && row.kind !== 'day') return null;
   try {
     const exercises = cleanExercises(JSON.parse(row.exercises) as string[]);
@@ -54,17 +59,22 @@ function toSavedWorkout(row: Row): SavedWorkout | null {
   }
 }
 
-export const SavedWorkoutRepository = {
+export const SavedExerciseRepository = {
   async save(
-    kind: SavedWorkoutKind,
+    kind: SavedExerciseKind,
     name: string,
     exercises: string[],
     sourceEntryId?: string,
     sourceDate?: string,
-  ): Promise<SavedWorkout | null> {
+  ): Promise<SavedExercise | null> {
     const cleaned = cleanExercises(exercises);
     if (!cleaned.length) return null;
 
+    // ponytail: this SELECT-before-INSERT is load-bearing, not just tidy. The
+    // bookmark in the outliner keeps its own optimistic boolean, so a fast
+    // double-tap can fire save() twice; returning the existing row is what makes
+    // that harmless. The partial unique indexes are the DB-level backstop — they
+    // would throw, not dedupe, since there is no ON CONFLICT here.
     const db = await getDb();
     const existing = sourceEntryId
       ? await db.getFirstAsync<Row>(
@@ -79,7 +89,7 @@ export const SavedWorkoutRepository = {
         : null;
     if (existing) return toSavedWorkout(existing);
 
-    const workout: SavedWorkout = {
+    const workout: SavedExercise = {
       id: newId(),
       kind,
       name: name.trim() || cleaned[0],
@@ -103,12 +113,12 @@ export const SavedWorkoutRepository = {
     return workout;
   },
 
-  async all(): Promise<SavedWorkout[]> {
+  async all(): Promise<SavedExercise[]> {
     const db = await getDb();
     const rows = await db.getAllAsync<Row>(
       'SELECT * FROM saved_workouts ORDER BY createdAt DESC',
     );
-    return rows.map(toSavedWorkout).filter((workout): workout is SavedWorkout => workout !== null);
+    return rows.map(toSavedWorkout).filter((workout): workout is SavedExercise => workout !== null);
   },
 
   async count(): Promise<number> {

@@ -1,6 +1,8 @@
 import Constants from 'expo-constants';
 
-import type { EnrichRequest, EnrichResponse } from './types';
+import { useAppStore } from '@/store/useAppStore';
+
+import type { EnrichKeys, EnrichRequest, EnrichResponse } from './types';
 
 const TIMEOUT_MS = 20_000;
 
@@ -20,6 +22,20 @@ function apiBase(): string {
   return 'http://localhost:8081';
 }
 
+/**
+ * Attached here, at the single choke point every caller already goes through,
+ * rather than at each call site — there are four of those and forgetting one
+ * would silently bill the wrong key.
+ */
+function activeKeys(): EnrichKeys | undefined {
+  const keys = useAppStore.getState().apiKeys;
+  if (keys.mode !== 'own') return undefined;
+  const chat = keys.chat.trim();
+  if (!chat) return undefined;
+  const image = keys.image.trim();
+  return image ? { chat, image } : { chat };
+}
+
 export async function enrich(req: EnrichRequest): Promise<EnrichResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -27,7 +43,7 @@ export async function enrich(req: EnrichRequest): Promise<EnrichResponse> {
     const res = await fetch(`${apiBase()}/api/enrich`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
+      body: JSON.stringify({ ...req, keys: activeKeys() }),
       signal: controller.signal,
     });
     if (!res.ok) return { ok: false, error: `Server error ${res.status}` };

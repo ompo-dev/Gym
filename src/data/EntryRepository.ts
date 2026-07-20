@@ -1,3 +1,5 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+
 import type { Domain, Entry, EntryMediaAttachment, EntryMediaKind, EntryStatus } from '@/core/types';
 import { type EnrichData, schemaByDomain } from '@/domains/schemas';
 
@@ -76,6 +78,25 @@ function toEntry(r: Row): Entry {
   };
 }
 
+function insertRow(db: SQLiteDatabase, entry: Entry): Promise<unknown> {
+  return db.runAsync(
+    `INSERT OR REPLACE INTO entries
+       (id, date, domain, text, media, status, data, error, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      entry.id,
+      entry.date,
+      entry.domain,
+      entry.text,
+      entry.media?.length ? JSON.stringify(entry.media) : null,
+      entry.status,
+      entry.data ? JSON.stringify(entry.data) : null,
+      entry.error,
+      entry.createdAt,
+    ],
+  );
+}
+
 /** Repository over expo-sqlite. Query only the visible day → small memory footprint. */
 export const EntryRepository = {
   async findByDate(domain: Domain, date: string): Promise<Entry[]> {
@@ -98,22 +119,17 @@ export const EntryRepository = {
 
   async insert(entry: Entry): Promise<void> {
     const db = await getDb();
-    await db.runAsync(
-      `INSERT OR REPLACE INTO entries
-         (id, date, domain, text, media, status, data, error, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        entry.id,
-        entry.date,
-        entry.domain,
-        entry.text,
-        entry.media?.length ? JSON.stringify(entry.media) : null,
-        entry.status,
-        entry.data ? JSON.stringify(entry.data) : null,
-        entry.error,
-        entry.createdAt,
-      ],
-    );
+    await insertRow(db, entry);
+  },
+
+  /** All-or-nothing insert. A half-applied batch would leave the day showing
+   *  some of the meals the user picked and silently drop the rest. */
+  async insertMany(entries: Entry[]): Promise<void> {
+    if (!entries.length) return;
+    const db = await getDb();
+    await db.withTransactionAsync(async () => {
+      for (const entry of entries) await insertRow(db, entry);
+    });
   },
 
   async update(id: string, patch: Partial<Entry>): Promise<void> {

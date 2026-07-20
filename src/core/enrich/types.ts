@@ -14,9 +14,32 @@ export interface EnrichMediaDescription {
   description: string;
 }
 
+/**
+ * `managed` bills through our key (the server env one); `own` sends the user's
+ * key so the request never touches our quota. The mode is stored explicitly
+ * rather than inferred from "has a key" because billing reads it, and because a
+ * user may keep a key saved while temporarily switching back.
+ */
+export type ApiKeyMode = 'managed' | 'own';
+
+export interface ApiKeys {
+  mode: ApiKeyMode;
+  /** Chat/parsing model key. */
+  chat: string;
+  /** Vision model key. Blank means "same as chat" — the common case. */
+  image: string;
+}
+
+export interface EnrichKeys {
+  chat: string;
+  image?: string;
+}
+
 export interface EnrichRequest {
   text: string;
   domain: Domain;
+  /** Only sent when the user opted into their own key. */
+  keys?: EnrichKeys;
   intent?: 'parse' | 'foodEdit';
   currentFood?: FoodData;
   media?: EnrichMediaInput[];

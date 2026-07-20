@@ -119,9 +119,20 @@ interface WorkoutSet {
 
 type WorkoutKind = "strength" | "cardio";
 
+interface MuscleRef {
+  muscle: string;   // id de src/domains/anatomy.ts
+  portion?: string; // porcao daquele musculo, quando aplica
+}
+
 interface WorkoutData {
   exercise: string | null;
   kind?: WorkoutKind;
+  /** Musculo alvo do exercicio. */
+  primary?: MuscleRef;
+  /** Assistem o movimento. */
+  synergists: MuscleRef[];
+  /** Seguram a posicao sem produzir o movimento. */
+  stabilizers: MuscleRef[];
   sets: WorkoutSet[];
 }
 ```
@@ -144,6 +155,46 @@ Outras regras do schema:
 - `sets` tem `.default([])`, entao uma resposta so com nome de exercicio
   (`{ exercise: "Supino reto", kind: "series" }`) valida.
 - Zero series continua valido: o outliner cria o exercicio antes das linhas.
+- `primary`, `synergists` e `stabilizers` sao validados contra o vocabulario de
+  `anatomy.ts`. Referencia desconhecida e **descartada**, nao rejeitada: um
+  musculo alucinado pela IA nao pode custar a correcao do nome do exercicio que
+  veio na mesma resposta.
+
+## Anatomia
+
+`src/domains/anatomy.ts` guarda o vocabulario fechado em tres niveis:
+
+```
+grupamento -> musculo -> porcao
+costas     -> trapezius -> upper | middle | lower
+```
+
+Grupamentos: `chest`, `back`, `shoulders`, `arms`, `legs`, `glutes`, `core`,
+`cardio`, `other`. Sao 29 musculos, varios com porcoes.
+
+Por que local e nao pedido a IA a cada nota: anatomia nao muda por usuario. A
+IA recebe essa lista no prompt e so **mapeia** o exercicio sobre ela; como o
+schema valida contra os mesmos ids, ela nao consegue inventar musculo.
+
+Entradas gravadas antes dessa feature nao tem `primary`. `src/domains/muscles.ts`
+e a ponte: uma tabela de palavras-chave que descobre o **grupamento** pelo nome
+do exercicio, e o monitor usa o musculo principal daquele grupo. Mais grosseiro
+que a resposta do modelo, mas mantem o historico dentro das contas em vez de
+jogar tudo em "nao classificado". Exercicio que a tabela nao conhece cai em
+`unclassified`, e o monitor mostra essa fatia em vez de escode-la.
+
+## Volume de treino
+
+**Volume e o numero de series por musculo por semana.** Nao e tonelagem.
+
+- `8` a `12` series semanais por musculo e a prescricao low-volume de referencia
+  (`WEEKLY_SET_TARGET`), abaixo de 8 e manutencao, acima de ~20 e onde a maioria
+  para de recuperar.
+- Tonelagem (peso x reps) existe e e reportada como **carga** (`loadKg`), em
+  separado. Ela nao tem faixa de referencia e responde outra pergunta.
+- Serie como **sinergista** e mostrada, mas **nunca somada** ao volume: 3 series
+  de supino nao sao 3 series de triceps. Contar duas vezes faria todo dia de
+  peito virar dia de triceps e a prescricao perderia o sentido.
 
 Volume (so conta series com carga e repeticao):
 
@@ -213,6 +264,7 @@ Uso:
 interface EnrichRequest {
   text: string;
   domain: "food" | "workout";
+  keys?: { chat: string; image?: string };
   intent?: "parse" | "foodEdit";
   currentFood?: FoodData;
   media?: EnrichMediaInput[];
@@ -234,6 +286,16 @@ interface EnrichRequest {
 `userContext`:
 
 - comida: perfil nutricional local vindo do onboarding.
+
+`keys`:
+
+- so e enviado quando `api_mode = own` e existe chave de chat salva;
+- o cliente injeta em `enrich()`, ponto unico por onde todo chamador passa;
+- no servidor, `chat` assina a chamada de parse e `image` a de visao;
+- `image` vazio cai para `keys.chat`;
+- chave do usuario **nunca** cai para a do servidor. Se a chave dele falhar, o
+  request falha — cair de volta gastaria nossa cota para quem optou por sair
+  dela. Coberto por teste em `enrich+api.test.ts`.
 
 ## EnrichMediaInput
 
@@ -384,6 +446,15 @@ Chaves conhecidas:
 - `lang`: `pt-BR | en-US`.
 - `onboarding_done`: `"1"` ou `"0"`.
 - `onboarding_profile`: JSON de `OnboardingProfile`.
+- `api_mode`: `managed | own`. `managed` usa a chave do servidor; `own` usa a do
+  usuario. E o campo que a cobranca futura le.
+- `api_key_chat`: chave do usuario para o modelo de texto.
+- `api_key_image`: chave do usuario para o modelo de visao. Vazio significa
+  "mesma do chat".
+
+As duas chaves ficam em **texto puro** nesta tabela, decisao consciente. Backup
+do aparelho leva as chaves junto. Se um dia virar requisito, `expo-secure-store`
+substitui so o acesso a essas tres chaves.
 
 Tabela `saved_meals`:
 
@@ -401,7 +472,52 @@ CREATE UNIQUE INDEX idx_saved_meals_source
   WHERE sourceEntryId IS NOT NULL;
 ```
 
-Tabela `saved_workouts`:
+Tabela `saved_routines` — o **dia** salvo, nos dois dominios:
+
+```sql
+CREATE TABLE saved_routines (
+  id TEXT PRIMARY KEY NOT NULL,
+  domain TEXT NOT NULL,        -- 'food' | 'workout'
+  name TEXT NOT NULL,
+  weekday INTEGER,             -- 0-6 (0 = domingo), NULL = sem dia fixo
+  items TEXT NOT NULL,         -- JSON, formato depende do dominio
+  sourceDate TEXT,
+  createdAt INTEGER NOT NULL
+);
+CREATE INDEX idx_saved_routines_domain ON saved_routines (domain, createdAt DESC);
+```
+
+Uma tabela para os dois porque os metadados sao identicos; so o `items` muda, e
+cada dominio tem seu schema Zod (`routineItemsSchemaByDomain`):
+
+- **workout**: `string[]` — so nomes de exercicio. Sem carga, serie, distancia
+  ou tempo. Reaplicar da a sessao vazia para preencher.
+- **food**: `{ text, data }[]` — refeicoes com a nutricao completa. Repetir uma
+  dieta significa repetir os numeros. Midia fica de fora de proposito: a foto
+  pertence ao dia em que foi tirada.
+
+`save` **sempre insere**, sem dedupe por origem — salvar o mesmo dia com dois
+nomes e um uso legitimo. Row cujo `items` nao valida mais e descartada na
+leitura, como nas outras tabelas.
+
+## Vocabulario
+
+Tres coisas diferentes que antes se chamavam "treino salvo":
+
+| Conceito | Onde vive | O que guarda |
+| --- | --- | --- |
+| Exercicio salvo | `saved_workouts` | um nome de exercicio, pelo bookmark da nota |
+| Treino salvo | `saved_routines` (`domain=workout`) | os exercicios do dia, sem numeros |
+| Dieta salva | `saved_routines` (`domain=food`) | as refeicoes do dia, com tudo |
+
+Tabela `saved_workouts` — o **exercicio** salvo. O nome da tabela ficou do
+modelo antigo; o codigo hoje chama isso de `SavedExerciseRepository` /
+`SavedExercise`. Renomear a tabela exigiria migracao de dado por ganho apenas
+cosmetico, entao ficou como esta e este paragrafo e o mapa.
+
+`kind = 'day'` e legado: salvar o dia inteiro passou para `saved_routines` e
+nada mais escreve esse valor. A leitura continua aceitando para nao sumir com
+linhas antigas.
 
 ```sql
 CREATE TABLE saved_workouts (
@@ -423,7 +539,7 @@ CREATE UNIQUE INDEX idx_saved_workouts_day
 
 `exercises` e um array JSON de strings.
 
-A idempotencia de `SavedWorkoutRepository.save` vem do SELECT-antes-do-INSERT no
+A idempotencia de `SavedExerciseRepository.save` vem do SELECT-antes-do-INSERT no
 proprio repository, que devolve o registro existente por `sourceEntryId` (ou por
 `kind = 'day'` + `sourceDate`) em vez de inserir de novo. Os dois indices unicos
 parciais sao a garantia no nivel do banco contra corrida — um exercicio por
@@ -535,9 +651,16 @@ Forma pedida ao modelo:
 {
   "exercise": "Supino reto",
   "kind": "series",
+  "primary": { "muscle": "pectoralis-major", "portion": "sternal" },
+  "synergists": [{ "muscle": "triceps-brachii", "portion": "long-head" }],
+  "stabilizers": [{ "muscle": "rotator-cuff" }],
   "sets": [{ "weight": 100, "unit": "kg", "reps": 8 }]
 }
 ```
+
+O prompt embute a lista de musculos de `anatomy.ts` como `grupamento/musculo
+[porcao|porcao]`. Isso viaja em toda requisicao de treino — custo aceito para
+que a classificacao seja fechada e validavel.
 
 O prompt pede `"series" | "cardio"` porque o modelo responde melhor em termos
 do dominio; `normalizeWorkoutKind` traduz para o enum interno

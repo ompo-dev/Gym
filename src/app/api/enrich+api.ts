@@ -23,9 +23,16 @@ const MediaSchema = z.object({
   description: z.string().max(500).optional(),
 });
 
+/** Bring-your-own-key. Absent means the caller is on the managed key. */
+const KeysSchema = z.object({
+  chat: z.string().trim().min(1).max(200),
+  image: z.string().trim().max(200).optional(),
+});
+
 const RequestSchema = z.object({
   text: z.string().trim().min(1).max(3000),
   domain: z.enum(['food', 'workout']),
+  keys: KeysSchema.optional(),
   intent: z.enum(['parse', 'foodEdit']).default('parse'),
   currentFood: foodSchema.optional(),
   media: z.array(MediaSchema).max(6).optional(),
@@ -155,25 +162,31 @@ async function describeFoodMedia(
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    console.error('[enrich] DEEPSEEK_API_KEY is not set');
-    return json({ ok: false, error: 'Server not configured' }, 500);
-  }
-
   const parsedInput = RequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsedInput.success) {
     return json({ ok: false, error: 'Invalid request' }, 400);
   }
-  const { text, domain, intent, currentFood, media, context, userContext, locale } = parsedInput.data;
+  const { text, domain, intent, currentFood, media, context, userContext, locale, keys } =
+    parsedInput.data;
   if (intent === 'foodEdit' && (domain !== 'food' || !currentFood)) {
     return json({ ok: false, error: 'Invalid request' }, 400);
+  }
+
+  // A user key never falls back to ours: if they opted out of the managed key,
+  // a bad key must fail loudly rather than quietly spend our quota. The image
+  // key falls back to their chat key, which is the same key for most people.
+  const managedKey = process.env.DEEPSEEK_API_KEY;
+  const chatKey = keys?.chat ?? managedKey;
+  const imageKey = keys ? keys.image || keys.chat : managedKey;
+  if (!chatKey || !imageKey) {
+    if (!keys) console.error('[enrich] DEEPSEEK_API_KEY is not set');
+    return json({ ok: false, error: 'Server not configured' }, 500);
   }
 
   const language = locale?.toLowerCase().startsWith('en') ? 'English' : 'Brazilian Portuguese';
   const mediaDescriptions =
     domain === 'food' && intent === 'parse'
-      ? await describeFoodMedia(apiKey, media, language)
+      ? await describeFoodMedia(imageKey, media, language)
       : [];
   const mediaContext = mediaDescriptions
     .map((item, index) => `Image ${index + 1} mediaId=${item.id}: ${item.description}`)
@@ -207,7 +220,7 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const raw = await callDeepSeekJson(
-      apiKey,
+      chatKey,
       [
         { role: 'system', content: system },
         { role: 'user', content: userContent },

@@ -60,4 +60,9 @@ principalmente para enriquecimento por IA e consulta de codigo de barras.
 - UI de detalhes de comida: `src/components/organisms/FoodEntryDetailSheet.tsx`.
 - Parser de treino, series e cardio: `src/domains/workout.ts`.
 - Progresso e PR de treino: `src/components/organisms/WorkoutProgressSheet.tsx`.
-- Treinos salvos: `src/data/SavedWorkoutRepository.ts`.
+- Exercicios salvos: `src/data/SavedExerciseRepository.ts`.
+- Dias salvos (treino e dieta): `src/data/SavedRoutineRepository.ts`.
+- Monitor de treino: `src/domains/workoutMonitor.ts` e
+  `WorkoutMonitorSheet` dentro de `src/components/organisms/SettingsSheet.tsx`.
+- Anatomia e volume semanal: `src/domains/anatomy.ts`.
+- Escala e lacunas dos graficos: `src/domains/chartScale.ts`.

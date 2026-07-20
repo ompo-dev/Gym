@@ -77,6 +77,8 @@ test('parseWorkoutSetLine keeps cardio metrics from becoming load when reps are 
 test('parseWorkoutText expands abbreviations and keeps only complete sets', () => {
   expect(parseWorkoutText('bp\n100x8\n95', { locale: 'en-US' })).toEqual({
     exercise: 'bench press',
+    synergists: [],
+    stabilizers: [],
     kind: 'strength',
     sets: [{ weight: 100, unit: 'kg', reps: 8 }],
   });
@@ -85,6 +87,8 @@ test('parseWorkoutText expands abbreviations and keeps only complete sets', () =
 test('parseWorkoutText falls back to the previous exercise when the line is only sets', () => {
   expect(parseWorkoutText('8x100\n6x95', { fallbackExercise: 'Bench Press' })).toEqual({
     exercise: 'Bench Press',
+    synergists: [],
+    stabilizers: [],
     kind: 'strength',
     sets: [
       { weight: 100, unit: 'kg', reps: 8 },
@@ -96,6 +100,8 @@ test('parseWorkoutText falls back to the previous exercise when the line is only
 test('parseWorkoutText keeps cardio lines under the exercise', () => {
   expect(parseWorkoutText('corrida\n5km\n30 min')).toEqual({
     exercise: 'corrida',
+    synergists: [],
+    stabilizers: [],
     kind: 'cardio',
     sets: [{ distanceMeters: 5000 }, { durationSeconds: 1800 }],
   });
@@ -104,6 +110,8 @@ test('parseWorkoutText keeps cardio lines under the exercise', () => {
 test('parseWorkoutText accepts exercise and cardio metrics on one line', () => {
   expect(parseWorkoutText('corrida 5km 30 min')).toEqual({
     exercise: 'corrida',
+    synergists: [],
+    stabilizers: [],
     kind: 'cardio',
     sets: [{ distanceMeters: 5000, durationSeconds: 1800 }],
   });
@@ -112,6 +120,8 @@ test('parseWorkoutText accepts exercise and cardio metrics on one line', () => {
 test('parseWorkoutText treats mixed cardio plus reps as cardio when no load exists', () => {
   expect(parseWorkoutText('5km 30 min 20 reps')).toEqual({
     exercise: null,
+    synergists: [],
+    stabilizers: [],
     kind: 'cardio',
     sets: [{ distanceMeters: 5000, durationSeconds: 1800, reps: 20 }],
   });
