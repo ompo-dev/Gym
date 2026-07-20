@@ -61,6 +61,27 @@ Cada dominio ainda tem seus fluxos exclusivos:
 O dock de totais e o mesmo componente nos dois: em comida abre
 `FoodGoalsSheet`, em treino abre `WorkoutProgressSheet`.
 
+## Ajustes
+
+`SettingsSheet.tsx` era um arquivo de 4563 linhas com quinze sheets dentro. Hoje
+e so a **raiz**: le a pilha de modais, deriva qual sheet esta visivel e renderiza.
+Cada sheet mora em `src/components/organisms/settings/`.
+
+| Arquivo | Papel |
+| --- | --- |
+| `primitives.tsx` | Section, Divider, PageSheet, OptionMenu, Toggle — a linguagem visual dos ajustes |
+| `styles.ts` | `settingsStyles` (o que 3+ sheets usam) e `savedListStyles` (a linha dos tres saved-*) |
+| `goalProfile.ts` | tipo de meta, peso-alvo e rotulos de genero/atividade |
+| `<Nome>Sheet.tsx` | um sheet cada, com o StyleSheet so das chaves que ele usa |
+
+A raiz nao conhece o conteudo de nenhum sheet — passa props e a pilha decide a
+visibilidade. Adicionar um sheet e um arquivo novo mais uma linha na raiz.
+
+O que **nao** foi feito de proposito: nao existe CommandBus de ajustes. As
+escritas aqui sao de um passo, sem undo e sem estado intermediario — o
+`CommandBus` existe para entradas porque elas tem `thinking -> done`, retry e
+desfazer. Ajustes nao tem nada disso, e a cerimonia nao pagaria por si.
+
 ## Modulos de Dominio de Treino
 
 | Arquivo | Responsabilidade |
@@ -194,9 +215,6 @@ Os totais e inputs usam estes tokens; numeros principais ficam em texto do tema.
   tabela de palavras-chave de `muscles.ts`, que so acerta o grupamento — musculo
   e porcao ficam vazios e a fatia sem classificacao aparece no monitor.
 - As chaves de API do usuario ficam em texto puro na tabela `settings`.
-- `SettingsSheet.tsx` passa de 4500 linhas e hospeda todos os sub-sheets de
-  ajustes, inclusive o monitor de treino inteiro. E o maior arquivo do projeto
-  e o proximo candidato obvio a quebrar por sheet.
 - `canOpenAppModal` e conselho, nao regra: e funcao pura que o chamador precisa
   lembrar de invocar; a store nao verifica. Mover a checagem para dentro da
   store nao e de graca — `day.root` e `onboarding.root` sao `AppModalId` mas

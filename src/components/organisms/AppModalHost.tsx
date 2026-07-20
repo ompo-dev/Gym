@@ -9,7 +9,9 @@ import { useAppModalStore } from '@/store/useAppModalStore';
 import { FoodEntryDetailSheet } from './FoodEntryDetailSheet';
 import { FoodMediaCaptureSheet } from './FoodMediaCaptureSheet';
 import { FoodNutritionEditSheet } from './FoodNutritionEditSheet';
-import { SavedMealsSheet, SavedExercisesSheet, SettingsSheet } from './SettingsSheet';
+import { SavedExercisesSheet } from './settings/SavedExercisesSheet';
+import { SavedMealsSheet } from './settings/SavedMealsSheet';
+import { SettingsSheet } from './SettingsSheet';
 
 type CapturedFoodPhoto = {
   kind: Extract<FoodMediaAction, 'foodPhoto' | 'menuPhoto'>;
