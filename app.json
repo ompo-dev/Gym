@@ -8,9 +8,11 @@
     "scheme": "gym",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.ompinho.gymnotes",
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.ompinho.gymnotes",
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
