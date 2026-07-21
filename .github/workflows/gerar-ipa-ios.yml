@@ -1,0 +1,164 @@
+name: Gerar IPA para iPhone
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gerar-ipa:
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    env:
+      CI: "1"
+      EXPO_NO_TELEMETRY: "1"
+
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v6
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Selecionar Xcode
+        run: |
+          sudo xcode-select \
+            --switch /Applications/Xcode_26.6.app/Contents/Developer
+
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Verificar configuração do Expo
+        run: |
+          npx expo config --type public
+          npx expo-doctor || true
+
+      - name: Gerar projeto nativo iOS
+        run: |
+          npx expo prebuild \
+            --platform ios \
+            --clean \
+            --no-install
+
+      - name: Instalar CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: Identificar workspace e scheme
+        id: ios-project
+        shell: bash
+        run: |
+          set -e
+
+          WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+
+          if [ -z "$WORKSPACE" ]; then
+            echo "Nenhum arquivo .xcworkspace foi encontrado."
+            find ios -maxdepth 2 -type f | sort
+            exit 1
+          fi
+
+          SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
+
+          echo "Workspace encontrado: $WORKSPACE"
+          echo "Scheme inicialmente detectado: $SCHEME"
+
+          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+
+          echo "Schemes disponíveis:"
+          xcodebuild -workspace "$WORKSPACE" -list
+
+      - name: Compilar aplicativo para iPhone
+        shell: bash
+        run: |
+          set -e
+          set -o pipefail
+
+          WORKSPACE="${{ steps.ios-project.outputs.workspace }}"
+          SCHEME="${{ steps.ios-project.outputs.scheme }}"
+
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build \
+            | tee xcodebuild.log
+
+      - name: Encontrar aplicativo compilado
+        id: compiled-app
+        shell: bash
+        run: |
+          set -e
+
+          APP_PATH="$(
+            find build/Build/Products/Release-iphoneos \
+              -maxdepth 1 \
+              -name '*.app' \
+              -print \
+              -quit
+          )"
+
+          if [ -z "$APP_PATH" ]; then
+            echo "O arquivo .app não foi encontrado."
+            find build -maxdepth 6 -type d -name '*.app' -print || true
+            exit 1
+          fi
+
+          APP_NAME="$(basename "$APP_PATH" .app)"
+
+          echo "Aplicativo encontrado: $APP_PATH"
+          echo "Nome: $APP_NAME"
+
+          echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Empacotar IPA
+        shell: bash
+        run: |
+          set -e
+
+          APP_PATH="${{ steps.compiled-app.outputs.app_path }}"
+          APP_NAME="${{ steps.compiled-app.outputs.app_name }}"
+
+          rm -rf ipa-package
+          mkdir -p ipa-package/Payload
+
+          cp -R "$APP_PATH" ipa-package/Payload/
+
+          cd ipa-package
+
+          ditto \
+            -c \
+            -k \
+            --sequesterRsrc \
+            --keepParent \
+            Payload \
+            "../${APP_NAME}-unsigned.ipa"
+
+          cd ..
+
+          echo "IPA criado:"
+          ls -lh "${APP_NAME}-unsigned.ipa"
+
+      - name: Enviar IPA para download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gym-iOS-unsigned
+          path: |
+            *-unsigned.ipa
+            xcodebuild.log
+          if-no-files-found: error
+          retention-days: 7
