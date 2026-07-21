@@ -1,0 +1,54 @@
+name: Testar ambiente macOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  testar-macos:
+    runs-on: macos-26
+    timeout-minutes: 10
+
+    steps:
+      - name: Baixar o projeto
+        uses: actions/checkout@v6
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Selecionar Xcode 26.6
+        run: |
+          sudo xcode-select \
+            --switch /Applications/Xcode_26.6.app/Contents/Developer
+
+      - name: Mostrar informações do Mac
+        run: |
+          echo "=== macOS ==="
+          sw_vers
+
+          echo "=== Arquitetura ==="
+          uname -m
+
+          echo "=== Xcode ==="
+          xcodebuild -version
+
+          echo "=== SDK do iPhone ==="
+          xcrun --sdk iphoneos --show-sdk-version
+
+          echo "=== Node ==="
+          node --version
+
+          echo "=== npm ==="
+          npm --version
+
+          echo "=== Ruby ==="
+          ruby --version
+
+          echo "=== CocoaPods ==="
+          pod --version
+
+      - name: Verificar arquivos do projeto
+        run: |
+          pwd
+          ls -la
