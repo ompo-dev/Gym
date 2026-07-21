@@ -1,6 +1,10 @@
 import { requireOptionalNativeModule } from "expo-modules-core";
 import { Platform } from "react-native";
 
+// ponytail: kill switch para isolar o SIGABRT no boot. Deixe false ate confirmar
+// que o ExpoUI nao e a causa; volte para true (ou remova a flag) depois.
+const ENABLE_EXPO_UI = false;
+
 type SwiftUiBundle = {
   BottomSheet: any;
   Button: any;
@@ -24,7 +28,7 @@ function loadSwiftUiBundle(): SwiftUiBundle | null {
     return swiftUiBundleCache;
   }
 
-  if (Platform.OS !== "ios" || !requireOptionalNativeModule("ExpoUI")) {
+  if (!ENABLE_EXPO_UI || Platform.OS !== "ios" || !requireOptionalNativeModule("ExpoUI")) {
     swiftUiBundleCache = null;
     return swiftUiBundleCache;
   }
