@@ -5,7 +5,7 @@ on:
 
 jobs:
   gerar-ipa:
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 60
 
     env:
@@ -27,8 +27,24 @@ jobs:
           sudo xcode-select \
             --switch /Applications/Xcode_26.6.app/Contents/Developer
 
+          echo "Xcode:"
           xcodebuild -version
+
+          echo "SDK iOS:"
           xcrun --sdk iphoneos --show-sdk-version
+
+          echo "Arquitetura:"
+          uname -m
+
+      - name: Restaurar cache do CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods/repos
+          key: ${{ runner.os }}-${{ runner.arch }}-pods-${{ hashFiles('package-lock.json', 'app.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-pods-
 
       - name: Instalar dependências
         run: npm ci
@@ -48,7 +64,7 @@ jobs:
       - name: Instalar CocoaPods
         run: |
           cd ios
-          pod install --repo-update
+          pod install
 
       - name: Identificar workspace e scheme
         id: ios-project
@@ -59,23 +75,25 @@ jobs:
           WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
 
           if [ -z "$WORKSPACE" ]; then
-            echo "Nenhum arquivo .xcworkspace foi encontrado."
+            echo "Nenhum workspace encontrado."
             find ios -maxdepth 2 -type f | sort
             exit 1
           fi
 
           SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
 
-          echo "Workspace encontrado: $WORKSPACE"
-          echo "Scheme inicialmente detectado: $SCHEME"
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
 
           echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
           echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
 
-          echo "Schemes disponíveis:"
-          xcodebuild -workspace "$WORKSPACE" -list
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -list
 
       - name: Compilar aplicativo para iPhone
+        timeout-minutes: 50
         shell: bash
         run: |
           set -e
@@ -84,6 +102,10 @@ jobs:
           WORKSPACE="${{ steps.ios-project.outputs.workspace }}"
           SCHEME="${{ steps.ios-project.outputs.scheme }}"
 
+          echo "Iniciando compilação:"
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
+
           xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -91,11 +113,17 @@ jobs:
             -sdk iphoneos \
             -destination "generic/platform=iOS" \
             -derivedDataPath "$PWD/build" \
+            -parallelizeTargets \
+            -jobs 4 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            clean build \
-            | tee xcodebuild.log
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            DEBUG_INFORMATION_FORMAT=dwarf \
+            GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            build \
+            2>&1 | tee xcodebuild.log
 
       - name: Encontrar aplicativo compilado
         id: compiled-app
@@ -113,13 +141,19 @@ jobs:
 
           if [ -z "$APP_PATH" ]; then
             echo "O arquivo .app não foi encontrado."
-            find build -maxdepth 6 -type d -name '*.app' -print || true
+
+            find build \
+              -maxdepth 8 \
+              -type d \
+              -name '*.app' \
+              -print || true
+
             exit 1
           fi
 
           APP_NAME="$(basename "$APP_PATH" .app)"
 
-          echo "Aplicativo encontrado: $APP_PATH"
+          echo "Aplicativo: $APP_PATH"
           echo "Nome: $APP_NAME"
 
           echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
@@ -154,11 +188,19 @@ jobs:
           ls -lh "${APP_NAME}-unsigned.ipa"
 
       - name: Enviar IPA para download
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Gym-iOS-unsigned
-          path: |
-            *-unsigned.ipa
-            xcodebuild.log
+          path: "*-unsigned.ipa"
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Enviar log da compilação
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gym-iOS-build-log
+          path: xcodebuild.log
+          if-no-files-found: ignore
           retention-days: 7
