@@ -1,6 +1,16 @@
 import type { Domain } from '@/core/types';
 import type { FoodData } from '@/domains/schemas';
 
+/**
+ * No managed proxy and no user key: the request is unsendable, not failing.
+ * Terminal on purpose — retrying cannot conjure a server, and the fix is in
+ * Settings, not in the network.
+ *
+ * Lives here rather than next to `enrich()` so the badge components can read it
+ * without dragging the store — and the SQLite layer behind it — into the tree.
+ */
+export const ENRICH_UNCONFIGURED = 'enrich.unconfigured';
+
 export interface EnrichMediaInput {
   id: string;
   kind: 'foodPhoto' | 'menuPhoto';

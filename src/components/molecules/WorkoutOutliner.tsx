@@ -14,6 +14,7 @@ import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { EntryMeta } from '@/components/molecules/EntryMeta';
 import { ThinkingIndicator } from '@/components/molecules/ThinkingIndicator';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
+import { ENRICH_UNCONFIGURED } from '@/core/enrich/types';
 import type { Entry, EntryStatus } from '@/core/types';
 import type { WorkoutData, WorkoutSet } from '@/domains/schemas';
 import {
@@ -584,11 +585,19 @@ export function WorkoutOutliner({
 
       <View style={styles.right}>
         {entry.status === 'error' ? (
-          <Pressable onPress={() => onRetry(entry)} hitSlop={10} accessibilityRole="button">
+          // Same dead end as NoteRow: with no proxy and no key there is nothing
+          // for a retry to reach.
+          entry.error === ENRICH_UNCONFIGURED ? (
             <AppText variant="label" color={colors.danger}>
-              {t('status.retry')}
+              {t('status.needsKey')}
             </AppText>
-          </Pressable>
+          ) : (
+            <Pressable onPress={() => onRetry(entry)} hitSlop={10} accessibilityRole="button">
+              <AppText variant="label" color={colors.danger}>
+                {t('status.retry')}
+              </AppText>
+            </Pressable>
+          )
         ) : isPending ? null : (
           <>
             {entry.status === 'done' && onSaveExercise ? (

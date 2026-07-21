@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { todayISO } from '@/core/date';
 import type { ApiKeyMode, ApiKeys } from '@/core/enrich/types';
 import {
+  defaultOnboardingProfile,
   micronutrientsFromTrack,
   normalizeOnboardingProfile,
   type OnboardingProfile,
@@ -22,6 +23,7 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 interface AppState {
   food: DayState;
   workout: DayState;
+  onboarding: DayState;
   theme: ThemeMode;
   lang: Lang;
   prefsLoaded: boolean;
@@ -73,6 +75,7 @@ function applyTheme(theme: ThemeMode): void {
 export const useAppStore = create<AppState>((set) => ({
   food: emptyDay(),
   workout: emptyDay(),
+  onboarding: emptyDay(),
   theme: 'system',
   lang: defaultLang,
   prefsLoaded: false,
@@ -181,8 +184,11 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   updateOnboardingProfile: async (patch) => {
-    const current = useAppStore.getState().onboardingProfile;
-    if (!current) return;
+    // Falls back to the defaults rather than bailing: onboarding writes the
+    // profile before it is finished, so `onboardingProfile` is still null the
+    // first time round. Bailing there silently dropped every answer — the goals
+    // sheet kept reading defaults and micronutrients never showed up.
+    const current = useAppStore.getState().onboardingProfile ?? defaultOnboardingProfile();
     const merged = {
       ...current,
       ...patch,

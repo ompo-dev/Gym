@@ -128,7 +128,27 @@ export const workoutSchema = z.object({
 });
 export type WorkoutData = z.infer<typeof workoutSchema>;
 
-export type EnrichData = FoodData | WorkoutData;
+/**
+ * What one onboarding note yields. Every field is optional because a note is a
+ * sentence, not a form — "1,75m e 98kg" carries two of the six and that is a
+ * complete, valid note.
+ */
+export const onboardingSchema = z.object({
+  capture: z.object({
+    gender: z.enum(['male', 'female', 'other', 'private']).optional(),
+    birthDate: z.string().optional(),
+    heightCm: z.number().min(100).max(250).optional(),
+    weightKg: z.number().min(30).max(400).optional(),
+    goalWeightKg: z.number().min(30).max(400).optional(),
+    activity: z.enum(['sedentary', 'light', 'moderate', 'high']).optional(),
+  }),
+  fields: z
+    .array(z.enum(['gender', 'birthDate', 'heightCm', 'weightKg', 'goalWeightKg', 'activity']))
+    .default([]),
+});
+export type OnboardingData = z.infer<typeof onboardingSchema>;
+
+export type EnrichData = FoodData | WorkoutData | OnboardingData;
 
 /**
  * A saved day. Workout keeps only the exercise names — reapplying it should
@@ -149,9 +169,12 @@ export type RoutineFoodItem = z.infer<typeof routineFoodItemsSchema>[number];
 export const routineItemsSchemaByDomain = {
   food: routineFoodItemsSchema,
   workout: routineWorkoutItemsSchema,
+  // Onboarding happens once; there is no day worth saving and reapplying.
+  onboarding: z.array(z.never()),
 } satisfies Record<Domain, z.ZodType>;
 
 export const schemaByDomain = {
   food: foodSchema,
   workout: workoutSchema,
+  onboarding: onboardingSchema,
 } satisfies Record<Domain, z.ZodType>;

@@ -6,6 +6,7 @@ import { EntryMeta } from '@/components/molecules/EntryMeta';
 import { ThinkingIndicator } from '@/components/molecules/ThinkingIndicator';
 import { WorkoutOutliner } from '@/components/molecules/WorkoutOutliner';
 import { Metrics, Spacing } from '@/constants/theme';
+import { ENRICH_UNCONFIGURED } from '@/core/enrich/types';
 import type { Entry } from '@/core/types';
 import { sumFoodData } from '@/domains/food';
 import type { FoodData } from '@/domains/schemas';
@@ -51,6 +52,16 @@ function StatusBadge<TData, TTotals>({
   if (entry.status === 'thinking') return <ThinkingIndicator label={t('status.thinking')} />;
   if (entry.status === 'queued') return <ThinkingIndicator label={t('status.queued')} />;
   if (entry.status === 'error') {
+    // Nothing to retry against: there is no proxy to reach and no key to send.
+    // Offering "try again" here is a loop the user cannot win — the fix lives
+    // in Settings, so say that instead.
+    if (entry.error === ENRICH_UNCONFIGURED) {
+      return (
+        <AppText variant="label" color={colors.danger}>
+          {t('status.needsKey')}
+        </AppText>
+      );
+    }
     // Retry re-enriches from `text` only, so offering it on an entry with
     // photos/barcode would quietly rebuild the meal without them. Show the
     // failed state, no affordance — the user re-adds it.

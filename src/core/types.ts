@@ -1,6 +1,11 @@
 import type { EnrichData } from '@/domains/schemas';
 
-export type Domain = 'food' | 'workout';
+/**
+ * `onboarding` is a note domain like the other two, not a mode: the first-run
+ * profile is captured by writing notes with the same engine, so the app the
+ * user learns in the first minute is the app they keep using.
+ */
+export type Domain = 'food' | 'workout' | 'onboarding';
 
 /** thinking = enrich in flight · queued = waiting for network · done · error */
 export type EntryStatus = 'thinking' | 'queued' | 'done' | 'error';

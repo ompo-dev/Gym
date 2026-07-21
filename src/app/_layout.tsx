@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import AppTabs from '@/components/app-tabs';
-import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
+import { OnboardingTemplate } from '@/components/templates/OnboardingTemplate';
 import { Colors } from '@/constants/theme';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -23,7 +23,7 @@ export default function RootLayout() {
       ) : onboardingDone ? (
         <AppTabs />
       ) : (
-        <OnboardingFlow />
+        <OnboardingTemplate />
       )}
     </SafeAreaProvider>
   );

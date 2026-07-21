@@ -2,6 +2,10 @@ import Constants from 'expo-constants';
 
 import { useAppStore } from '@/store/useAppStore';
 
+import { DeepSeekTransportError, runEnrichEngine } from './deepseek';
+
+import { ENRICH_UNCONFIGURED } from './types';
+
 import type { EnrichKeys, EnrichRequest, EnrichResponse } from './types';
 
 const TIMEOUT_MS = 20_000;
@@ -10,16 +14,20 @@ const TIMEOUT_MS = 20_000;
 export class NetworkError extends Error {}
 
 /**
- * Resolve the proxy base URL. In production set EXPO_PUBLIC_API_URL to the
- * deployed EAS Hosting origin. In dev (Expo Go) fall back to the Metro dev
- * server, which also serves the `+api.ts` route.
+ * Resolve the proxy base URL, or null when there is none to resolve.
+ *
+ * Returning null matters: a standalone build has no Metro dev server and no
+ * deployed origin, and the old `http://localhost:8081` fallback turned that
+ * configuration gap into a connection error that looked exactly like a flaky
+ * network — five silent retries and a "try again" button, in an app that had
+ * nowhere to try.
  */
-function apiBase(): string {
+function apiBase(): string | null {
   const explicit = process.env.EXPO_PUBLIC_API_URL;
   if (explicit) return explicit.replace(/\/+$/, '');
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) return `http://${hostUri.split('/')[0]}`;
-  return 'http://localhost:8081';
+  return null;
 }
 
 /**
@@ -36,20 +44,59 @@ function activeKeys(): EnrichKeys | undefined {
   return image ? { chat, image } : { chat };
 }
 
-export async function enrich(req: EnrichRequest): Promise<EnrichResponse> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+/**
+ * Own key: talk to DeepSeek directly. The proxy exists to hide the managed key,
+ * which a user-supplied key does not need — and going direct is what makes this
+ * work in a standalone build, where no proxy is reachable.
+ */
+async function enrichDirect(
+  req: EnrichRequest,
+  keys: EnrichKeys,
+  signal: AbortSignal,
+): Promise<EnrichResponse> {
+  const { keys: _ignored, ...input } = req;
   try {
-    const res = await fetch(`${apiBase()}/api/enrich`, {
+    return await runEnrichEngine(
+      { ...input, intent: req.intent ?? 'parse' },
+      { chat: keys.chat, image: keys.image || keys.chat },
+      signal,
+    );
+  } catch (e) {
+    if (e instanceof DeepSeekTransportError) throw new NetworkError(e.message);
+    if (e instanceof Error && e.name === 'AbortError') throw new NetworkError('timeout');
+    // A rejected key or malformed model output will not fix itself on attempt
+    // two; only unreachability above is worth the bus retrying.
+    return { ok: false, error: e instanceof Error ? e.message : 'enrich failed' };
+  }
+}
+
+async function enrichViaProxy(req: EnrichRequest, signal: AbortSignal): Promise<EnrichResponse> {
+  const base = apiBase();
+  if (!base) return { ok: false, error: ENRICH_UNCONFIGURED };
+
+  try {
+    const res = await fetch(`${base}/api/enrich`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...req, keys: activeKeys() }),
-      signal: controller.signal,
+      body: JSON.stringify(req),
+      signal,
     });
     if (!res.ok) return { ok: false, error: `Server error ${res.status}` };
     return (await res.json()) as EnrichResponse;
   } catch (e) {
+    // Every throw here is the proxy being unreachable — retryable, always.
     throw new NetworkError(e instanceof Error ? e.message : 'network failure');
+  }
+}
+
+export async function enrich(req: EnrichRequest): Promise<EnrichResponse> {
+  const keys = activeKeys();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    return keys
+      ? await enrichDirect(req, keys, controller.signal)
+      : await enrichViaProxy(req, controller.signal);
   } finally {
     clearTimeout(timer);
   }

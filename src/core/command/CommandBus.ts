@@ -3,7 +3,13 @@ import { normalizeForEnrich } from '@/core/enrich/normalize';
 import type { EnrichRequest, EnrichResponse } from '@/core/enrich/types';
 import type { Domain, Entry, EntryMediaAttachment } from '@/core/types';
 import { hashKey, newId, normalizeText } from '@/core/utils';
-import { type EnrichData, schemaByDomain, type WorkoutData } from '@/domains/schemas';
+import { ONBOARDING_FIELDS, parseOnboardingText } from '@/domains/onboardingNotes';
+import {
+  type EnrichData,
+  type OnboardingData,
+  schemaByDomain,
+  type WorkoutData,
+} from '@/domains/schemas';
 import { getWorkoutExerciseLine, parseWorkoutText } from '@/domains/workout';
 
 import type { Command } from './Command';
@@ -170,6 +176,53 @@ export class CommandBus {
     const cached = this.cache.get(key);
     if (cached) {
       await this.applyResolved(entry, cached);
+      return;
+    }
+
+    // Parser-first, exactly like workout: the first note a new user ever writes
+    // must land before they have given us anything — no key, no account, no
+    // network. The AI only refines what the regexes already understood.
+    if (entry.domain === 'onboarding') {
+      const localData = parseOnboardingText(entry.text);
+
+      let promise = this.inflight.get(key);
+      if (!promise) {
+        promise = this.deps.enrichFn({
+          text: entry.text,
+          domain: entry.domain,
+          context: undefined,
+          userContext: undefined,
+          locale,
+        });
+        this.inflight.set(key, promise);
+      }
+
+      try {
+        const res = await promise;
+        this.inflight.delete(key);
+        if (this.cancelled.has(entry.id)) return;
+        if (!res.ok) throw new Error(res.error);
+
+        const parsed = schemaByDomain.onboarding.safeParse(res.data);
+        if (!parsed.success) throw new Error('schema');
+
+        // The model wins only where the parser found nothing: it is the polish
+        // pass, so a hallucinated weight can never overwrite a stated one.
+        const merged: OnboardingData = {
+          capture: { ...parsed.data.capture, ...localData.capture },
+          fields: ONBOARDING_FIELDS.filter(
+            (field) =>
+              localData.capture[field] !== undefined || parsed.data.capture[field] !== undefined,
+          ),
+        };
+        this.cache.set(key, merged);
+        await this.applyResolved(entry, merged);
+      } catch {
+        this.inflight.delete(key);
+        if (this.cancelled.has(entry.id)) return;
+        this.cache.set(key, localData);
+        await this.applyResolved(entry, localData);
+      }
       return;
     }
 

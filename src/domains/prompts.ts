@@ -9,7 +9,26 @@ const MUSCLE_PROMPT_VOCABULARY = MUSCLES.map((muscle) =>
     : `${muscle.group}/${muscle.id}`,
 ).join('; ');
 
+/**
+ * Onboarding notes resolve on the local parser; this prompt is only the polish
+ * pass for when a key exists, so it is deliberately narrow — it corrects what
+ * the regexes missed, it does not invent numbers the user never said.
+ */
+const ONBOARDING_PROMPT = [
+  'You extract profile facts from one sentence written by someone setting up a fitness app.',
+  'Return ONLY a JSON object of the shape',
+  '{ "capture": { "gender"?: "male"|"female"|"other"|"private", "birthDate"?: "YYYY-MM-DD", "heightCm"?: number, "weightKg"?: number, "goalWeightKg"?: number, "activity"?: "sedentary"|"light"|"moderate"|"high" }, "fields": string[] }.',
+  'Omit every field the sentence does not state. NEVER guess, average, or infer a value the user did not give.',
+  'heightCm is centimetres (1,75m -> 175). weightKg is kilograms.',
+  'weightKg is what they weigh now; goalWeightKg is what they want to weigh.',
+  'For age, subtract from today and use 01-01 for the month and day if only the age is given.',
+  'Map training frequency to activity: none -> sedentary, 1-2x/week -> light, 3-4x -> moderate, 5+ -> high.',
+  'fields lists exactly the keys present in capture.',
+  'Respond with JSON only, no prose.',
+].join(' ');
+
 export const promptByDomain: Record<Domain, string> = {
+  onboarding: ONBOARDING_PROMPT,
   food: [
     'You are a nutrition parser. The user writes a food entry in natural language.',
     'Return ONLY a JSON object of the shape',

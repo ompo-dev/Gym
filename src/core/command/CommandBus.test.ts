@@ -18,6 +18,7 @@ function harness(
   const day: Record<Domain, { date: string; entries: Entry[] }> = {
     food: { date: TODAY, entries: [] },
     workout: { date: TODAY, entries: [] },
+    onboarding: { date: TODAY, entries: [] },
   };
   const rows = new Map<string, Entry>();
   const scheduled: { fn: () => void; ms: number }[] = [];
@@ -246,4 +247,56 @@ test('workout entries use AI to classify cardio while keeping local cardio metri
     kind: 'cardio',
     sets: [{ distanceMeters: 5000, durationSeconds: 3600 }],
   });
+});
+
+// ---- onboarding domain ------------------------------------------------------
+
+const ENRICH_DOWN = async (): Promise<EnrichResponse> => ({
+  ok: false,
+  error: 'enrich.unconfigured',
+});
+
+test('an onboarding note resolves with no key and no network', async () => {
+  // The whole point of the domain: the very first note a new user writes must
+  // land before they have given us anything.
+  const { bus, day } = harness(ENRICH_DOWN);
+  await bus.addEntry('homem, 25 anos, 1,75m e 98kg', 'onboarding');
+  await flush();
+
+  const entry = day.onboarding.entries[0];
+  expect(entry.status).toBe('done');
+  expect((entry.data as { capture: Record<string, unknown> }).capture).toMatchObject({
+    gender: 'male',
+    heightCm: 175,
+    weightKg: 98,
+  });
+});
+
+test('the model fills gaps but never overwrites what the user actually wrote', async () => {
+  const { bus, day } = harness(async () => ({
+    ok: true,
+    data: {
+      // The model contradicts the stated weight and adds a field the regexes missed.
+      capture: { weightKg: 70, activity: 'high' },
+      fields: ['weightKg', 'activity'],
+    },
+  }));
+  await bus.addEntry('98kg', 'onboarding');
+  await flush();
+
+  const capture = (day.onboarding.entries[0].data as { capture: Record<string, unknown> }).capture;
+  expect(capture.weightKg).toBe(98);
+  expect(capture.activity).toBe('high');
+});
+
+test('an onboarding note never ends in error', async () => {
+  const { bus, day, scheduled } = harness(async () => {
+    throw new Error('network down');
+  });
+  await bus.addEntry('bom dia', 'onboarding');
+  await flush();
+
+  const entry = day.onboarding.entries[0];
+  expect(entry.status).toBe('done');
+  expect(scheduled).toHaveLength(0); // no retry backoff for a note that already landed
 });
