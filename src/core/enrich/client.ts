@@ -10,6 +10,19 @@ import type { EnrichKeys, EnrichRequest, EnrichResponse } from './types';
 
 const TIMEOUT_MS = 20_000;
 
+/**
+ * One request, one answer.
+ *
+ * There was an incremental-typing layer here: an XHR that streamed, an SSE
+ * accumulator, a partial-JSON repairer and a preview row. It rested on
+ * `ReadableStream`, `TextEncoder` and `TextDecoder`, and React Native ships
+ * none of the three (grep them under `node_modules/react-native/Libraries` —
+ * not one hit). Building the stream threw inside the transport, which every
+ * caller reads as the network being down, so every note queued, retried and
+ * ended on "try again" for a request that never left the phone. The animation
+ * was never worth the note.
+ */
+
 /** Thrown for connection failures / timeouts — the command retries these. */
 export class NetworkError extends Error {}
 
@@ -70,7 +83,10 @@ async function enrichDirect(
   }
 }
 
-async function enrichViaProxy(req: EnrichRequest, signal: AbortSignal): Promise<EnrichResponse> {
+async function enrichViaProxy(
+  req: EnrichRequest,
+  signal: AbortSignal,
+): Promise<EnrichResponse> {
   const base = apiBase();
   if (!base) return { ok: false, error: ENRICH_UNCONFIGURED };
 

@@ -16,7 +16,7 @@ import { AppModalHost } from '@/components/organisms/AppModalHost';
 import { DayHeader } from '@/components/organisms/DayHeader';
 import { FoodGoalsSheet } from '@/components/organisms/FoodGoalsSheet';
 import { FoodMediaActionMenu } from '@/components/organisms/FoodMediaActionMenu';
-import type { FoodMediaDraft } from '@/components/organisms/FoodMediaDraftTray';
+import { buildBarcodeText, type FoodMediaDraft } from '@/components/organisms/FoodMediaDraftTray';
 import { NotesList } from '@/components/organisms/NotesList';
 import { SaveRoutineSheet } from '@/components/organisms/SaveRoutineSheet';
 import { TotalsDock } from '@/components/organisms/TotalsDock';
@@ -309,6 +309,11 @@ export function DayTemplate<TData, TTotals>({
     replaceAppModal({ id: 'food.entryDetail', domain: 'food', entryId: entry.id });
   }, [replaceAppModal]);
 
+  const openPantry = useCallback(() => {
+    if (!canOpenAppModal('day.root', 'settings.pantry')) return;
+    replaceAppModal({ id: 'settings.pantry', domain: 'food' });
+  }, [replaceAppModal]);
+
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
@@ -426,6 +431,11 @@ export function DayTemplate<TData, TTotals>({
   const handleAddEntry = useCallback(
     (text: string) => {
       if (!isFood) {
+        // "monte um treino pra semana" is a request, not a log. Detected
+        // locally so an ordinary note never pays for a round trip.
+        // No local guess about what the note is: it is added like any other,
+        // and the enrich round-trip decides whether it was a log or a request
+        // for a plan. Nothing typed can be lost — the note exists first.
         addEntry(text);
         return;
       }
@@ -435,6 +445,7 @@ export function DayTemplate<TData, TTotals>({
       const barcodeItems = mergeDuplicateFoodItems(barcodeData);
       const photoDrafts = drafts.filter((draft) => !draft.data);
       const mediaText = buildFoodMediaText(photoDrafts);
+      const barcodeText = buildBarcodeText(drafts);
       const entryText = noteText || fallbackFoodMediaText(drafts);
       const entryMedia = mediaForEntry(drafts);
       const foodPhotoMedia = entryMedia?.filter((item) => item.kind !== 'barcode');
@@ -471,8 +482,14 @@ export function DayTemplate<TData, TTotals>({
             const locale = getLang();
             const response = await enrich({
               domain: 'food',
+              // The same router a typed note goes through (`CommandBus.ts:248`).
+              // Without it this path defaulted to `parse` — a plain meal parser
+              // — so attaching ANY photo or barcode silently disabled the
+              // recipe and purchase branches: "receita com isso" beside a photo
+              // was logged as a meal that was never eaten.
+              intent: 'foodAuto',
               locale,
-              text: [noteText, mediaText].filter(Boolean).join('\n') || entryText,
+              text: [noteText, mediaText, barcodeText].filter(Boolean).join('\n') || entryText,
               media: aiMedia,
               userContext: buildOnboardingPromptContext(
                 useAppStore.getState().onboardingProfile,
@@ -533,8 +550,11 @@ export function DayTemplate<TData, TTotals>({
           ),
           describedFoodPhotoMedia,
         );
+        // A recipe's items ARE the finished dish, ingredients folded in. Keeping
+        // the scanned product beside them counts the mayonnaise twice: once in
+        // the jar, once in the meal made out of it.
         const data = foodSchema.parse({
-          items: [...barcodeItems, ...foodItems],
+          items: [...(parsedFood?.recipe ? [] : barcodeItems), ...foodItems],
           reasoning:
             parsedFood?.reasoning ||
             (barcodeData.length ? t('media.barcodeReasoning') : t('details.reasoningFallback')),
@@ -588,7 +608,7 @@ export function DayTemplate<TData, TTotals>({
     barcodeTimer.current = null;
   }, [replaceAppModal]);
 
-  const handleBarcodeScanned = useCallback((code: string) => {
+  const handleBarcodeScanned = useCallback((code: string, imageUri?: string) => {
     if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
     const run = barcodeLookupRun.current + 1;
     barcodeLookupRun.current = run;
@@ -602,9 +622,14 @@ export function DayTemplate<TData, TTotals>({
     void (async () => {
       const product = await lookupOpenFoodFactsProduct(code);
       if (barcodeLookupRun.current !== run) return;
-      pendingBarcodeDraft.current = product ?? {
-        text: `${t('media.barcode')} ${code}`,
-        data: barcodeFoodData(code),
+      // The product shot from Open Food Facts is the better picture — a clean
+      // front-of-pack image instead of a phone frame of a barcode — so the
+      // frame we grabbed is the fallback, not the winner. It used to overwrite
+      // the product photo unconditionally, which is why every scanned item
+      // showed a picture of its own barcode.
+      pendingBarcodeDraft.current = {
+        ...(product ?? { text: `${t('media.barcode')} ${code}`, data: barcodeFoodData(code) }),
+        imageUri: product?.imageUri ?? imageUri,
       };
       openPendingBarcodeDraft();
     })();
@@ -628,9 +653,14 @@ export function DayTemplate<TData, TTotals>({
         ...current,
         { id, kind: 'barcode', uri: barcodeDraft?.imageUri, description: text, data: parsedData },
       ]);
-      closeAppModal('food.barcodeNutritionEdit');
+      // Back to the scanner, the way the photo modes never leave it. Scanning a
+      // shop's worth of items meant reopening the camera from the menu every
+      // time, and the thumbnail strip beside the shutter — which is fed by
+      // exactly these drafts — could never show a single one, because the
+      // camera was always gone by the time the draft existed.
+      replaceAppModal({ id: 'food.mediaCapture', domain: 'food', mode: 'barcode' });
     },
-    [barcodeDraft?.imageUri, closeAppModal],
+    [barcodeDraft?.imageUri, replaceAppModal],
   );
 
   const handleDeleteFoodEntry = useCallback(
@@ -872,6 +902,7 @@ export function DayTemplate<TData, TTotals>({
             onSaveExercise={!isFood ? handleSaveWorkoutExercise : undefined}
             savedExerciseEntryIds={!isFood ? savedExerciseEntryIds : undefined}
             onOpenFoodDetails={isFood ? openFoodEntryDetails : undefined}
+            onOpenPantry={isFood ? openPantry : undefined}
           />
         </View>
 
@@ -879,26 +910,32 @@ export function DayTemplate<TData, TTotals>({
           {undoVisible ? <UndoToast label={t('undo.deleted')} onUndo={handleUndo} /> : null}
 
           <View style={styles.footerStack}>
-            {foodTotals ? <FoodGoalsSheet totals={foodTotals} visible={foodGoalsVisible} /> : null}
-            {!isFood ? (
-              <WorkoutProgressSheet
-                date={date}
-                entries={entries}
-                visible={workoutProgressVisible}
-              />
-            ) : null}
+            {/* Floating, not stacked. In the flow every one of these panels is a
+                block that shoves the dock, the composer and the notes list
+                upward the moment it opens — the same reason `OptionMenu` is
+                absolute. `box-none` so taps fall through the empty area to the
+                list, which is what dismisses them. */}
+            <View style={styles.floatingPanels} pointerEvents="box-none">
+              {foodTotals ? (
+                <FoodGoalsSheet totals={foodTotals} visible={foodGoalsVisible} date={date} />
+              ) : null}
+              {!isFood ? (
+                <WorkoutProgressSheet
+                  date={date}
+                  entries={entries}
+                  visible={workoutProgressVisible}
+                />
+              ) : null}
+              {keyboardVisible && isFood ? (
+                <FoodMediaActionMenu
+                  visible={foodMediaMenuVisible}
+                  onSelect={handleSelectFoodMedia}
+                />
+              ) : null}
+            </View>
 
             {keyboardVisible ? (
               <>
-                {isFood ? (
-                  <>
-                    <FoodMediaActionMenu
-                      visible={foodMediaMenuVisible}
-                      onSelect={handleSelectFoodMedia}
-                    />
-                  </>
-                ) : null}
-
                 <View style={styles.keyboardBar}>
                   <View style={styles.keyboardDock}>
                     <TotalsDock
@@ -981,6 +1018,7 @@ export function DayTemplate<TData, TTotals>({
         onSaveNutrition={handleSaveFoodNutrition}
         onAiEdit={handleFoodAiEdit}
         onPhoto={handlePhotoCaptured}
+        mediaDrafts={foodMediaDrafts}
         onBarcode={handleBarcodeScanned}
         onFoodCaptureDismiss={handleFoodCaptureDismiss}
         onSaveBarcodeFood={handleSaveBarcodeFood}
@@ -1028,6 +1066,16 @@ const styles = StyleSheet.create({
   },
   footerStack: {
     gap: Spacing.four,
+  },
+  /** Sits on top of the footer instead of above it, so opening one moves nothing. */
+  floatingPanels: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '100%',
+    gap: Spacing.two,
+    paddingBottom: Spacing.two,
+    justifyContent: 'flex-end',
   },
   keyboardBar: {
     flexDirection: 'row',

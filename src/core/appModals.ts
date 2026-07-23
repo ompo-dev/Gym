@@ -29,6 +29,7 @@ export type AppModalId =
   | "settings.workoutMonitor"
   | "settings.savedExercises"
   | "settings.savedMeals"
+  | "settings.pantry"
   | "settings.apiKeys"
   | "settings.routines"
   | "day.saveRoutine"
@@ -68,6 +69,7 @@ export const APP_MODAL_LABELS: Record<AppModalId, string> = {
   "settings.workoutMonitor": "Monitoramento de treino",
   "settings.savedExercises": "Exercícios salvos",
   "settings.savedMeals": "Refeições salvas",
+  "settings.pantry": "Geladeira",
   "settings.apiKeys": "Chaves de API",
   "settings.routines": "Dias salvos",
   "day.saveRoutine": "Salvar o dia",
@@ -97,6 +99,10 @@ export const APP_MODAL_LINKS: Partial<
 > = {
   "day.root": [
     "settings.root",
+    // Reachable straight from a purchase note's badge, not only from Settings:
+    // the note IS what stocked the fridge, so making the user go around
+    // through Settings to see the result was the long way to its own effect.
+    "settings.pantry",
     "food.goals",
     "food.savedMealPicker",
     "food.entryDetail",
@@ -114,6 +120,7 @@ export const APP_MODAL_LINKS: Partial<
     "settings.workoutMonitor",
     "settings.savedExercises",
     "settings.savedMeals",
+    "settings.pantry",
     "settings.apiKeys",
     "settings.routines",
   ],
@@ -149,6 +156,9 @@ export const APP_MODAL_LINKS: Partial<
   ],
 };
 
+/** The draft tray that belongs to the note being written, not to a saved one. */
+export const COMPOSER_TRAY = "composer";
+
 export function canOpenAppModal(from: AppModalId, to: AppModalId): boolean {
   return APP_MODAL_LINKS[from]?.includes(to) ?? false;
 }
@@ -178,6 +188,7 @@ export type AppModal =
   | { id: "settings.workoutMonitor"; domain: Domain }
   | { id: "settings.savedExercises"; domain: Domain }
   | { id: "settings.savedMeals"; domain: Domain }
+  | { id: "settings.pantry"; domain: Domain }
   | { id: "settings.apiKeys"; domain: Domain }
   | { id: "settings.routines"; domain: Domain }
   | { id: "day.saveRoutine"; domain: Domain }
@@ -193,7 +204,13 @@ export type AppModal =
   | { id: "food.nutritionEdit"; domain: "food"; entryId: string }
   | { id: "food.mediaCapture"; domain: "food"; mode: FoodMediaAction }
   | { id: "food.barcodeNutritionEdit"; domain: "food"; draft: BarcodeNutritionDraft }
-  | { id: "food.mediaDraftTray"; domain: "food" }
+  /**
+   * `ownerId` names which tray this is. Every note with photos mounts one, and
+   * they all read the same modal id — without it every tray on screen turns
+   * visible at once and the user opens theirs but sees someone else's photos.
+   * The composer's own tray uses {@link COMPOSER_TRAY}.
+   */
+  | { id: "food.mediaDraftTray"; domain: "food"; ownerId: string }
   | { id: "workout.progress"; domain: "workout" }
   | { id: "workout.savedExercisePicker"; domain: "workout" }
   | { id: "onboarding.picker"; domain: "onboarding"; kind: OnboardingPickerKind }

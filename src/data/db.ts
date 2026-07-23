@@ -81,3 +81,24 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
   }
   return dbPromise;
 }
+
+/**
+ * Everything the user ever wrote, gone.
+ *
+ * The table list comes from the database rather than from a constant here: a
+ * table added later would otherwise quietly survive a "delete all my data",
+ * which is the one operation that must not have exceptions. Deleting rows
+ * rather than dropping tables keeps the schema — and the open connection —
+ * valid, so the app keeps working instead of needing a restart.
+ */
+export async function wipeAllData(): Promise<void> {
+  const db = await getDb();
+  const tables = await db.getAllAsync<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+  );
+  await db.withTransactionAsync(async () => {
+    for (const table of tables) {
+      await db.execAsync(`DELETE FROM "${table.name}"`);
+    }
+  });
+}

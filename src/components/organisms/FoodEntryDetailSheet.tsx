@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
@@ -31,7 +31,9 @@ import {
   enabledMicronutrients,
   type OnboardingMicronutrient,
 } from '@/core/onboarding';
+import { PantryRepository } from '@/data/PantryRepository';
 import { formatFoodQuantity, formatWaterMl, sumFoodData } from '@/domains/food';
+import { formatPantryGrams } from '@/domains/pantry';
 import type { FoodData } from '@/domains/schemas';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
@@ -41,6 +43,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { FoodAiEditSheet } from './FoodAiEditSheet';
 import { FoodEntryActionMenu } from './FoodEntryActionMenu';
 import { DraftPreview } from './FoodMediaDraftTray';
+import { FoodRecipeCard } from './FoodRecipeCard';
 import { SheetFrame } from './SheetFrame';
 
 type FoodEntryDetailModalScope = 'food' | 'savedMeal';
@@ -62,6 +65,12 @@ interface FoodEntryDetailSheetProps {
   onAiEdit?: (entry: Entry, instruction: string) => Promise<void> | void;
   reasoningLoading?: boolean;
   initialMealSaved?: boolean;
+  /**
+   * Rendered straight under the nutrition block. A slot rather than a branch:
+   * the pantry puts a price history here, and this sheet has no business
+   * knowing what a pantry is.
+   */
+  belowNutrition?: ReactNode;
 }
 
 function MacroStat({
@@ -137,6 +146,7 @@ export function FoodEntryDetailSheet({
   onAiEdit,
   reasoningLoading = false,
   initialMealSaved = false,
+  belowNutrition,
 }: FoodEntryDetailSheetProps) {
   const colors = useColors();
   const profile = useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
@@ -153,6 +163,11 @@ export function FoodEntryDetailSheet({
   const [aiScrollInset, setAiScrollInset] = useState(0);
   const [savedVisible, setSavedVisible] = useState(false);
   const [mealSaved, setMealSaved] = useState(initialMealSaved);
+  // What is left of each pantry product a drawn item came from. Read on open,
+  // like the pantry sheet — provenance itself is in the item's stored `from`,
+  // this only adds the live "how much is left" beside it.
+  const [remainingByKey, setRemainingByKey] = useState<Record<string, number | undefined>>({});
+  const drawsFromPantry = data?.items.some((item) => item.from) ?? false;
   const menuButtonRef = useRef<View>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deferredSheetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -197,6 +212,23 @@ export function FoodEntryDetailSheet({
     setMealSaved(initialMealSaved);
     setAiScrollInset(0);
   }, [entry?.id, initialMealSaved]);
+
+  useEffect(() => {
+    if (!drawsFromPantry) {
+      setRemainingByKey({});
+      return;
+    }
+    let alive = true;
+    void PantryRepository.all().then((items) => {
+      if (!alive) return;
+      setRemainingByKey(
+        Object.fromEntries(items.map((item) => [item.key, item.remainingGrams])),
+      );
+    });
+    return () => {
+      alive = false;
+    };
+  }, [entry?.id, drawsFromPantry]);
 
   useEffect(() => {
     if (!aiVisible) setAiScrollInset(0);
@@ -442,6 +474,8 @@ export function FoodEntryDetailSheet({
             </GlassSurface>
           </View>
 
+            {belowNutrition}
+
             <View style={styles.section}>
               <AppText variant="heading">{t('details.items')}</AppText>
 
@@ -476,6 +510,25 @@ export function FoodEntryDetailSheet({
                                 style={styles.itemLabel}>
                                 {item.label}
                               </AppText>
+                              {/* Where the note says it came from: the fridge,
+                                  how much it took, and what is left. Stored in
+                                  the item, so deleting the note undoes the draw. */}
+                              {item.from ? (
+                                <View style={styles.itemSource}>
+                                  <AppIcon name="scanBarcode" color={colors.success} size={12} />
+                                  <AppText variant="caption" color={colors.success}>
+                                    {[
+                                      t('pantry.fromFridge'),
+                                      formatPantryGrams(item.from.grams),
+                                      remainingByKey[item.from.pantryItemId] !== undefined
+                                        ? `· ${t('pantry.remaining')} ${formatPantryGrams(remainingByKey[item.from.pantryItemId] as number)}`
+                                        : '',
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' ')}
+                                  </AppText>
+                                </View>
+                              ) : null}
                             </View>
                             {quantity ? (
                               <View style={[styles.quantityPill, { backgroundColor: colors.backgroundSelected }]}>
@@ -575,6 +628,12 @@ export function FoodEntryDetailSheet({
                 })}
               </View>
             </View>
+
+            {data.recipe ? (
+              <View style={styles.section}>
+                <FoodRecipeCard recipe={data.recipe} />
+              </View>
+            ) : null}
 
             {data.reasoning || level || reasoningLoading ? (
               <View style={styles.section}>
@@ -720,6 +779,11 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     justifyContent: 'center',
     gap: Spacing.half,
+  },
+  itemSource: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
   },
   itemTitleRow: {
     flex: 1,

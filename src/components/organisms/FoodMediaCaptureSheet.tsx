@@ -1,8 +1,13 @@
-import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
+import {
+  CameraView,
+  scanFromURLAsync,
+  useCameraPermissions,
+  type BarcodeScanningResult,
+} from 'expo-camera';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
@@ -12,6 +17,7 @@ import { Metrics, Radii, Spacing } from '@/constants/theme';
 import type { FoodMediaAction } from '@/core/types';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
+import { latestThumbnails } from './FoodMediaDraftTray';
 
 interface CapturedFoodPhoto {
   kind: Extract<FoodMediaAction, 'foodPhoto' | 'menuPhoto'>;
@@ -22,6 +28,24 @@ interface CapturedFoodPhoto {
 
 const thumbnailRotations = ['-8deg', '5deg', '-4deg'] as const;
 
+/**
+ * Product codes only. A packet often carries a QR code too, and reading that one
+ * instead sends a URL to Open Food Facts, which knows nothing about it. The live
+ * camera and the still-image reader share this list so they cannot drift.
+ */
+const BARCODE_TYPES = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'] as const;
+
+/**
+ * Whether a saved image can be read at all on this platform.
+ *
+ * `scanFromURLAsync` defaults to `['qr']` and on iOS throws the requested types
+ * away entirely — `CameraViewModule.swift:47` takes them as `_` — so a photo of
+ * an EAN-13 comes back empty every single time, no matter how sharp it is.
+ * Telling the user "no barcode in this image" blamed the picture for something
+ * the platform cannot do; not opening the picker at all is the honest version.
+ */
+const GALLERY_READS_BARCODES = Platform.OS !== 'ios';
+
 export function FoodMediaCaptureSheet({
   visible,
   mode,
@@ -29,13 +53,17 @@ export function FoodMediaCaptureSheet({
   onDismiss,
   onPhoto,
   onBarcode,
+  drafts,
 }: {
   visible: boolean;
   mode: FoodMediaAction | null;
   onClose: () => void;
   onDismiss?: () => void;
   onPhoto: (photo: CapturedFoodPhoto) => void;
-  onBarcode: (code: string) => void;
+  /** `imageUri` is the frame it was read from — the note shows it. */
+  onBarcode: (code: string, imageUri?: string) => void;
+  /** What is already attached — the strip beside the shutter reads this. */
+  drafts: { uri?: string }[];
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -44,9 +72,8 @@ export function FoodMediaCaptureSheet({
   const scannedRef = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [activeMode, setActiveMode] = useState<FoodMediaAction | null>(mode);
-  const [scanned, setScanned] = useState(false);
   const [scanSession, setScanSession] = useState(0);
-  const [capturedUris, setCapturedUris] = useState<string[]>([]);
+  const [scanNotice, setScanNotice] = useState<'none' | 'notFound' | 'unsupported'>('none');
   const currentMode = mode ?? activeMode;
   const isBarcode = currentMode === 'barcode';
 
@@ -57,24 +84,56 @@ export function FoodMediaCaptureSheet({
   useEffect(() => {
     visibleRef.current = visible;
     scannedRef.current = false;
-    setScanned(false);
-    if (visible && mode) {
-      setScanSession((current) => current + 1);
-    } else {
-      setCapturedUris([]);
-    }
+    setScanNotice('none');
+    if (visible && mode) setScanSession((current) => current + 1);
   }, [visible, mode]);
+
+  // Derived, not stored. The local copy this replaces was wiped every time the
+  // sheet lost visibility — which is exactly what the system gallery does when
+  // it takes over the screen, so a picked photo vanished on the way back.
+  const capturedUris = latestThumbnails(drafts);
+  const hiddenCount = drafts.filter((draft) => draft.uri).length - capturedUris.length;
+
+  /**
+   * Once per sheet. A delivered code closes this modal, and the live scanner
+   * fires many times a second — claimed before the picture is taken, because
+   * that wait is exactly the window it keeps firing in.
+   */
+  const claimScan = (): boolean => {
+    if (scannedRef.current) return false;
+    scannedRef.current = true;
+    return true;
+  };
+
+  /**
+   * Reads a still image — the shutter's frame or a gallery pick, same path.
+   * The boolean answers "was there a code in the picture", which is the only
+   * thing the caller can tell the user about.
+   */
+  const scanStill = async (uri: string): Promise<boolean> => {
+    const [found] = await scanFromURLAsync(uri, [...BARCODE_TYPES]).catch(() => []);
+    if (!found) return false;
+    if (claimScan()) onBarcode(found.data, uri);
+    return true;
+  };
 
   const takePhoto = async () => {
     if (!currentMode) return;
+    setScanNotice('none');
     try {
       const camera = cameraRef.current;
       if (!camera) return;
-      const photo = await camera.takePictureAsync({ base64: true, quality: 0.45 });
+      const photo = await camera.takePictureAsync({ base64: !isBarcode, quality: 0.45 });
       if (!visibleRef.current || !photo?.uri) return;
+      // In scan mode the shutter is a manual retry of the reader, not a way to
+      // attach a picture: it used to file the barcode frame as a meal photo,
+      // silently adding an unreadable image to the note.
+      if (isBarcode) {
+        if (!(await scanStill(photo.uri))) setScanNotice('notFound');
+        return;
+      }
       const kind = currentMode === 'menuPhoto' ? 'menuPhoto' : 'foodPhoto';
       onPhoto({ kind, uri: photo.uri, base64: photo.base64, mimeType: 'image/jpeg' });
-      setCapturedUris((current) => [photo.uri, ...current]);
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       if (!message.includes('unmounted')) console.warn('Failed to take food photo', error);
@@ -83,15 +142,41 @@ export function FoodMediaCaptureSheet({
 
   const pickFromGallery = async () => {
     if (!currentMode) return;
+    setScanNotice('none');
+    // Say so before the picker, not after: making someone browse for a photo
+    // that can never be read is the same dead end with extra steps.
+    if (isBarcode && !GALLERY_READS_BARCODES) {
+      setScanNotice('unsupported');
+      return;
+    }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      base64: true,
-      quality: 0.45,
+      // One code per scan: the nutrition sheet reviews a single product, so
+      // picking five photos would read one and drop four without saying so.
+      allowsMultipleSelection: !isBarcode,
+      base64: !isBarcode,
+      // Full quality when the picture is going to be READ rather than shown:
+      // bars are the highest-frequency detail in a frame and the first thing a
+      // 45%-quality re-encode smears away. Photos of food survive 0.45 fine and
+      // it keeps the base64 the model receives small.
+      quality: isBarcode ? 1 : 0.45,
     });
     if (result.canceled) return;
+
+    // A photo of a barcode is still a barcode. Without this, picking one in
+    // scan mode attached an image nobody read and the note stayed empty.
+    if (isBarcode) {
+      for (const asset of result.assets) {
+        if (asset.uri && (await scanStill(asset.uri))) return;
+      }
+      // Coming back from the gallery to an unchanged screen is how the app
+      // looks when it ignored the tap. It did not — the picture had no code.
+      setScanNotice('notFound');
+      return;
+    }
+
     const kind = currentMode === 'menuPhoto' ? 'menuPhoto' : 'foodPhoto';
     result.assets.forEach((asset) => {
       if (!asset.uri) return;
@@ -102,17 +187,17 @@ export function FoodMediaCaptureSheet({
         mimeType: asset.mimeType ?? 'image/jpeg',
       });
     });
-    setCapturedUris((current) => [
-      ...result.assets.map((asset) => asset.uri).filter(Boolean),
-      ...current,
-    ]);
   };
 
   const handleBarcode = (result: BarcodeScanningResult) => {
-    if (scannedRef.current || scanned) return;
-    scannedRef.current = true;
-    setScanned(true);
-    onBarcode(result.data);
+    if (!claimScan()) return;
+    // Grab the frame it was read from so the note can show the product when
+    // Open Food Facts has no picture of its own. Best effort — a missing photo
+    // must never cost the user the scan itself.
+    void cameraRef.current
+      ?.takePictureAsync({ quality: 0.4 })
+      .then((photo) => onBarcode(result.data, photo?.uri))
+      .catch(() => onBarcode(result.data));
   };
 
   if (!currentMode) return null;
@@ -169,8 +254,14 @@ export function FoodMediaCaptureSheet({
             {!permission ? null : permission.granted ? (
               isBarcode ? (
                 <GlassSurface glass="regular" style={styles.hint}>
-                  <AppText variant="body" color="#FFFFFF">
-                    {t('media.scanHint')}
+                  <AppText
+                    variant="body"
+                    color={scanNotice === 'notFound' ? colors.danger : '#FFFFFF'}>
+                    {scanNotice === 'notFound'
+                      ? t('media.noBarcodeFound')
+                      : scanNotice === 'unsupported'
+                        ? t('media.galleryScanUnsupported')
+                        : t('media.scanHint')}
                   </AppText>
                 </GlassSurface>
               ) : null
@@ -192,9 +283,9 @@ export function FoodMediaCaptureSheet({
             <View style={styles.footer}>
               <View style={styles.captureControls}>
                 <View style={styles.gallerySlot}>
-                  {!isBarcode && capturedUris.length > 0 ? (
+                  {capturedUris.length > 0 ? (
                     <View style={styles.thumbnailRow}>
-                      {capturedUris.slice(0, 3).map((uri, index) => (
+                      {capturedUris.map((uri, index) => (
                         <Image
                           key={`${uri}-${index}`}
                           source={{ uri }}
@@ -209,10 +300,10 @@ export function FoodMediaCaptureSheet({
                           contentFit="cover"
                         />
                       ))}
-                      {capturedUris.length > 3 ? (
+                      {hiddenCount > 0 ? (
                         <GlassSurface glass="regular" style={styles.moreBadge}>
                           <AppText variant="caption" color="#FFFFFF">
-                            +{capturedUris.length - 3}
+                            +{hiddenCount}
                           </AppText>
                         </GlassSurface>
                       ) : null}

@@ -1,3 +1,4 @@
+import type { Entry } from '@/core/types';
 import { normalizeForEnrich } from '@/core/enrich/normalize';
 import { Colors } from '@/constants/theme';
 import { type WorkoutData, type WorkoutSet, workoutSchema } from '@/domains/schemas';
@@ -379,3 +380,8 @@ export const workoutConfig: DomainConfig<WorkoutData, WorkoutTotals> = {
       },
     ],
 };
+
+/** Narrows an entry payload to workout data. The third copy of this triggered the cleanup. */
+export function isWorkoutData(data: Entry['data']): data is WorkoutData {
+  return Boolean(data && 'sets' in data);
+}

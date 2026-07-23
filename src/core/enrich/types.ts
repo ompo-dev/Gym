@@ -1,5 +1,23 @@
+/**
+ * Every intent the engine can be asked for. One list, because the proxy route
+ * validates the wire with it and the engine dispatches on it — when they were
+ * two hand-written lists they drifted, and `recipe` and `workoutPlan` were
+ * rejected at the door by a proxy that had never heard of them.
+ */
 import type { Domain } from '@/core/types';
 import type { FoodData } from '@/domains/schemas';
+
+export const ENRICH_INTENTS = [
+  'parse',
+  'foodAuto',
+  'workoutAuto',
+  'foodEdit',
+  'purchase',
+  'recipe',
+  'workoutPlan',
+] as const;
+
+export type EnrichIntent = (typeof ENRICH_INTENTS)[number];
 
 /**
  * No managed proxy and no user key: the request is unsendable, not failing.
@@ -50,7 +68,7 @@ export interface EnrichRequest {
   domain: Domain;
   /** Only sent when the user opted into their own key. */
   keys?: EnrichKeys;
-  intent?: 'parse' | 'foodEdit';
+  intent?: EnrichIntent;
   currentFood?: FoodData;
   media?: EnrichMediaInput[];
   /** e.g. the day's current exercise, to help the workout parser. */

@@ -14,6 +14,7 @@ import {
   type WorkoutTotals,
   uniqueWorkoutExerciseNames,
   workoutConfig,
+  isWorkoutData,
 } from './workout';
 
 /** Short windows only: this panel answers "how is the block going", not history. */
@@ -183,10 +184,6 @@ export interface MonitorReport {
   granularity: Granularity;
   /** Share of volume that could not be classified — honesty about the lookup table. */
   unclassifiedShare: number;
-}
-
-function isWorkoutData(data: Entry['data']): data is WorkoutData {
-  return Boolean(data && 'sets' in data);
 }
 
 function exerciseOf(entry: Entry): string | null {

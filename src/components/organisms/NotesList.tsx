@@ -4,6 +4,7 @@ import { FlatList, Keyboard, type LayoutChangeEvent, StyleSheet, TextInput, View
 import { AppText } from '@/components/atoms/AppText';
 import { NoteRow } from '@/components/molecules/NoteRow';
 import { Spacing } from '@/constants/theme';
+import { COMPOSER_TRAY } from '@/core/appModals';
 import type { Entry } from '@/core/types';
 import type { DomainConfig } from '@/domains/types';
 import { useColors } from '@/hooks/use-colors';
@@ -25,6 +26,7 @@ interface NotesListProps<TData, TTotals> {
   onSaveExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
   savedExerciseEntryIds?: Set<string>;
   onOpenFoodDetails?: (entry: Entry) => void;
+  onOpenPantry?: () => void;
 }
 
 function getPreviousWorkoutEntryId(entries: Entry[], index: number): string | null {
@@ -75,6 +77,7 @@ function NewNoteInput({
       {mediaDrafts.length > 0 && onChangeMediaDescription && onRemoveMediaDraft ? (
         <FoodMediaDraftTray
           drafts={mediaDrafts}
+          ownerId={COMPOSER_TRAY}
           onChangeDescription={onChangeMediaDescription}
           onRemove={onRemoveMediaDraft}
         />
@@ -112,6 +115,7 @@ export function NotesList<TData, TTotals>({
   onSaveExercise,
   savedExerciseEntryIds,
   onOpenFoodDetails,
+  onOpenPantry,
 }: NotesListProps<TData, TTotals>) {
   const containerRef = useRef<View | null>(null);
   const listRef = useRef<FlatList<Entry> | null>(null);
@@ -300,7 +304,7 @@ export function NotesList<TData, TTotals>({
               keyboardVisible={keyboardVisible}
               leading={
                 config.id === 'food' && item.media?.length ? (
-                  <FoodMediaDraftTray drafts={item.media} />
+                  <FoodMediaDraftTray drafts={item.media} ownerId={item.id} />
                 ) : undefined
               }
               onEdit={onEdit}
@@ -313,6 +317,7 @@ export function NotesList<TData, TTotals>({
                 config.id === 'workout' ? savedExerciseEntryIds?.has(item.id) ?? false : false
               }
               onOpenFoodDetails={onOpenFoodDetails}
+              onOpenPantry={onOpenPantry}
               onFocusNewWorkoutExercise={config.id === 'workout' ? focusNewExercise : undefined}
               onDeleteWorkoutExercise={
                 config.id === 'workout'

@@ -5,11 +5,11 @@ import { AppText } from '@/components/atoms/AppText';
 import { EntryMeta } from '@/components/molecules/EntryMeta';
 import { ThinkingIndicator } from '@/components/molecules/ThinkingIndicator';
 import { WorkoutOutliner } from '@/components/molecules/WorkoutOutliner';
-import { Metrics, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { ENRICH_UNCONFIGURED } from '@/core/enrich/types';
 import type { Entry } from '@/core/types';
-import { sumFoodData } from '@/domains/food';
-import type { FoodData } from '@/domains/schemas';
+import { foodNoteKind, sumFoodData } from '@/domains/food';
+import type { FoodData, FoodEntryData } from '@/domains/schemas';
 import type { DomainConfig } from '@/domains/types';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
@@ -27,6 +27,7 @@ interface NoteRowProps<TData, TTotals> {
   onSaveExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
   exerciseSaved?: boolean;
   onOpenFoodDetails?: (entry: Entry) => void;
+  onOpenPantry?: () => void;
   onFocusNewWorkoutExercise?: () => void;
   onDeleteWorkoutExercise?: () => void;
   onFocusWorkoutLine?: (layout: { screenY: number; height: number }) => void;
@@ -90,6 +91,20 @@ function StatusBadge<TData, TTotals>({
   return null;
 }
 
+/**
+ * Colour carries the meaning here, so it is never the only carrier: the text
+ * beside it always says what the number is (a price, a calorie count).
+ */
+function foodResultColor(
+  kind: ReturnType<typeof foodNoteKind>,
+  colors: ReturnType<typeof useColors>,
+  fallback: string,
+): string {
+  if (kind === 'purchase') return colors.success;
+  if (kind === 'recipe') return colors.carbs;
+  return fallback;
+}
+
 function FoodRow<TData, TTotals>({
   entry,
   previousEntry,
@@ -99,6 +114,7 @@ function FoodRow<TData, TTotals>({
   onDelete,
   onRetry,
   onOpenFoodDetails,
+  onOpenPantry,
 }: NoteRowProps<TData, TTotals>) {
   const colors = useColors();
   const [text, setText] = useState(entry.text);
@@ -114,8 +130,9 @@ function FoodRow<TData, TTotals>({
     if (trimmed !== entry.text) onEdit(entry, trimmed);
   };
 
-  const resolvedFood = entry.status === 'done' && isFoodData(entry.data);
-  const foodData = resolvedFood ? (entry.data as FoodData) : null;
+  const resolved = entry.status === 'done' && entry.data;
+  const kind = resolved ? foodNoteKind(entry.data as FoodEntryData) : null;
+  const foodData = resolved && isFoodData(entry.data) ? (entry.data as FoodData) : null;
   const foodCalories = foodData ? Math.round(sumFoodData(foodData).calories) : null;
 
   return (
@@ -132,15 +149,22 @@ function FoodRow<TData, TTotals>({
       />
 
       <View style={styles.right}>
-        {resolvedFood && foodCalories !== null ? (
+        {kind ? (
           <>
+            {/* A purchase opens the fridge it just stocked; a meal or a recipe
+                opens its own nutrition. Same badge, different destination —
+                which is why the label is not shared. */}
             <Pressable
-              onPress={() => onOpenFoodDetails?.(entry)}
+              onPress={() => (kind === 'purchase' ? onOpenPantry?.() : onOpenFoodDetails?.(entry))}
               hitSlop={10}
               accessibilityRole="button"
-              accessibilityLabel={t('details.nutrition')}>
-              <AppText variant="value" color={config.accent}>
-                {foodCalories} cal
+              accessibilityLabel={
+                kind === 'purchase' ? t('pantry.title') : t('details.nutrition')
+              }>
+              <AppText variant="value" color={foodResultColor(kind, colors, config.accent)}>
+                {kind === 'purchase'
+                  ? config.formatResult(entry.data as TData)
+                  : `${foodCalories} cal`}
               </AppText>
             </Pressable>
             <EntryMeta entry={entry} previousEntry={previousEntry} />
@@ -200,9 +224,19 @@ function NoteRowInner<TData, TTotals>(props: NoteRowProps<TData, TTotals>) {
 
 export const NoteRow = memo(NoteRowInner) as typeof NoteRowInner;
 
+/**
+ * Deliberately not `Metrics.rowMinHeight` (56). That token sizes tappable
+ * *settings* rows, and it was padding a one-line note out to 80pt tall — the
+ * gap the diet list actually complained about was mostly this, not the margins.
+ * A note is a line of text, so it gets a line's height; 40 + 8pt of padding
+ * still clears the 44pt touch minimum, and the shared token stays untouched
+ * for the settings and onboarding rows that genuinely want 56.
+ */
+const NOTE_MIN_HEIGHT = 40;
+
 const styles = StyleSheet.create({
   row: {
-    paddingVertical: Spacing.three,
+    paddingVertical: Spacing.one,
   },
   rowTop: {
     flexDirection: 'row',
@@ -211,7 +245,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    minHeight: Metrics.rowMinHeight,
+    minHeight: NOTE_MIN_HEIGHT,
     fontSize: 17,
     lineHeight: 24,
     padding: 0,

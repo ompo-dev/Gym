@@ -6,13 +6,17 @@ import { hashKey, newId, normalizeText } from '@/core/utils';
 import { ONBOARDING_FIELDS, parseOnboardingText } from '@/domains/onboardingNotes';
 import {
   type EnrichData,
+  type FoodData,
+  foodMultiSchema,
   type OnboardingData,
   schemaByDomain,
   type WorkoutData,
 } from '@/domains/schemas';
+import { attachPantryProvenance, type PantryItem } from '@/domains/pantry';
 import { getWorkoutExerciseLine, parseWorkoutText } from '@/domains/workout';
+import { planLabel, planToNotes, workoutPlanSchema } from '@/domains/workoutPlan';
 
-import type { Command } from './Command';
+import { CompositeCommand, type Command } from './Command';
 
 const MAX_ATTEMPTS = 5;
 const BACKOFF_BASE_MS = 1_000;
@@ -21,6 +25,7 @@ const CACHE_SIZE = 200;
 // ponytail: undo is a toast affordance, not history. 20 is far past what any
 // toast can still be offering; the cap just stops the stack growing forever.
 const MAX_UNDO = 20;
+const MAX_EXERCISE_NAME = 60;
 
 /**
  * Entry.error is diagnostic only — no screen renders it, the UI keys off
@@ -52,10 +57,32 @@ export interface BusDeps {
   store: StorePort;
   locale?: string;
   getLocale?: () => string;
-  getUserContext?: () => string | undefined;
+  getUserContext?: (domain: Domain) => string | undefined | Promise<string | undefined>;
+  /**
+   * The current fridge, so a meal can be linked to what it drew from and priced
+   * with the real product. Injected, like everything else — the bus never
+   * imports a repository, so a test can hand it a plain array.
+   */
+  getPantry?: () => Promise<PantryItem[]>;
   onResolved?: () => void; // e.g. success haptic
+  /**
+   * A note was consumed and replaced by what it asked for. The surface uses it
+   * to let go of the focus that is about to belong to a deleted row — the user
+   * asked for a plan, not for a keyboard over one.
+   */
+  onNoteReplaced?: () => void;
   now?: () => number;
   schedule?: (fn: () => void, ms: number) => void;
+}
+
+/**
+ * O modelo agora ve a nota inteira; um eco das linhas de serie virando nome de
+ * exercicio apareceria como titulo da nota. `workoutSchema` nao limita o campo,
+ * entao o limite mora aqui — no unico ramo que consome IA.
+ */
+function cleanExerciseName(value: string | null | undefined): string | null {
+  const name = value?.split('\n')[0].trim() ?? '';
+  return name && name.length <= MAX_EXERCISE_NAME ? name : null;
 }
 
 export class CommandBus {
@@ -95,21 +122,44 @@ export class CommandBus {
 
   // ---- public actions -----------------------------------------------------
 
-  async addEntry(text: string, domain: Domain, media?: EntryMediaAttachment[]): Promise<void> {
+  /**
+   * Builds the command without running it. Exists for `CompositeCommand`:
+   * `AddEntryCommand` is private, and assembling the entry — id, trim,
+   * createdAt, default day — has to keep happening in exactly one place.
+   */
+  createAddEntry(
+    text: string,
+    domain: Domain,
+    media?: EntryMediaAttachment[],
+    date?: string,
+    /** Already known — skips enrichment entirely. See {@link AddEntryCommand}. */
+    data?: EnrichData,
+  ): Command | null {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed) return null;
     const entry: Entry = {
       id: newId(),
-      date: this.deps.store.getDay(domain).date,
+      date: date ?? this.deps.store.getDay(domain).date,
       domain,
       text: trimmed,
       media: media?.length ? media : undefined,
-      status: 'thinking',
-      data: null,
+      status: data ? 'done' : 'thinking',
+      data: data ?? null,
       error: null,
       createdAt: this.now(),
     };
-    await this.run(new AddEntryCommand(this, entry));
+    return new AddEntryCommand(this, entry);
+  }
+
+  /** `date` omitted = the visible day, which is every call the UI makes today. */
+  async addEntry(
+    text: string,
+    domain: Domain,
+    media?: EntryMediaAttachment[],
+    date?: string,
+  ): Promise<void> {
+    const cmd = this.createAddEntry(text, domain, media, date);
+    if (cmd) await this.run(cmd);
   }
 
   /** Returns the command so the caller can undo exactly this delete. */
@@ -161,9 +211,40 @@ export class CommandBus {
 
   // ---- enrichment engine --------------------------------------------------
 
+  /**
+   * Onboarding fica de fora de proposito: essas notas sao o que *constroi* o
+   * perfil, e devolver o perfil atual faria o modelo repetir valores default
+   * como se o usuario os tivesse dito.
+   *
+   * O try/catch e o que mantem o ramo de treino infalivel: isto roda fora do
+   * try de runEnrich, e um throw deixaria a nota presa em 'thinking' para
+   * sempre, porque enqueueEnrich engole o erro.
+   */
+  private async userContext(domain: Domain): Promise<string | undefined> {
+    if (domain === 'onboarding') return undefined;
+    try {
+      // Awaited because the food context now includes the pantry, which is
+      // derived from stored notes rather than held in memory.
+      return await this.deps.getUserContext?.(domain);
+    } catch {
+      return undefined;
+    }
+  }
+
   private async runEnrich(entry: Entry): Promise<void> {
+    await this.runEnrichInner(entry);
+  }
+
+  private async runEnrichInner(entry: Entry): Promise<void> {
     const locale = this.deps.getLocale ? this.deps.getLocale() : this.deps.locale ?? 'pt-BR';
-    const userContext = entry.domain === 'food' ? this.deps.getUserContext?.() : undefined;
+    // Meal, purchase or recipe — the model decides, from the note's meaning.
+    // This used to be two local regex allowlists, and they had to know every
+    // verb and every accent a person might type. They did not: "me de uma
+    // receita com patinho" missed on a single missing accent and was logged as
+    // food that was never eaten. The note goes to the model either way, so
+    // asking it what the note *is* costs a field, not a request.
+    const intent = entry.domain === 'food' ? 'foodAuto' : undefined;
+    const userContext = await this.userContext(entry.domain);
     const normalizedCacheText =
       entry.domain === 'workout'
         ? normalizeForEnrich(entry.text, { domain: entry.domain, locale })
@@ -187,7 +268,8 @@ export class CommandBus {
 
       let promise = this.inflight.get(key);
       if (!promise) {
-        promise = this.deps.enrichFn({
+        promise = this.deps.enrichFn(
+          {
           text: entry.text,
           domain: entry.domain,
           context: undefined,
@@ -220,14 +302,17 @@ export class CommandBus {
       } catch {
         this.inflight.delete(key);
         if (this.cancelled.has(entry.id)) return;
-        this.cache.set(key, localData);
+        // Deliberately NOT cached. A fallback is what we show when the model
+        // could not be reached or could not be understood — caching it makes
+        // every later note with the same text resolve instantly to that same
+        // failure, and turns the retry button into a lie.
         await this.applyResolved(entry, localData);
       }
       return;
     }
 
     if (entry.domain === 'workout') {
-      const fallbackExercise = this.lastExercise(entry.domain);
+      const fallbackExercise = this.lastExercise(entry.domain, entry.date);
       const localData = parseWorkoutText(entry.text, {
         locale,
         fallbackExercise,
@@ -242,11 +327,17 @@ export class CommandBus {
 
       let promise = this.inflight.get(key);
       if (!promise) {
-        promise = this.deps.enrichFn({
-          text: exerciseText,
+        promise = this.deps.enrichFn(
+          {
+          // A nota inteira: as linhas de serie sao a melhor pista de qual
+          // exercicio e ("30min" desambigua esteira de agachamento). Os numeros
+          // continuam vindo do parser local — nada que a IA devolva em `sets`
+          // e lido no merge abaixo.
+          text: entry.text,
           domain: entry.domain,
+          intent: 'workoutAuto',
           context: fallbackExercise,
-          userContext: undefined,
+          userContext,
           locale,
         });
         this.inflight.set(key, promise);
@@ -258,14 +349,52 @@ export class CommandBus {
         if (this.cancelled.has(entry.id)) return;
 
         if (!res.ok) {
-          this.cache.set(key, localData);
+          // Deliberately NOT cached. A fallback is what we show when the model
+          // could not be reached or could not be understood — caching it makes
+          // every later note with the same text resolve instantly to that same
+          // failure, and turns the retry button into a lie.
           await this.applyResolved(entry, localData);
           return;
         }
 
+        // The note was a request, not a log. The optimistic entry holding the
+        // typed request is replaced by the plan it asked for — in ONE composite,
+        // so a single undo puts the typed line back and takes the plan away.
+        // Deliberately not cached: a plan is anchored to a date, and replaying
+        // a cached one onto another day would silently write the wrong week.
+        const plan = workoutPlanSchema.safeParse(res.data);
+        if (plan.success) {
+          const commands = planToNotes(plan.data, entry.date).flatMap((note) => {
+            // Resolved on arrival: the model just told us the exercise and its
+            // sets, so sending each generated note back for another round trip
+            // would buy nothing and cost one request per exercise.
+            const cmd = this.createAddEntry(
+              note.text,
+              note.domain,
+              undefined,
+              note.date,
+              parseWorkoutText(note.text, { locale }),
+            );
+            return cmd ? [cmd] : [];
+          });
+          if (commands.length) {
+            await this.run(
+              new CompositeCommand(planLabel(plan.data), [
+                ...commands,
+                new DeleteEntryCommand(this, entry, false),
+              ]),
+            );
+            this.deps.onNoteReplaced?.();
+            return;
+          }
+        }
+
         const parsed = schemaByDomain.workout.safeParse(res.data);
         if (!parsed.success) {
-          this.cache.set(key, localData);
+          // Deliberately NOT cached. A fallback is what we show when the model
+          // could not be reached or could not be understood — caching it makes
+          // every later note with the same text resolve instantly to that same
+          // failure, and turns the retry button into a lie.
           await this.applyResolved(entry, localData);
           return;
         }
@@ -273,7 +402,7 @@ export class CommandBus {
         const aiData = parsed.data as WorkoutData;
         const data: WorkoutData = {
           ...localData,
-          exercise: aiData.exercise ?? localData.exercise,
+          exercise: cleanExerciseName(aiData.exercise) ?? localData.exercise,
           kind: aiData.kind ?? localData.kind,
           // Anatomy only ever comes from the model — the local parser reads
           // numbers, not what a movement trains.
@@ -286,7 +415,10 @@ export class CommandBus {
       } catch {
         this.inflight.delete(key);
         if (this.cancelled.has(entry.id)) return;
-        this.cache.set(key, localData);
+        // Deliberately NOT cached. A fallback is what we show when the model
+        // could not be reached or could not be understood — caching it makes
+        // every later note with the same text resolve instantly to that same
+        // failure, and turns the retry button into a lie.
         await this.applyResolved(entry, localData);
       }
       return;
@@ -294,10 +426,12 @@ export class CommandBus {
 
     let promise = this.inflight.get(key);
     if (!promise) {
-      promise = this.deps.enrichFn({
+      promise = this.deps.enrichFn(
+        {
         text: entry.text,
         domain: entry.domain,
         context: undefined,
+        intent,
         userContext,
         locale,
       });
@@ -313,12 +447,52 @@ export class CommandBus {
         await this.setError(entry.domain, entry.id, res.error);
         return;
       }
+
+      // Only food reaches here — onboarding and workout returned above. The
+      // fridge is read once and shared by both the split and the single meal.
+      const pantry = (await this.deps.getPantry?.()) ?? [];
+
+      // One note that was several actions. "comprei 3 e comi 4" comes back as
+      // `notes[]`, each its own note, exactly as a workout plan explodes into
+      // one note per exercise — one composite, so a single undo takes the whole
+      // thing back. Not cached: a split is a one-off reading of this exact text.
+      // Any `notes` wrapper explodes, even a single one: the alternative is a
+      // parse error, since the single shapes do not know the `notes` key.
+      const multi = foodMultiSchema.safeParse(res.data);
+      if (multi.success) {
+        const commands = multi.data.notes.flatMap((note) => {
+          const data =
+            'items' in note.data
+              ? { ...note.data, items: attachPantryProvenance(note.data.items, pantry) }
+              : note.data;
+          const cmd = this.createAddEntry(note.text, entry.domain, undefined, entry.date, data);
+          return cmd ? [cmd] : [];
+        });
+        if (commands.length) {
+          await this.run(
+            new CompositeCommand(`${commands.length} notes`, [
+              ...commands,
+              new DeleteEntryCommand(this, entry, false),
+            ]),
+          );
+          this.deps.onNoteReplaced?.();
+          return;
+        }
+      }
+
       const parsed = schemaByDomain[entry.domain].safeParse(res.data);
       if (!parsed.success) {
         await this.setError(entry.domain, entry.id, ENRICH_ERROR.parse);
         return;
       }
-      const data = parsed.data as EnrichData;
+      // A meal is linked to the fridge it drew from and repriced with the real
+      // product; a purchase passes straight through. `attachPantryProvenance`
+      // is a no-op with an empty pantry, so a first-ever note behaves as before.
+      const parsedData = parsed.data as EnrichData;
+      const data =
+        'items' in parsedData
+          ? ({ ...parsedData, items: attachPantryProvenance(parsedData.items, pantry) } as FoodData)
+          : parsedData;
       this.cache.set(key, data);
       await this.applyResolved(entry, data);
     } catch {
@@ -366,8 +540,14 @@ export class CommandBus {
     if (current) this.deps.store.upsert(domain, { ...current, ...patch });
   }
 
-  private lastExercise(domain: Domain): string | undefined {
-    const entries = this.deps.store.getDay(domain).entries;
+  private lastExercise(domain: Domain, date: string): string | undefined {
+    const day = this.deps.store.getDay(domain);
+    // The fallback means "the previous set of this session". Outside the
+    // visible day there is no session in memory to inherit from, and today's
+    // is not it — a week-long plan would otherwise be born with today's
+    // exercise on every one of its days.
+    if (day.date !== date) return undefined;
+    const entries = day.entries;
     for (let i = entries.length - 1; i >= 0; i--) {
       const d = entries[i].data as WorkoutData | null;
       if (d && 'sets' in d && d.exercise) return d.exercise;
@@ -387,6 +567,10 @@ class AddEntryCommand implements Command {
 
   async execute(): Promise<void> {
     await this.bus.persistUpsert(this.entry.domain, this.entry);
+    // A note born resolved has nothing left to ask. Enriching it anyway is how
+    // a plan turned into one AI round trip *per exercise* — and, when the model
+    // read a generated note as another plan request, into an endless one.
+    if (this.entry.status === 'done') return;
     this.bus.enqueueEnrich(this.entry);
   }
 
@@ -401,6 +585,14 @@ class DeleteEntryCommand implements Command {
   constructor(
     private readonly bus: CommandBus,
     private readonly entry: Entry,
+    /**
+     * Off when the note was consumed rather than deleted — a request that
+     * became a workout plan. Resuming there would re-ask the model and rebuild
+     * the very plan the undo was meant to remove, so undo would look broken.
+     * The note comes back as 'error' instead: visible, deletable, and with the
+     * retry that regenerates the plan on purpose rather than by accident.
+     */
+    private readonly resumeOnUndo = true,
   ) {}
 
   async execute(): Promise<void> {
@@ -409,8 +601,11 @@ class DeleteEntryCommand implements Command {
   }
 
   async undo(): Promise<void> {
-    await this.bus.persistUpsert(this.entry.domain, this.entry);
-    if (this.entry.status !== 'done') this.bus.enqueueEnrich(this.entry);
+    const restored: Entry = this.resumeOnUndo
+      ? this.entry
+      : { ...this.entry, status: 'error', error: ENRICH_ERROR.failed };
+    await this.bus.persistUpsert(restored.domain, restored);
+    if (this.resumeOnUndo && restored.status !== 'done') this.bus.enqueueEnrich(restored);
   }
 }
 

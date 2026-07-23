@@ -177,6 +177,8 @@ export function OnboardingTemplate() {
                 answers={answers}
                 display={displayFor(question, answers, lang)}
                 notes={question.allowsText ? notes : undefined}
+                listText={typeof answers[question.id] === 'string' ? (answers[question.id] as string) : ''}
+                onChangeList={(text) => answer(question.id, text)}
                 onPick={(option) => pick(question, option)}
                 onOpenSheet={() => openSheet(question)}
                 onSkip={() => answer(question.id, [])}

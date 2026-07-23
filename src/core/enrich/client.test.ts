@@ -106,3 +106,20 @@ test('a rejected key is terminal, not retried', async () => {
   const res = await enrich(req);
   expect(res).toMatchObject({ ok: false });
 });
+
+// One request, one JSON answer, no negotiation. There was a streaming layer
+// here built on ReadableStream/TextEncoder/TextDecoder — none of which React
+// Native ships — so building it threw inside the transport and every note
+// queued, retried and ended on "try again" without a request ever leaving.
+test('the proxy is asked plainly, with no stream to negotiate', async () => {
+  process.env.EXPO_PUBLIC_API_URL = 'https://gym.example';
+  const fetchMock = jest.fn(async () => Response.json({ ok: true, data: oneFood }));
+  global.fetch = fetchMock as unknown as typeof fetch;
+
+  const res = await enrich(req);
+
+  expect(res).toEqual({ ok: true, data: oneFood });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+  expect(init.headers.Accept).toBeUndefined();
+});

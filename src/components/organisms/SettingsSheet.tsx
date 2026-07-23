@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -54,6 +54,7 @@ import {
   SavedMealsContent,
   savedMealToEntry,
 } from "./settings/SavedMealsSheet";
+import { PantrySheet } from "./settings/PantrySheet";
 import { SavedRoutinesSheet } from "./settings/SavedRoutinesSheet";
 import {
   AccountCard,
@@ -81,6 +82,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const signOut = useAppStore((s) => s.signOut);
+  const eraseAllData = useAppStore((s) => s.eraseAllData);
   const profile =
     useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
   const settingsStack = visible
@@ -193,6 +195,11 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     const workouts = await SavedExerciseRepository.all();
     setSavedWorkouts(workouts);
     setSavedExercisesCount(workouts.length);
+  };
+
+  const openPantry = () => {
+    if (!canOpenAppModal("settings.root", "settings.pantry")) return;
+    openAppModal({ id: "settings.pantry", domain });
   };
 
   const openSavedMeals = () => {
@@ -365,6 +372,22 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     closeSettings();
     void signOut();
   };
+  // Irreversible and unrecoverable — there is no server copy to restore from,
+  // which is exactly why it asks first and names what goes.
+  const handleEraseAllData = () => {
+    Alert.alert(t("settings.eraseData"), t("settings.eraseData.confirm"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("settings.eraseData.confirmAction"),
+        style: "destructive",
+        onPress: () => {
+          closeSettings();
+          void eraseAllData();
+        },
+      },
+    ]);
+  };
+
   const themeOptions: OptionMenuItem<ThemeMode>[] = [
     { value: "system", label: t("theme.system") },
     { value: "light", label: t("theme.light") },
@@ -494,6 +517,14 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
               />
               <Divider />
               <SettingsRow
+                icon="apple"
+                iconColor={colors.protein}
+                title={t("pantry.title")}
+                trailing={<Chevron />}
+                onPress={openPantry}
+              />
+              <Divider />
+              <SettingsRow
                 icon="calendar"
                 iconColor={colors.protein}
                 title={t("routine.savedDiets")}
@@ -614,6 +645,14 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
                 trailing={<Chevron />}
                 onPress={noop}
               />
+              <Divider />
+              <SettingsRow
+                icon="trash"
+                iconColor={colors.danger}
+                title={t("settings.eraseData")}
+                trailing={<Chevron />}
+                onPress={handleEraseAllData}
+              />
             </View>
 
             <Section label={t("settings.section.legal")}>
@@ -688,6 +727,11 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
       <WorkoutMonitorSheet
         visible={workoutMonitorVisible}
         onClose={closeWorkoutMonitor}
+      />
+
+      <PantrySheet
+        visible={activeSettingsId === "settings.pantry"}
+        onClose={() => closeAppModal("settings.pantry")}
       />
 
       <ApiKeysSheet

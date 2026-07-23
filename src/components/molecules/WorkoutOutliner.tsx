@@ -501,9 +501,19 @@ export function WorkoutOutliner({
             onChangeText={(value) => updateLine(0, value)}
             onFocus={() => handleFocus(0)}
             onBlur={handleBlur}
-            onSubmitEditing={() => advanceToLine(0)}
+            onSubmitEditing={() => {
+              // Enter on the headline is an explicit "this line is done", so it
+              // commits rather than waiting for blur. Without it, asking for a
+              // workout and staying on the set line below meant nothing ever
+              // reached the model — the note only left when focus did.
+              commit(linesRef.current);
+              advanceToLine(0);
+            }}
             onKeyPress={({ nativeEvent }) => {
-              if (nativeEvent.key === 'Backspace' && lines[0].length === 0) {
+              // The ref, not the render's copy: a key event can arrive between
+              // the keystroke and the re-render, and reading the stale value
+              // there is a backspace that deletes nothing.
+              if (nativeEvent.key === 'Backspace' && !linesRef.current[0]) {
                 deleteExerciseBlock();
               }
             }}

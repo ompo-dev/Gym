@@ -20,9 +20,22 @@ test('the script covers every field the summary is sensitive to', () => {
     'goalWeightKg',
     'goalDate',
     'activity',
+    'weightUnit',
+    'trainingLevel',
+    'workoutGoal',
     'considerations',
     'micronutrients',
     'estimationBias',
+    'environment',
+    'equipment',
+    'sportsLiked',
+    'exercisesDisliked',
+    'injuries',
+    'foodsLiked',
+    'foodsDisliked',
+    'restrictions',
+    'cookingSkill',
+    'budget',
   ]);
 });
 
@@ -43,6 +56,9 @@ test('every question is answerable — closed sets have options, the rest open a
   for (const question of questions) {
     if (question.kind === 'choice' || question.kind === 'multi' || question.kind === 'bias') {
       expect(question.options?.length).toBeGreaterThan(1);
+    } else if (question.kind === 'list') {
+      // Free text: no options and no sheet, the input is the answer.
+      expect(question.options).toBeUndefined();
     } else {
       expect(question.hint).toBeTruthy();
     }
@@ -135,4 +151,52 @@ test('the bias scale reads as a scale — one colour per step', () => {
 test('micronutrient chips wear the colour of the ring they become', () => {
   const micros = questions.find((q) => q.id === 'micronutrients');
   expect(micros?.options?.every((o) => Boolean(o.color))).toBe(true);
+});
+
+test('an unanswered training field stays silent instead of claiming a default', () => {
+  // Um perfil salvo antes destas perguntas nao pode *afirmar* que a pessoa e
+  // iniciante — a linha some do prompt em vez de mentir.
+  const profile = profileFromAnswers({}, base);
+  expect(profile.trainingLevel).toBeUndefined();
+  expect(profile.workoutGoal).toBeUndefined();
+  // weightUnit e a excecao: 'kg' ja era o fallback do parser, nao afirma nada novo.
+  expect(profile.weightUnit).toBe('kg');
+});
+
+test('answered training fields reach the profile', () => {
+  const profile = profileFromAnswers(
+    { weightUnit: 'lb', trainingLevel: 'advanced', workoutGoal: 'strength' },
+    base,
+  );
+  expect(profile).toMatchObject({
+    weightUnit: 'lb',
+    trainingLevel: 'advanced',
+    workoutGoal: 'strength',
+  });
+});
+
+test('free-text lists split on commas and drop blanks', () => {
+  const profile = profileFromAnswers(
+    { injuries: ' ombro direito , joelho ,, ', foodsDisliked: 'jiló' },
+    base,
+  );
+  expect(profile.injuries).toEqual(['ombro direito', 'joelho']);
+  expect(profile.foodsDisliked).toEqual(['jiló']);
+});
+
+test('an untouched list is empty, never undefined', () => {
+  // Every one of these is `.map`ped or `.join`ed downstream.
+  const profile = profileFromAnswers({}, base);
+  for (const key of [
+    'equipment',
+    'sportsLiked',
+    'exercisesDisliked',
+    'injuries',
+    'foodsLiked',
+    'foodsDisliked',
+    'restrictions',
+  ] as const) {
+    expect(Array.isArray(profile[key])).toBe(true);
+    expect(profile[key]).toHaveLength(0);
+  }
 });

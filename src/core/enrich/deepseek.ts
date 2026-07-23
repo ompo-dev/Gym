@@ -1,9 +1,30 @@
 import { normalizeForEnrich } from '@/core/enrich/normalize';
-import { foodEditPrompt, promptByDomain } from '@/domains/prompts';
-import { foodEditSchema, schemaByDomain } from '@/domains/schemas';
+import {
+  foodEditPrompt,
+  foodRouterPrompt,
+  promptByDomain,
+  purchasePrompt,
+  recipePrompt,
+  workoutPlanPrompt,
+  workoutRouterPrompt,
+} from '@/domains/prompts';
+import {
+  foodEditSchema,
+  foodEntrySchema,
+  foodMultiSchema,
+  foodSchema,
+  purchaseSchema,
+  schemaByDomain,
+} from '@/domains/schemas';
+import { workoutPlanSchema } from '@/domains/workoutPlan';
 import { z } from 'zod';
 
-import type { EnrichMediaDescription, EnrichMediaInput, EnrichResponse } from './types';
+import type {
+  EnrichIntent,
+  EnrichMediaDescription,
+  EnrichMediaInput,
+  EnrichResponse,
+} from './types';
 import type { Domain } from '@/core/types';
 import type { FoodData } from '@/domains/schemas';
 
@@ -25,6 +46,97 @@ const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 /** Upstream unreachable. Callers retry these; every other failure is terminal. */
 export class DeepSeekTransportError extends Error {}
 
+/**
+ * How each domain is told to read the profile context. A domain absent from
+ * this table has its context dropped — which is how `onboarding` stays out
+ * without an extra branch: those notes are what *builds* the profile, so
+ * feeding the current one back would have the model echo defaults as answers.
+ */
+const USER_CONTEXT: Partial<Record<Domain, { label: string; instruction: string }>> = {
+  food: {
+    label: 'User nutrition context',
+    instruction:
+      'Use the user nutrition context to choose serving assumptions, calories and macros; respect restrictions, diet preferences and notes when relevant.',
+  },
+  workout: {
+    label: 'User profile',
+    instruction:
+      'Use the user profile only to pick the most likely exercise name and the muscles it trains; never invent sets, loads, duration or distance the entry does not state.',
+  },
+};
+
+/**
+ * Prompt and output schema for each intent, side by side so they cannot drift.
+ * A missing entry falls back to the domain default, which is what `parse` is.
+ *
+ * Pinning the schema per intent is the guarantee: `schemaByDomain.food` is a
+ * union and would happily accept a meal-shaped reply to a purchase question.
+ */
+const INTENT_PROMPT: Partial<Record<EnrichEngineInput['intent'], string>> = {
+  foodAuto: foodRouterPrompt,
+  workoutAuto: workoutRouterPrompt,
+  foodEdit: foodEditPrompt,
+  purchase: purchasePrompt,
+  recipe: recipePrompt,
+  workoutPlan: workoutPlanPrompt,
+};
+
+const INTENT_SCHEMA: Partial<Record<EnrichEngineInput['intent'], z.ZodType>> = {
+  // Already disjoint — `items` on one side, `purchase` on the other — so the
+  // model picking either one lands on a shape every downstream `'items' in data`
+  // guard already understands. No discriminant field to add, none to keep in sync.
+  // Three shapes, disjoint by construction: a split has `notes`, a purchase has
+  // `purchase`, a meal has `items`. The bus explodes a split into real notes and
+  // treats the other two exactly as before.
+  foodAuto: z.union([foodMultiSchema, foodEntrySchema]),
+  // Disjoint the same way food is: a log has `exercise`, a plan has `days`.
+  workoutAuto: z.union([workoutPlanSchema, schemaByDomain.workout]),
+  foodEdit: foodEditSchema,
+  purchase: purchaseSchema,
+  // A recipe answers with the whole meal, recipe included — same shape a parse
+  // returns, so the detail sheet renders it with no special case.
+  recipe: foodSchema,
+  workoutPlan: workoutPlanSchema,
+};
+
+/**
+ * Output budget per intent. A truncated answer is invalid JSON, which is
+ * terminal and gives the user "try again" on something that will never
+ * succeed — so the ceiling has to match what each answer actually costs.
+ */
+const MAX_TOKENS: Partial<Record<EnrichEngineInput['intent'], number>> = {
+  // Budgeted for the widest branch: several split notes, one of them a recipe.
+  foodAuto: 3200,
+  // Budgeted for its widest branch: a full week of exercises and sets.
+  workoutAuto: 3000,
+  foodEdit: 1800,
+  purchase: 900,
+  // Ingredients + steps + full nutrition for the meal.
+  recipe: 2600,
+  // Seven days of exercises and sets.
+  workoutPlan: 3000,
+};
+
+/**
+ * Exposed for the test that pins the pairing: an intent with a prompt but no
+ * schema would fall back to the domain union, and a meal-shaped reply to a
+ * purchase question would pass validation.
+ */
+export const INTENT_COVERAGE = Object.fromEntries(
+  (Object.keys(INTENT_PROMPT) as (keyof typeof INTENT_PROMPT)[]).map((intent) => [
+    intent,
+    {
+      prompt: Boolean(INTENT_PROMPT[intent]),
+      schema: Boolean(INTENT_SCHEMA[intent]),
+      // The recipe intent shipped on the 1100 default and every answer came back
+      // truncated — invalid JSON, which is terminal, so the user got "try again"
+      // on something that could never succeed. An intent with its own prompt
+      // asks for its own shape and must budget for it.
+      tokens: Boolean(MAX_TOKENS[intent]),
+    },
+  ]),
+) as Record<string, { prompt: boolean; schema: boolean; tokens: boolean }>;
+
 const MediaDescriptionsSchema = z.object({
   descriptions: z.array(
     z.object({
@@ -42,7 +154,7 @@ type ChatMessage = { role: 'system' | 'user'; content: ChatContent };
 export interface EnrichEngineInput {
   text: string;
   domain: Domain;
-  intent: 'parse' | 'foodEdit';
+  intent: EnrichIntent;
   currentFood?: FoodData;
   media?: EnrichMediaInput[];
   context?: string;
@@ -92,10 +204,8 @@ async function callDeepSeekJson(
   }
   if (!res.ok) throw new Error(`AI service error (${res.status})`);
 
-  const payload = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  const content = payload.choices?.[0]?.message?.content;
+  const content = ((await res.json()) as { choices?: { message?: { content?: string } }[] })
+    .choices?.[0]?.message?.content;
   if (!content) throw new Error('Empty AI response');
 
   try {
@@ -175,23 +285,24 @@ export async function runEnrichEngine(
   const { text, domain, intent, currentFood, media, context, userContext, locale } = input;
 
   const language = locale?.toLowerCase().startsWith('en') ? 'English' : 'Brazilian Portuguese';
+  // Any food note with photos, not just a plain parse. Gating this on
+  // `intent === 'parse'` silently blinded every photo the moment food notes
+  // started routing through `foodAuto` — a grocery haul and a fridge shot are
+  // exactly the pictures worth reading.
   const mediaDescriptions =
-    domain === 'food' && intent === 'parse'
-      ? await describeFoodMedia(keys.image, media, language, signal)
-      : [];
+    domain === 'food' ? await describeFoodMedia(keys.image, media, language, signal) : [];
   const mediaContext = mediaDescriptions
     .map((item, index) => `Image ${index + 1} mediaId=${item.id}: ${item.description}`)
     .join('\n');
   const textWithMedia = [text, mediaContext].filter(Boolean).join('\n');
   const normalizedText =
     intent === 'foodEdit' ? text : normalizeForEnrich(textWithMedia, { domain, locale });
+  const contextCopy = userContext ? USER_CONTEXT[domain] : undefined;
   const system = [
-    intent === 'foodEdit' ? foodEditPrompt : promptByDomain[domain],
+    INTENT_PROMPT[intent] ?? promptByDomain[domain],
     'Write the "label", "item", "note", "exercise" and "reasoning" text in',
     `${language}.`,
-    userContext && domain === 'food'
-      ? 'Use the user nutrition context to choose serving assumptions, calories and macros; respect restrictions, diet preferences and notes when relevant.'
-      : '',
+    contextCopy?.instruction ?? '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -200,8 +311,7 @@ export async function runEnrichEngine(
       ? `Entry: ${textWithMedia}`
       : `Original entry: ${textWithMedia}\nNormalized arithmetic: ${normalizedText}`;
   const contextBlock = context ? `Context: current exercise is "${context}".\n` : '';
-  const userContextBlock =
-    userContext && domain === 'food' ? `User nutrition context:\n${userContext}\n\n` : '';
+  const userContextBlock = contextCopy ? `${contextCopy.label}:\n${userContext}\n\n` : '';
   const currentFoodBlock =
     intent === 'foodEdit' && currentFood
       ? `Current meal JSON:\n${JSON.stringify(currentFood)}\n\n`
@@ -215,13 +325,43 @@ export async function runEnrichEngine(
       { role: 'system', content: system },
       { role: 'user', content: userContent },
     ],
-    intent === 'foodEdit' ? 1800 : 1100,
+    MAX_TOKENS[intent] ?? 1100,
     signal,
   );
 
-  // Validate the model output here too (defense in depth).
-  const parsed = (intent === 'foodEdit' ? foodEditSchema : schemaByDomain[domain]).safeParse(raw);
+  // Validate the model output here too (defense in depth). A purchase is pinned
+  // to `purchaseSchema`, NOT to `schemaByDomain.food` — the union would happily
+  // accept a meal-shaped reply, and a note saying "comprei" would land 1100
+  // kcal on the day. Failing loudly here is the guarantee.
+  const outputSchema = INTENT_SCHEMA[intent] ?? schemaByDomain[domain];
+  const parsed = outputSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, error: 'AI response did not match schema' };
 
   return { ok: true, data: parsed.data, mediaDescriptions };
+}
+
+/**
+ * The names the model has finished writing, read out of half-written JSON.
+ *
+ * The stream carries raw JSON, so showing it verbatim would put braces on the
+ * screen. The regex only matches a *closed* quoted value, which is what keeps a
+ * name from flickering in half-typed as the characters arrive.
+ */
+export function streamedNames(partial: string): string[] {
+  return [...partial.matchAll(/"(?:exercise|label|title)"\s*:\s*"((?:[^"\\]|\\.)*)"/g)]
+    .map((match) => match[1].trim())
+    .filter(Boolean);
+}
+
+/**
+ * The value the model is in the middle of writing, if any.
+ *
+ * `streamedNames` deliberately waits for the closing quote, which keeps a
+ * finished list from flickering — but on its own it makes the stream look like
+ * it arrives in whole words. This returns the open one so the last line can be
+ * typed out character by character, which is what the streaming is for.
+ */
+export function openStreamedName(partial: string): string | null {
+  const match = /"(?:exercise|label|title)"\s*:\s*"((?:[^"\\]|\\.)*)$/.exec(partial);
+  return match ? match[1] : null;
 }

@@ -1,4 +1,22 @@
-import { formatFoodQuantity, mergeDuplicateFoodItems, mergeFoodEdit } from './food';
+import {
+  formatFoodQuantity,
+  mealItemGrams,
+  mergeDuplicateFoodItems,
+  mergeFoodEdit,
+  recipeShoppingList,
+} from './food';
+import { foodSchema, type FoodRecipeIngredient } from './schemas';
+
+// The unit that lets a meal subtract from a purchase: "100 g" and "0,5 kg" are
+// grams the fridge can weigh; "1 prato" is a portion it cannot, so it stays
+// unknown rather than guessing.
+test('a meal item weighs in grams only when its unit converts', () => {
+  expect(mealItemGrams({ quantity: 100, unit: 'g' })).toBe(100);
+  expect(mealItemGrams({ quantity: 0.5, unit: 'kg' })).toBe(500);
+  expect(mealItemGrams({ quantity: 2, unit: 'L' })).toBe(2000);
+  expect(mealItemGrams({ quantity: 1, unit: 'prato' })).toBeUndefined();
+  expect(mealItemGrams({ quantity: undefined, unit: 'g' })).toBeUndefined();
+});
 
 test('food AI edit merges duplicate returned items and replaces reasoning', () => {
   const result = mergeFoodEdit(
@@ -126,4 +144,69 @@ test('merges duplicate barcode products into one countable item', () => {
   expect(result[0].sugarG).toBe(94);
   expect(result[0].sodiumMg).toBe(800);
   expect(formatFoodQuantity(result[0])).toBe('2');
+});
+
+// ---- recipe shopping list ---------------------------------------------------
+
+const ingredient = (over: Partial<FoodRecipeIngredient> = {}): FoodRecipeIngredient => ({
+  label: 'patinho',
+  pantryItemId: null,
+  ...over,
+});
+
+test('only what is missing goes on the shopping list', () => {
+  const list = recipeShoppingList({
+    servings: 2,
+    ingredients: [
+      ingredient({ label: 'patinho', pantryItemId: 'p1', estimatedCostCents: 3000 }),
+      ingredient({ label: 'cebola', estimatedCostCents: 200 }),
+    ],
+    steps: [{ text: 'refogar' }],
+  });
+
+  expect(list.missing.map((i) => i.label)).toEqual(['cebola']);
+  expect(list.totalCents).toBe(200);
+});
+
+test('one unknown price suppresses the total instead of under-reporting it', () => {
+  // A partial total reads as "this is what it costs" and it is not.
+  const list = recipeShoppingList({
+    servings: 1,
+    ingredients: [
+      ingredient({ label: 'cebola', estimatedCostCents: 200 }),
+      ingredient({ label: 'açafrão' }),
+    ],
+    steps: [{ text: 'refogar' }],
+  });
+
+  expect(list.missing).toHaveLength(2);
+  expect(list.totalCents).toBeNull();
+});
+
+test('having everything at home costs nothing, not null', () => {
+  const list = recipeShoppingList({
+    servings: 1,
+    ingredients: [ingredient({ pantryItemId: 'p1' })],
+    steps: [{ text: 'grelhar' }],
+  });
+  expect(list.missing).toEqual([]);
+  expect(list.totalCents).toBe(0);
+});
+
+test('a meal saved before recipes existed still parses', () => {
+  // EntryRepository revalidates every persisted row against the current schema.
+  const old = foodSchema.parse({
+    items: [{ label: 'arroz', calories: 200, protein: 4, carbs: 44, fat: 0 }],
+  });
+  expect(old.recipe).toBeUndefined();
+  expect(old.items).toHaveLength(1);
+});
+
+test('a malformed recipe drops alone, never taking the meal with it', () => {
+  const parsed = foodSchema.parse({
+    items: [{ label: 'arroz', calories: 200, protein: 4, carbs: 44, fat: 0 }],
+    recipe: { servings: 'muitas', ingredients: [], steps: [] },
+  });
+  expect(parsed.recipe).toBeUndefined();
+  expect(parsed.items).toHaveLength(1);
 });

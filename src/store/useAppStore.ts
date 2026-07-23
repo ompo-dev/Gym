@@ -10,6 +10,7 @@ import {
   type OnboardingProfile,
 } from '@/core/onboarding';
 import type { Domain, Entry } from '@/core/types';
+import { wipeAllData } from '@/data/db';
 import { SettingsRepository } from '@/data/SettingsRepository';
 import { defaultLang, registerLangGetter, type Lang } from '@/i18n';
 
@@ -41,6 +42,7 @@ interface AppState {
   completeOnboarding: (profile: OnboardingProfile) => Promise<void>;
   updateOnboardingProfile: (patch: Partial<OnboardingProfile>) => Promise<void>;
   signOut: () => Promise<void>;
+  eraseAllData: () => Promise<void>;
 }
 
 const emptyDay = (): DayState => ({ date: todayISO(), entries: [] });
@@ -63,7 +65,9 @@ function isLang(value: string | null): value is Lang {
 }
 
 function applyTheme(theme: ThemeMode): void {
-  Appearance.setColorScheme(theme === 'system' ? null : theme);
+  // react-native-web does not implement setColorScheme; there the OS preference
+  // is the only source and forcing it is a no-op rather than a crash.
+  Appearance.setColorScheme?.(theme === 'system' ? null : theme);
 }
 
 /**
@@ -208,6 +212,28 @@ export const useAppStore = create<AppState>((set) => ({
       SettingsRepository.set(ONBOARDING_DONE_KEY, '0'),
       SettingsRepository.set(ONBOARDING_PROFILE_KEY, ''),
     ]);
+  },
+
+  /**
+   * Account deletion, locally: every row dropped and every value in memory back
+   * to what a fresh install holds. Disk first — a crash between the two must
+   * leave nothing behind, and the reverse order would leave a wiped screen in
+   * front of data that is still on the device.
+   *
+   * The theme is deliberately kept: it is how the app looks, not something the
+   * user typed, and flipping it to system on the way out reads as a glitch.
+   */
+  eraseAllData: async () => {
+    await wipeAllData();
+    set({
+      food: emptyDay(),
+      workout: emptyDay(),
+      onboarding: emptyDay(),
+      onboardingDone: false,
+      onboardingProfile: null,
+      apiKeys: defaultApiKeys(),
+    });
+    await SettingsRepository.set(THEME_KEY, useAppStore.getState().theme);
   },
 }));
 

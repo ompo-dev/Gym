@@ -1,6 +1,21 @@
 import { Colors } from '@/constants/theme';
-import { buildOnboardingSummary, type OnboardingProfile } from '@/core/onboarding';
-import { type FoodData, type FoodEditData, type FoodItem, foodSchema } from '@/domains/schemas';
+import {
+  buildOnboardingSummary,
+  noTrainingAdjustment,
+  type OnboardingProfile,
+  type TrainingAdjustment,
+} from '@/core/onboarding';
+import {
+  type FoodData,
+  type FoodEditData,
+  type FoodEntryData,
+  foodEntrySchema,
+  type FoodRecipe,
+  type FoodRecipeIngredient,
+  foodSchema,
+  type FoodItem,
+} from '@/domains/schemas';
+import { formatPurchaseTotal, isPurchaseData } from '@/domains/purchase';
 import type { DomainConfig } from '@/domains/types';
 import { t } from '@/i18n';
 
@@ -24,6 +39,8 @@ export interface FoodGoals {
   sugarG: number;
   fiberG: number;
   sodiumMg: number;
+  /** How much of the calories came from the day's training. 0 on a rest day. */
+  trainingKcal: number;
 }
 
 const round = Math.round;
@@ -38,10 +55,15 @@ export const defaultFoodGoals: FoodGoals = {
   sugarG: 25,
   fiberG: 25,
   sodiumMg: 2300,
+  trainingKcal: 0,
 };
 
-export function foodGoalsFromProfile(profile: OnboardingProfile): FoodGoals {
-  const summary = buildOnboardingSummary(profile);
+export function foodGoalsFromProfile(
+  profile: OnboardingProfile,
+  training: TrainingAdjustment = noTrainingAdjustment,
+): FoodGoals {
+  // `undefined` on the 2nd argument falls through to the summary's own todayISO().
+  const summary = buildOnboardingSummary(profile, undefined, training);
   return {
     calories: summary.calories,
     protein: summary.protein,
@@ -51,6 +73,7 @@ export function foodGoalsFromProfile(profile: OnboardingProfile): FoodGoals {
     sugarG: summary.sugarG,
     fiberG: summary.fiberG,
     sodiumMg: summary.sodiumMg,
+    trainingKcal: training.calories,
   };
 }
 
@@ -139,37 +162,94 @@ function hasAdditiveIntent(instruction: string): boolean {
   return /\b(mais|outro|outra|adicion|adicionar|add|another|more)\b/i.test(instruction);
 }
 
-function foodLabelKey(label: string): string {
+/**
+ * Words that describe how much, not what.
+ *
+ * The weights at the bottom are what a purchase note is made of: someone buys
+ * "5 kg de arroz" and later asks for a recipe with "arroz". Without them the
+ * shelf was keyed under `kg de arroz`, matched nothing, and the shopping list
+ * told the user to buy the rice already in their kitchen.
+ */
+const LABEL_UNITS = [
+  'copo',
+  'copos',
+  'xicara',
+  'xicaras',
+  'fatia',
+  'fatias',
+  'pedaco',
+  'pedacos',
+  'lata',
+  'latas',
+  'garrafa',
+  'garrafas',
+  'glass',
+  'cup',
+  'slice',
+  'piece',
+  'can',
+  'bottle',
+  'kg',
+  'g',
+  'mg',
+  'l',
+  'ml',
+  'kilo',
+  'kilos',
+  'quilo',
+  'quilos',
+  'grama',
+  'gramas',
+  'litro',
+  'litros',
+];
+
+export function foodLabelKey(label: string): string {
   let key = label
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
+    // People type the amount glued to the unit \u2014 "5kg de arroz" is one token
+    // until this splits it, and the quantity strip below only matches a token
+    // that ends where the number does.
+    .replace(/(\d)([a-z])/g, '$1 $2')
     .trim();
   key = key.replace(/^(um|uma|\d+(?:\.\d+)?)\s+/, '');
-  for (const unit of [
-    'copo',
-    'copos',
-    'xicara',
-    'xicaras',
-    'fatia',
-    'fatias',
-    'pedaco',
-    'pedacos',
-    'lata',
-    'latas',
-    'garrafa',
-    'garrafas',
-    'glass',
-    'cup',
-    'slice',
-    'piece',
-    'can',
-    'bottle',
-  ]) {
+  for (const unit of LABEL_UNITS) {
     key = key.replace(new RegExp(`^${unit}\\s+(de|da|do|das|dos|of)\\s+`), '');
   }
   return key.replace(/\brefri\b/g, 'refrigerante');
+}
+
+/** g per unit, for the units the pantry can subtract in. Everything else is a
+ *  portion the fridge does not weigh — "1 prato" tells you nothing in grams. */
+const UNIT_GRAMS: Record<string, number> = {
+  g: 1,
+  grama: 1,
+  gramas: 1,
+  kg: 1000,
+  kilo: 1000,
+  kilos: 1000,
+  quilo: 1000,
+  quilos: 1000,
+  mg: 0.001,
+  ml: 1,
+  l: 1000,
+  litro: 1000,
+  litros: 1000,
+};
+
+/**
+ * A meal item's weight in grams, when it can be known. This is what lets "comi
+ * 100 g de arroz" subtract from "comprei 5 kg" — and what stays undefined for
+ * "comi arroz", because an unknown amount subtracts nothing rather than
+ * guessing a portion out of the fridge.
+ */
+export function mealItemGrams(item: Pick<FoodItem, 'quantity' | 'unit'>): number | undefined {
+  if (item.quantity === undefined || !item.unit) return undefined;
+  const perUnit = UNIT_GRAMS[item.unit.trim().toLowerCase()];
+  return perUnit === undefined ? undefined : item.quantity * perUnit;
 }
 
 function sumFoodItems(base: FoodItem, next: FoodItem): FoodItem {
@@ -243,7 +323,7 @@ export function mergeFoodEdit(current: FoodData, edit: FoodEditData, instruction
   });
 }
 
-export const foodConfig: DomainConfig<FoodData, FoodTotals> = {
+export const foodConfig: DomainConfig<FoodEntryData, FoodTotals> = {
   id: 'food',
   get title() {
     return t('diet.title');
@@ -252,10 +332,16 @@ export const foodConfig: DomainConfig<FoodData, FoodTotals> = {
     return t('diet.placeholder');
   },
   accent: foodColors.calories,
-  schema: foodSchema,
-  formatResult: (data) => `${round(sumFoodData(data).calories)} cal`,
+  schema: foodEntrySchema,
+  // A purchase shows what it cost, where a meal shows what it costs you.
+  formatResult: (data) =>
+    isPurchaseData(data) ? formatPurchaseTotal(data) : `${round(sumFoodData(data).calories)} cal`,
   emptyTotals: { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0, sugarG: 0, fiberG: 0, sodiumMg: 0 },
   addToTotals: (totals, data) => {
+    // Nothing in a purchase note was eaten. Counting it would put a week of
+    // groceries on today's calories — the exact bug the intent split exists
+    // to prevent.
+    if (isPurchaseData(data)) return totals;
     const summed = sumFoodData(data);
     return {
       calories: totals.calories + summed.calories,
@@ -281,3 +367,38 @@ export const foodConfig: DomainConfig<FoodData, FoodTotals> = {
     { key: 'h', label: t('macro.water'), value: formatWaterMl(totals.waterMl), color: foodColors.water },
   ],
 };
+
+/**
+ * What the recipe still needs from the market, and what it should cost.
+ *
+ * Lives here rather than inside the card because jest only runs `*.test.ts`:
+ * anything that stays in a `.tsx` is untestable by construction, and "which
+ * ingredients am I missing" is exactly the kind of answer that must not be.
+ */
+export function recipeShoppingList(recipe: FoodRecipe): {
+  missing: FoodRecipeIngredient[];
+  /** null when any missing item has no known price — a partial total lies. */
+  totalCents: number | null;
+} {
+  const missing = recipe.ingredients.filter((item) => item.pantryItemId === null);
+  const priced = missing.every((item) => item.estimatedCostCents !== undefined);
+  return {
+    missing,
+    totalCents: priced
+      ? missing.reduce((sum, item) => sum + (item.estimatedCostCents ?? 0), 0)
+      : null,
+  };
+}
+
+/**
+ * What a resolved food note actually is, so the row can colour and wire it
+ * without re-deriving the rules in JSX. Kept here next to `formatResult`, which
+ * makes the same distinction — the two would drift if the component owned one
+ * of them.
+ */
+export type FoodNoteKind = 'meal' | 'recipe' | 'purchase';
+
+export function foodNoteKind(data: FoodEntryData): FoodNoteKind {
+  if (isPurchaseData(data)) return 'purchase';
+  return data.recipe ? 'recipe' : 'meal';
+}

@@ -2,7 +2,6 @@ import type { AppIconName } from '@/components/atoms/AppIcon';
 import type { Entry } from '@/core/types';
 import { t } from '@/i18n';
 
-import type { WorkoutData } from './schemas';
 import {
   formatWorkoutDistance,
   formatWorkoutDuration,
@@ -10,6 +9,7 @@ import {
   type WorkoutTotals,
   uniqueWorkoutExerciseNames,
   workoutConfig,
+  isWorkoutData,
 } from './workout';
 
 export type ProgressTone = 'pr' | 'first' | 'up' | 'flat';
@@ -41,10 +41,6 @@ interface ExerciseHistory {
 }
 
 type SessionsByExercise = Map<string, Map<string, { name: string; totals: WorkoutTotals }>>;
-
-function isWorkoutData(data: Entry['data']): data is WorkoutData {
-  return Boolean(data && 'sets' in data);
-}
 
 function entryExercise(entry: Entry): string | null {
   if (!isWorkoutData(entry.data)) return null;

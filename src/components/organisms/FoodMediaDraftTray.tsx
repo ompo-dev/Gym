@@ -68,14 +68,11 @@ export function DraftStack({
   if (visibleDrafts.length === 0) return null;
 
   return (
-    <View
-      style={[
-        styles.draftStack,
-        {
-          width: size * visibleDrafts.length + overlap * Math.max(0, visibleDrafts.length - 1),
-          height: size,
-        },
-      ]}>
+    // Height only. The width used to be computed from the thumbnail count and
+    // it left out the "+N" badge, so the box was wrong for one photo, wrong for
+    // four, and right by accident for three. A row sums its children's widths
+    // and negative margins on its own — there was nothing to compute.
+    <View style={[styles.draftStack, { height: size }]}>
       {visibleDrafts.map((draft, index) => (
         <View
           key={draft.id}
@@ -102,10 +99,13 @@ export function DraftStack({
 
 export function FoodMediaDraftTray({
   drafts,
+  ownerId,
   onChangeDescription,
   onRemove,
 }: {
   drafts: FoodMediaDraft[];
+  /** Which tray this is — see the `ownerId` note on the modal type. */
+  ownerId: string;
   onChangeDescription?: (id: string, description: string) => void;
   onRemove?: (id: string) => void;
 }) {
@@ -113,7 +113,9 @@ export function FoodMediaDraftTray({
   const activeModal = useAppModalStore((s) => s.stack.at(-1));
   const replaceAppModal = useAppModalStore((s) => s.replaceAppModal);
   const closeAppModal = useAppModalStore((s) => s.closeAppModal);
-  const open = activeModal?.id === 'food.mediaDraftTray';
+  // Both halves. Matching on the id alone made every tray on screen visible at
+  // the same moment, and the one the user tapped was not the one they saw.
+  const open = activeModal?.id === 'food.mediaDraftTray' && activeModal.ownerId === ownerId;
   if (drafts.length === 0) return null;
 
   return (
@@ -121,7 +123,7 @@ export function FoodMediaDraftTray({
       <Pressable
         onPress={() => {
           if (!canOpenAppModal('day.root', 'food.mediaDraftTray')) return;
-          replaceAppModal({ id: 'food.mediaDraftTray', domain: 'food' });
+          replaceAppModal({ id: 'food.mediaDraftTray', domain: 'food', ownerId });
         }}
         hitSlop={10}
         accessibilityRole="button"
@@ -134,6 +136,10 @@ export function FoodMediaDraftTray({
         visible={open}
         title={t('media.photosAdded')}
         onClose={() => closeAppModal('food.mediaDraftTray')}
+        // Every draft is a row with a thumbnail and an editable description, so
+        // the default short sheet clipped the list at one and a half photos —
+        // the ones below were unreachable, remove button included.
+        size="full"
         keyboardAwareScroll>
         {drafts.map((draft) => (
           <View key={draft.id} style={styles.row}>
@@ -170,8 +176,11 @@ export function FoodMediaDraftTray({
 
 const styles = StyleSheet.create({
   galleryButton: {
-    width: 78,
-    height: 44,
+    // Hugs the stack instead of reserving room for three. One photo used to sit
+    // in a 78pt slot with 40pt of dead space beside it, and the row next to the
+    // note read as misaligned.
+    alignSelf: 'flex-start',
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     paddingLeft: Spacing.one,
@@ -215,3 +224,40 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 });
+
+/** How many thumbnails fit beside the shutter before they stack into a badge. */
+export const THUMBNAIL_LIMIT = 3;
+
+/**
+ * The most recent photos first.
+ *
+ * Drafts arrive in the order they were added, and showing the first three meant
+ * the strip beside the shutter froze on the oldest ones: a photo just taken did
+ * not appear, and the slot still held whatever had been picked from the gallery
+ * earlier. The newest is the one the user just created and expects to see.
+ */
+export function latestThumbnails(drafts: { uri?: string }[], limit = THUMBNAIL_LIMIT): string[] {
+  return drafts
+    .flatMap((draft) => (draft.uri ? [draft.uri] : []))
+    .reverse()
+    .slice(0, limit);
+}
+
+/** The exact wording `foodRouterPrompt` is taught to recognise. Change both. */
+export const SCANNED_PREFIX = 'Already scanned and identified:';
+
+/**
+ * What the barcodes already identified, spelled out for the model.
+ *
+ * A scanned product arrives as finished `FoodData` — the same shape the model
+ * returns for "banana" — so it skips the image payload, skips the image
+ * description block, and the model never hears of it. "receita com isso" over a
+ * scanned jar of mayonnaise was therefore a request for a recipe with no
+ * ingredients: the one food in hand was the one thing missing from the prompt.
+ */
+export function buildBarcodeText(drafts: FoodMediaDraft[]): string {
+  const labels = drafts
+    .flatMap((draft) => (draft.data ? [draft.description.trim() || draft.data.items[0]?.label] : []))
+    .filter(Boolean);
+  return labels.length ? `${SCANNED_PREFIX} ${labels.join(', ')}.` : '';
+}

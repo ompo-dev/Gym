@@ -61,6 +61,11 @@ export function SavedMealMetric({
   );
 }
 
+/** The metric strip under a row title. Exported so the pantry uses this one. */
+export function SavedMealMetrics({ children }: { children: React.ReactNode }) {
+  return <View style={styles.savedMealMetrics}>{children}</View>;
+}
+
 function SavedMealSelectIcon({ selected }: { selected: boolean }) {
   const colors = useColors();
   return (

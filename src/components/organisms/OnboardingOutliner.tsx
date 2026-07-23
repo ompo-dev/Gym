@@ -14,6 +14,9 @@ interface OnboardingOutlinerProps {
   /** Rendered under the bullet for sheet-backed questions once answered. */
   display?: string;
   notes?: string;
+  /** Current free-text answer, for `kind: 'list'` questions. */
+  listText?: string;
+  onChangeList?: (text: string) => void;
   onPick: (option: QuestionOption) => void;
   onOpenSheet: () => void;
   onSkip: () => void;
@@ -33,6 +36,8 @@ export function OnboardingOutliner({
   answers,
   display,
   notes,
+  listText,
+  onChangeList,
   onPick,
   onOpenSheet,
   onSkip,
@@ -107,7 +112,24 @@ export function OnboardingOutliner({
           );
         })}
 
-        {question.options ? null : (
+        {question.kind === 'list' ? (
+          <View style={styles.subLine}>
+            <View style={styles.subMarker}>
+              <AppText variant="caption" color={answered ? question.color : colors.textTertiary}>
+                {answered ? '✓' : '1.'}
+              </AppText>
+            </View>
+            <TextInput
+              value={listText ?? ''}
+              onChangeText={onChangeList}
+              placeholder={t('onboarding.listPlaceholder')}
+              placeholderTextColor={colors.textTertiary}
+              multiline
+              style={[styles.notesInput, { color: colors.text }]}
+              accessibilityLabel={question.question}
+            />
+          </View>
+        ) : question.options ? null : (
           <Pressable
             onPress={onOpenSheet}
             hitSlop={4}

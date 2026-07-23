@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { DeepSeekTransportError, runEnrichEngine } from '@/core/enrich/deepseek';
+import { ENRICH_INTENTS } from '@/core/enrich/types';
 import { foodSchema } from '@/domains/schemas';
 
 import type { EnrichResponse } from '@/core/enrich/types';
@@ -33,7 +34,7 @@ const RequestSchema = z.object({
   text: z.string().trim().min(1).max(3000),
   domain: z.enum(['food', 'workout']),
   keys: KeysSchema.optional(),
-  intent: z.enum(['parse', 'foodEdit']).default('parse'),
+  intent: z.enum(ENRICH_INTENTS).default('parse'),
   currentFood: foodSchema.optional(),
   media: z.array(MediaSchema).max(6).optional(),
   context: z.string().max(120).optional(),
@@ -51,6 +52,9 @@ export async function POST(request: Request): Promise<Response> {
   }
   const { keys, ...input } = parsedInput.data;
   if (input.intent === 'foodEdit' && (input.domain !== 'food' || !input.currentFood)) {
+    return json({ ok: false, error: 'Invalid request' }, 400);
+  }
+  if (input.intent === 'purchase' && input.domain !== 'food') {
     return json({ ok: false, error: 'Invalid request' }, 400);
   }
 

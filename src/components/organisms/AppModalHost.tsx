@@ -30,7 +30,11 @@ interface AppModalHostProps {
   onSaveNutrition: (entry: Entry, text: string, data: FoodData) => Promise<void> | void;
   onAiEdit: (entry: Entry, instruction: string) => Promise<void> | void;
   onPhoto: (photo: CapturedFoodPhoto) => void;
-  onBarcode: (code: string) => void;
+  /** Already attached, so the camera strip and the tray agree on what exists. */
+  mediaDrafts: { uri?: string }[];
+  /** `imageUri` is the frame the code was read from — it survived only because
+   *  JS ignores extra arguments; the type used to stop at `code`. */
+  onBarcode: (code: string, imageUri?: string) => void;
   onFoodCaptureDismiss: () => void;
   onSaveBarcodeFood: (text: string, data: FoodData) => Promise<void> | void;
   onSelectSavedMeals: (meals: SavedMeal[]) => void;
@@ -47,6 +51,7 @@ export function AppModalHost({
   onSaveNutrition,
   onAiEdit,
   onPhoto,
+  mediaDrafts,
   onBarcode,
   onFoodCaptureDismiss,
   onSaveBarcodeFood,
@@ -162,6 +167,7 @@ export function AppModalHost({
         onDismiss={onFoodCaptureDismiss}
         onPhoto={onPhoto}
         onBarcode={onBarcode}
+        drafts={mediaDrafts}
       />
     );
   }

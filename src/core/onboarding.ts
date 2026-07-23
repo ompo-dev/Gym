@@ -12,6 +12,14 @@ export type OnboardingConsideration =
   | 'endurance'
   | 'vegetarian';
 
+export type OnboardingWeightUnit = 'kg' | 'lb';
+export type OnboardingTrainingLevel = 'beginner' | 'intermediate' | 'advanced';
+export type OnboardingWorkoutGoal = 'hypertrophy' | 'strength' | 'endurance' | 'weightLoss';
+export type OnboardingEnvironment = 'fullGym' | 'basicGym' | 'home' | 'outdoor';
+export type OnboardingEquipment = 'dumbbells' | 'barbell' | 'machines' | 'bands' | 'kettlebell';
+export type OnboardingCookingSkill = 'none' | 'basic' | 'confident';
+export type OnboardingBudget = 'tight' | 'normal' | 'flexible';
+
 export type OnboardingMicronutrients = Record<OnboardingMicronutrient, boolean>;
 
 export interface OnboardingMicronutrientTargets {
@@ -34,6 +42,34 @@ export interface OnboardingProfile {
   trackMicronutrients: boolean;
   micronutrients: OnboardingMicronutrients;
   micronutrientTargets: OnboardingMicronutrientTargets;
+
+  /**
+   * Concrete default 'kg' because that is already the parser's fallback hint —
+   * it states nothing new about the user. The two below are optional on
+   * purpose: a default would make every profile saved before this existed
+   * *claim* the person is a beginner. An old profile must stay silent, not
+   * wrong, so the line drops out of the prompt instead of lying.
+   */
+  weightUnit: OnboardingWeightUnit;
+  trainingLevel?: OnboardingTrainingLevel;
+  workoutGoal?: OnboardingWorkoutGoal;
+
+  /**
+   * Free-text lists rather than closed unions: these end up concatenated into a
+   * prompt, and a closed union would need an i18n label per item and still get
+   * the user's actual injury wrong. `equipment` is the exception — five values
+   * cover almost everything and a chip costs one tap against ~8s of typing.
+   */
+  environment?: OnboardingEnvironment;
+  equipment: OnboardingEquipment[];
+  sportsLiked: string[];
+  exercisesDisliked: string[];
+  injuries: string[];
+  foodsLiked: string[];
+  foodsDisliked: string[];
+  restrictions: string[];
+  cookingSkill?: OnboardingCookingSkill;
+  budget?: OnboardingBudget;
 }
 
 export interface OnboardingSummary {
@@ -68,6 +104,39 @@ const activityMultiplier: Record<OnboardingActivity, number> = {
   high: 1.725,
 };
 
+/**
+ * What a REAL training day adds to the target. Comes from the log
+ * (src/domains/trainingLoad.ts), not from what the user declared at onboarding.
+ */
+export interface TrainingAdjustment {
+  /** kcal to add, already net of what `activity` assumes. */
+  calories: number;
+  /** extra g/kg of protein on a day with actual lifting. */
+  proteinPerKg: number;
+}
+
+export const noTrainingAdjustment: TrainingAdjustment = { calories: 0, proteinPerKg: 0 };
+
+/**
+ * How much TRAINING each declared level already bakes into the multiplier, in
+ * kcal/day. Without this, someone who declared "high" and then trained would be
+ * paid for the same session twice.
+ *
+ * ponytail: calibration table. The training slice of the gap up to 1.2 is an
+ * estimate (the rest of that gap is NEAT), not a derivation. Tune here if the
+ * target on a trained day comes out too generous.
+ */
+const assumedTrainingKcal: Record<OnboardingActivity, number> = {
+  sedentary: 0,
+  light: 120,
+  moderate: 250,
+  high: 400,
+};
+
+export function assumedDailyTrainingKcal(activity: OnboardingActivity): number {
+  return assumedTrainingKcal[activity];
+}
+
 export const defaultMicronutrientTargets: OnboardingMicronutrientTargets = {
   sugarG: 25,
   fiberG: 25,
@@ -97,6 +166,14 @@ export function defaultOnboardingProfile(): OnboardingProfile {
     trackMicronutrients: false,
     micronutrients: micronutrientsFromTrack(false),
     micronutrientTargets: defaultMicronutrientTargets,
+    weightUnit: 'kg',
+    equipment: [],
+    sportsLiked: [],
+    exercisesDisliked: [],
+    injuries: [],
+    foodsLiked: [],
+    foodsDisliked: [],
+    restrictions: [],
   };
 }
 
@@ -116,6 +193,15 @@ export function normalizeOnboardingProfile(profile: Partial<OnboardingProfile>):
       ...profile.micronutrientTargets,
     },
     trackMicronutrients: Object.values(micronutrients).some(Boolean),
+    // A profile saved before these existed has no arrays at all; without this
+    // every `.map` downstream would throw on undefined.
+    equipment: profile.equipment ?? base.equipment,
+    sportsLiked: profile.sportsLiked ?? base.sportsLiked,
+    exercisesDisliked: profile.exercisesDisliked ?? base.exercisesDisliked,
+    injuries: profile.injuries ?? base.injuries,
+    foodsLiked: profile.foodsLiked ?? base.foodsLiked,
+    foodsDisliked: profile.foodsDisliked ?? base.foodsDisliked,
+    restrictions: profile.restrictions ?? base.restrictions,
   };
 }
 
@@ -137,6 +223,7 @@ export function estimateAge(birthDate: string, today = todayISO()): number {
 export function buildOnboardingSummary(
   profile: OnboardingProfile,
   today = todayISO(),
+  training: TrainingAdjustment = noTrainingAdjustment,
 ): OnboardingSummary {
   profile = normalizeOnboardingProfile(profile);
   const age = estimateAge(profile.birthDate, today);
@@ -148,10 +235,12 @@ export function buildOnboardingSummary(
 
   let calories = Math.round(tdeeBase + calorieAdjustment + biasAdjustment(profile.estimationBias));
   if (profile.considerations.includes('athlete')) calories += 180;
+  calories += training.calories;
   calories = clamp(calories, 1400, 4200);
 
   let proteinPerKg = profile.considerations.includes('strength') ? 1.8 : 1.6;
   if (profile.considerations.includes('high-protein')) proteinPerKg += 0.15;
+  proteinPerKg += training.proteinPerKg;
   const protein = Math.round(profile.goalWeightKg * proteinPerKg);
 
   let fat = Math.round(profile.goalWeightKg * 0.75);
@@ -212,6 +301,49 @@ export function buildOnboardingPromptContext(
     considerations.length ? `considerations=${considerations.join(', ')}` : '',
     notes ? `userNotes=${notes}` : '',
     `calorieEstimationBias=${profile.estimationBias}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * O que um parser de treino consegue usar: quem e a pessoa, nao quantas calorias
+ * ela deve comer. Deliberadamente sem alvos, macros e micronutrientes — o prompt
+ * de treino nao tem o que fazer com eles e pagaria tokens por eles.
+ */
+export function buildWorkoutPromptContext(
+  profile: OnboardingProfile | null,
+  locale: string,
+  today = todayISO(),
+): string | undefined {
+  if (!profile) return undefined;
+  profile = normalizeOnboardingProfile(profile);
+  const lang = locale.toLowerCase().startsWith('en') ? 'en-US' : 'pt-BR';
+  const considerations = profile.considerations.map((item) => considerationText[item][lang]);
+  const notes = profile.notes.trim().slice(0, 240);
+
+  return [
+    lang === 'pt-BR' ? 'Perfil local do usuario:' : 'Local user profile:',
+    `age=${estimateAge(profile.birthDate, today)}`,
+    `gender=${profile.gender}`,
+    `heightCm=${profile.heightCm}`,
+    `weightKg=${profile.weightKg}`,
+    `activity=${profile.activity}`,
+    `weightUnit=${profile.weightUnit}`,
+    // Omitted when never answered: an old profile stays silent rather than
+    // asserting a level the user never claimed.
+    profile.trainingLevel ? `trainingLevel=${profile.trainingLevel}` : '',
+    profile.workoutGoal ? `workoutGoal=${profile.workoutGoal}` : '',
+    profile.environment ? `environment=${profile.environment}` : '',
+    profile.equipment.length ? `equipment=${profile.equipment.join(', ')}` : '',
+    profile.sportsLiked.length ? `sportsLiked=${profile.sportsLiked.join(', ')}` : '',
+    profile.exercisesDisliked.length
+      ? `exercisesDisliked=${profile.exercisesDisliked.join(', ')}`
+      : '',
+    // Hard constraint, always last so it reads as the final word.
+    profile.injuries.length ? `injuriesAvoid=${profile.injuries.join(', ')}` : '',
+    considerations.length ? `considerations=${considerations.join(', ')}` : '',
+    notes ? `userNotes=${notes}` : '',
   ]
     .filter(Boolean)
     .join('\n');

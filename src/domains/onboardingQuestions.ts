@@ -33,14 +33,28 @@ export type QuestionId =
   | 'activity'
   | 'considerations'
   | 'micronutrients'
-  | 'estimationBias';
+  | 'estimationBias'
+  | 'weightUnit'
+  | 'trainingLevel'
+  | 'workoutGoal'
+  | 'environment'
+  | 'equipment'
+  | 'sportsLiked'
+  | 'exercisesDisliked'
+  | 'injuries'
+  | 'foodsLiked'
+  | 'foodsDisliked'
+  | 'restrictions'
+  | 'cookingSkill'
+  | 'budget';
 
 /**
  * `choice`/`multi` answer inline as struck-through sub-lines; the rest open a
  * sheet that already exists elsewhere in the app, so the control the user meets
  * here is the same one Settings will show them later.
  */
-export type QuestionKind = 'choice' | 'multi' | 'picker' | 'date' | 'bias';
+/** `list` is free text split on commas — see the note on OnboardingProfile. */
+export type QuestionKind = 'choice' | 'multi' | 'picker' | 'date' | 'bias' | 'list';
 
 export interface QuestionOption {
   value: string;
@@ -77,6 +91,19 @@ const COLOR: Record<QuestionId, string> = {
   considerations: Colors.dark.protein,
   micronutrients: Colors.dark.water,
   estimationBias: Colors.dark.carbs,
+  weightUnit: Colors.dark.accent,
+  trainingLevel: Colors.dark.fat,
+  workoutGoal: Colors.dark.calories,
+  environment: Colors.dark.water,
+  equipment: Colors.dark.protein,
+  sportsLiked: Colors.dark.fat,
+  exercisesDisliked: Colors.dark.danger,
+  injuries: Colors.dark.danger,
+  foodsLiked: Colors.dark.protein,
+  foodsDisliked: Colors.dark.danger,
+  restrictions: Colors.dark.danger,
+  cookingSkill: Colors.dark.carbs,
+  budget: Colors.dark.calories,
 };
 
 const ASK: Record<QuestionId, string> = {
@@ -90,6 +117,19 @@ const ASK: Record<QuestionId, string> = {
   considerations: 'onboarding.ask.considerations',
   micronutrients: 'onboarding.ask.micronutrients',
   estimationBias: 'onboarding.ask.estimationBias',
+  weightUnit: 'onboarding.ask.weightUnit',
+  trainingLevel: 'onboarding.ask.trainingLevel',
+  workoutGoal: 'onboarding.ask.workoutGoal',
+  environment: 'onboarding.ask.environment',
+  equipment: 'onboarding.ask.equipment',
+  sportsLiked: 'onboarding.ask.sportsLiked',
+  exercisesDisliked: 'onboarding.ask.exercisesDisliked',
+  injuries: 'onboarding.ask.injuries',
+  foodsLiked: 'onboarding.ask.foodsLiked',
+  foodsDisliked: 'onboarding.ask.foodsDisliked',
+  restrictions: 'onboarding.ask.restrictions',
+  cookingSkill: 'onboarding.ask.cookingSkill',
+  budget: 'onboarding.ask.budget',
 };
 
 function biasOptions(lang: Lang): readonly QuestionOption[] {
@@ -136,6 +176,42 @@ export function buildQuestions(lang: Lang): Question[] {
       })),
     },
     {
+      ...base('weightUnit', 'choice'),
+      options: [
+        { value: 'kg', label: t('onboarding.unit.kg') },
+        { value: 'lb', label: t('onboarding.unit.lb') },
+      ],
+    },
+    {
+      ...base('trainingLevel', 'choice'),
+      options: [
+        {
+          value: 'beginner',
+          label: t('onboarding.level.beginner'),
+          description: t('onboarding.level.beginnerBody'),
+        },
+        {
+          value: 'intermediate',
+          label: t('onboarding.level.intermediate'),
+          description: t('onboarding.level.intermediateBody'),
+        },
+        {
+          value: 'advanced',
+          label: t('onboarding.level.advanced'),
+          description: t('onboarding.level.advancedBody'),
+        },
+      ],
+    },
+    {
+      ...base('workoutGoal', 'choice'),
+      options: [
+        { value: 'hypertrophy', label: t('onboarding.goal.hypertrophy') },
+        { value: 'strength', label: t('onboarding.goal.strength') },
+        { value: 'endurance', label: t('onboarding.goal.endurance') },
+        { value: 'weightLoss', label: t('onboarding.goal.weightLoss') },
+      ],
+    },
+    {
       ...base('considerations', 'multi'),
       optional: true,
       allowsText: true,
@@ -151,6 +227,51 @@ export function buildQuestions(lang: Lang): Question[] {
       options: MICRO_OPTIONS,
     },
     { ...base('estimationBias', 'bias'), options: biasOptions(lang) },
+    {
+      ...base('environment', 'choice'),
+      optional: true,
+      options: [
+        { value: 'fullGym', label: t('onboarding.env.fullGym') },
+        { value: 'basicGym', label: t('onboarding.env.basicGym') },
+        { value: 'home', label: t('onboarding.env.home') },
+        { value: 'outdoor', label: t('onboarding.env.outdoor') },
+      ],
+    },
+    {
+      ...base('equipment', 'multi'),
+      optional: true,
+      options: [
+        { value: 'dumbbells', label: t('onboarding.eq.dumbbells') },
+        { value: 'barbell', label: t('onboarding.eq.barbell') },
+        { value: 'machines', label: t('onboarding.eq.machines') },
+        { value: 'bands', label: t('onboarding.eq.bands') },
+        { value: 'kettlebell', label: t('onboarding.eq.kettlebell') },
+      ],
+    },
+    { ...base('sportsLiked', 'list'), optional: true },
+    { ...base('exercisesDisliked', 'list'), optional: true },
+    { ...base('injuries', 'list'), optional: true },
+    { ...base('foodsLiked', 'list'), optional: true },
+    { ...base('foodsDisliked', 'list'), optional: true },
+    { ...base('restrictions', 'list'), optional: true },
+    {
+      ...base('cookingSkill', 'choice'),
+      optional: true,
+      options: [
+        { value: 'none', label: t('onboarding.cook.none') },
+        { value: 'basic', label: t('onboarding.cook.basic') },
+        { value: 'confident', label: t('onboarding.cook.confident') },
+      ],
+    },
+    {
+      ...base('budget', 'choice'),
+      optional: true,
+      options: [
+        { value: 'tight', label: t('onboarding.budget.tight') },
+        { value: 'normal', label: t('onboarding.budget.normal') },
+        { value: 'flexible', label: t('onboarding.budget.flexible') },
+      ],
+    },
   ];
 }
 
@@ -193,6 +314,15 @@ export function profileFromAnswers(
     const value = answers[id];
     return Array.isArray(value) ? value : value ? [value] : [];
   };
+  /** Free text, comma-separated. Blank pieces are dropped, not stored empty. */
+  const list = (id: QuestionId): string[] => {
+    const value = one(id);
+    if (!value) return [];
+    return value
+      .split(',')
+      .map((piece) => piece.trim())
+      .filter(Boolean);
+  };
   const num = (id: QuestionId): number | undefined => {
     const value = one(id);
     const parsed = value === undefined ? NaN : Number(value);
@@ -211,5 +341,28 @@ export function profileFromAnswers(
     considerations: many('considerations') as OnboardingProfile['considerations'],
     ...micronutrientPatch(many('micronutrients') as OnboardingMicronutrient[]),
     estimationBias: (num('estimationBias') ?? base.estimationBias) as OnboardingProfile['estimationBias'],
+    weightUnit: (one('weightUnit') as OnboardingProfile['weightUnit']) ?? base.weightUnit,
+    // Espalhados condicionalmente: um perfil sem resposta fica calado, nao
+    // afirma 'beginner' por default.
+    ...(one('trainingLevel')
+      ? { trainingLevel: one('trainingLevel') as OnboardingProfile['trainingLevel'] }
+      : {}),
+    ...(one('workoutGoal')
+      ? { workoutGoal: one('workoutGoal') as OnboardingProfile['workoutGoal'] }
+      : {}),
+    ...(one('environment')
+      ? { environment: one('environment') as OnboardingProfile['environment'] }
+      : {}),
+    ...(one('cookingSkill')
+      ? { cookingSkill: one('cookingSkill') as OnboardingProfile['cookingSkill'] }
+      : {}),
+    ...(one('budget') ? { budget: one('budget') as OnboardingProfile['budget'] } : {}),
+    equipment: many('equipment') as OnboardingProfile['equipment'],
+    sportsLiked: list('sportsLiked'),
+    exercisesDisliked: list('exercisesDisliked'),
+    injuries: list('injuries'),
+    foodsLiked: list('foodsLiked'),
+    foodsDisliked: list('foodsDisliked'),
+    restrictions: list('restrictions'),
   };
 }

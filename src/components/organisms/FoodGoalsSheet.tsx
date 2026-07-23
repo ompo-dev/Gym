@@ -27,6 +27,8 @@ import { useAppStore } from '@/store/useAppStore';
 interface FoodGoalsSheetProps {
   totals: FoodTotals;
   visible: boolean;
+  /** Without a date the panel shows the declared target (onboarding, settings). */
+  date?: string;
 }
 
 function progress(current: number, goal: number): number {
@@ -134,9 +136,9 @@ function AnimatedCaloriesBar({
   );
 }
 
-export function FoodGoalsSheet({ totals, visible }: FoodGoalsSheetProps) {
+export function FoodGoalsSheet({ totals, visible, date }: FoodGoalsSheetProps) {
   const colors = useColors();
-  const goals = useFoodGoals();
+  const goals = useFoodGoals(date);
   const profile = useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
   const activeMicros = enabledMicronutrients(profile);
   const microGoals = MICRO_GOALS.filter((item) => activeMicros.includes(item.key));
@@ -175,6 +177,15 @@ export function FoodGoalsSheet({ totals, visible }: FoodGoalsSheetProps) {
           color={colors.calories}
           trackColor={colors.backgroundElement}
         />
+
+        {/* The bridge's only visible output. Lifting burns less than people
+            expect, so the bonus is genuinely small — without this line a logged
+            session moves the target by a couple percent and reads as broken. */}
+        {goals.trainingKcal > 0 ? (
+          <AppText variant="caption" color={colors.textTertiary}>
+            {`+${goals.trainingKcal} ${t('goals.training')}`}
+          </AppText>
+        ) : null}
       </View>
 
       <View style={styles.macroRow}>
