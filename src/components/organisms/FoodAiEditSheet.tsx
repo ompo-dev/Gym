@@ -1,12 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Keyboard,
-  type KeyboardEvent,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+  Keyboard, type KeyboardEvent, StyleSheet, TextInput, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
@@ -133,7 +128,7 @@ export function FoodAiEditSheet({
               </GlassSurface>
             </View>
 
-            <Pressable
+            <LoggedPressable
               onPress={handleClose}
               hitSlop={10}
               accessibilityRole="button"
@@ -141,7 +136,7 @@ export function FoodAiEditSheet({
               <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
                 <AppIcon name="keyboard" color={colors.textSecondary} size={18} />
               </GlassSurface>
-            </Pressable>
+            </LoggedPressable>
           </View>
         </View>
       </View>

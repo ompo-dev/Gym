@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 
+import { LoggedPressable } from '@/components/atoms/Logged';
 import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
@@ -29,7 +30,7 @@ export function FoodMediaActionMenu({
   return (
     <GlassSurface glass="regular" style={styles.menu}>
       {(Object.keys(actionMeta) as FoodMediaAction[]).map((action) => (
-        <Pressable
+        <LoggedPressable
           key={action}
           onPress={() => onSelect(action)}
           accessibilityRole="button"
@@ -37,7 +38,7 @@ export function FoodMediaActionMenu({
           style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
           <AppIcon name={actionMeta[action].icon} color={colors.textSecondary} size={20} />
           <AppText variant="body">{t(actionMeta[action].label)}</AppText>
-        </Pressable>
+        </LoggedPressable>
       ))}
     </GlassSurface>
   );

@@ -1,5 +1,6 @@
 import { memo, type ReactNode, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppText } from '@/components/atoms/AppText';
 import { EntryMeta } from '@/components/molecules/EntryMeta';
@@ -74,11 +75,11 @@ function StatusBadge<TData, TTotals>({
       );
     }
     return (
-      <Pressable onPress={() => onRetry(entry)} hitSlop={10} accessibilityRole="button">
+      <LoggedPressable onPress={() => onRetry(entry)} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('status.retry')}>
         <AppText variant="label" color={colors.danger}>
           {t('status.retry')}
         </AppText>
-      </Pressable>
+      </LoggedPressable>
     );
   }
   if (entry.data) {
@@ -154,7 +155,7 @@ function FoodRow<TData, TTotals>({
             {/* A purchase opens the fridge it just stocked; a meal or a recipe
                 opens its own nutrition. Same badge, different destination —
                 which is why the label is not shared. */}
-            <Pressable
+            <LoggedPressable
               onPress={() => (kind === 'purchase' ? onOpenPantry?.() : onOpenFoodDetails?.(entry))}
               hitSlop={10}
               accessibilityRole="button"
@@ -166,7 +167,7 @@ function FoodRow<TData, TTotals>({
                   ? config.formatResult(entry.data as TData)
                   : `${foodCalories} cal`}
               </AppText>
-            </Pressable>
+            </LoggedPressable>
             <EntryMeta entry={entry} previousEntry={previousEntry} />
           </>
         ) : (

@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  View,
-} from 'react-native';
+  Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LoggedPressable } from '@/components/atoms/Logged';
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { UndoToast } from '@/components/molecules/UndoToast';
@@ -953,7 +948,7 @@ export function DayTemplate<TData, TTotals>({
 
                   {isFood ? (
                     <>
-                      <Pressable
+                      <LoggedPressable
                         onPress={() => setFoodMediaMenuVisible((current) => !current)}
                         hitSlop={10}
                         accessibilityRole="button"
@@ -961,9 +956,9 @@ export function DayTemplate<TData, TTotals>({
                         <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
                           <AppIcon name="camera" color={colors.carbs} size={20} />
                         </GlassSurface>
-                      </Pressable>
+                      </LoggedPressable>
 
-                      <Pressable
+                      <LoggedPressable
                         onPress={openSavedMealPicker}
                         hitSlop={10}
                         accessibilityRole="button"
@@ -971,10 +966,10 @@ export function DayTemplate<TData, TTotals>({
                         <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
                           <AppIcon name="plus" color={colors.accent} size={20} />
                         </GlassSurface>
-                      </Pressable>
+                      </LoggedPressable>
                     </>
                   ) : (
-                    <Pressable
+                    <LoggedPressable
                       onPress={openSavedExercisePicker}
                       hitSlop={10}
                       accessibilityRole="button"
@@ -982,11 +977,11 @@ export function DayTemplate<TData, TTotals>({
                       <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
                         <AppIcon name="plus" color={colors.accent} size={20} />
                       </GlassSurface>
-                    </Pressable>
+                    </LoggedPressable>
                   )}
 
                   {Platform.OS === 'ios' ? (
-                    <Pressable
+                    <LoggedPressable
                       onPress={Keyboard.dismiss}
                       hitSlop={10}
                       accessibilityRole="button"
@@ -994,7 +989,7 @@ export function DayTemplate<TData, TTotals>({
                       <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
                         <AppIcon name="keyboard" color={colors.textSecondary} size={18} />
                       </GlassSurface>
-                    </Pressable>
+                    </LoggedPressable>
                   ) : null}
                 </View>
               </>

@@ -1,3 +1,4 @@
+import { log } from '@/core/log';
 import { normalizeForEnrich } from '@/core/enrich/normalize';
 import {
   foodEditPrompt,
@@ -168,12 +169,34 @@ export interface EngineKeys {
   image: string;
 }
 
+/** A success line stays short; a failure prints whole, because that is the one
+ *  you actually need to read. */
+const PAYLOAD_PREVIEW = 1200;
+const clip = (text: string, max = PAYLOAD_PREVIEW) =>
+  text.length > max ? `${text.slice(0, max)}… (+${text.length - max} chars)` : text;
+
+/** Message content as a loggable string — never the raw base64 of an image,
+ *  which would bury the terminal in megabytes. */
+function describeContent(content: ChatMessage['content']): string {
+  if (typeof content === 'string') return clip(content);
+  return content
+    .map((part) => (part.type === 'text' ? part.text : '[image]'))
+    .join(' ');
+}
+
 async function callDeepSeekJson(
   apiKey: string,
   messages: ChatMessage[],
   maxTokens: number,
   signal?: AbortSignal,
 ): Promise<unknown> {
+  // The exact request, so a bad answer can be traced to what was actually sent.
+  log.ai('→ request', {
+    model: MODEL,
+    maxTokens,
+    messages: messages.map((m) => ({ role: m.role, content: describeContent(m.content) })),
+  });
+
   let res: Response;
   try {
     res = await fetch(DEEPSEEK_URL, {
@@ -193,24 +216,66 @@ async function callDeepSeekJson(
       signal,
     });
   } catch (e) {
+    log.error('deepseek unreachable', { message: e instanceof Error ? e.message : String(e) });
     throw new DeepSeekTransportError(e instanceof Error ? e.message : 'network failure');
   }
+
+  // Read the body as text once, so the raw upstream answer is available to log
+  // whether it parses or not — the failing body is the whole point of logging.
+  const raw = await res.text();
 
   // Rate limits and upstream outages are exactly what backoff is for; a
   // rejected key is not, and must stay terminal so the caller does not burn
   // five retries on a credential that cannot work.
   if (res.status === 429 || res.status >= 500) {
+    log.error(`deepseek ${res.status} (retryable)`, { body: raw });
     throw new DeepSeekTransportError(`AI service unavailable (${res.status})`);
   }
-  if (!res.ok) throw new Error(`AI service error (${res.status})`);
+  if (!res.ok) {
+    log.error(`deepseek ${res.status}`, { body: raw });
+    throw new Error(`AI service error (${res.status})`);
+  }
 
-  const content = ((await res.json()) as { choices?: { message?: { content?: string } }[] })
-    .choices?.[0]?.message?.content;
-  if (!content) throw new Error('Empty AI response');
+  let content: string | undefined;
+  try {
+    const envelope = JSON.parse(raw) as {
+      choices?: { message?: { content?: string } }[];
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        prompt_cache_hit_tokens?: number;
+        prompt_cache_miss_tokens?: number;
+      };
+    };
+    content = envelope.choices?.[0]?.message?.content;
+    // The cost signal, straight from DeepSeek. `hit` tokens are billed ~10× less
+    // than `miss` — a big stable system prompt sent first is cached from the
+    // second call on. `out` is never cached, which is why the JSON is minified.
+    const u = envelope.usage;
+    if (u) {
+      log.ai('usage', {
+        in: u.prompt_tokens,
+        out: u.completion_tokens,
+        cacheHit: u.prompt_cache_hit_tokens,
+        cacheMiss: u.prompt_cache_miss_tokens,
+      });
+    }
+  } catch {
+    log.error('deepseek envelope not JSON', { body: raw });
+    throw new Error('AI returned invalid JSON');
+  }
+  if (!content) {
+    log.error('deepseek empty content', { body: clip(raw) });
+    throw new Error('Empty AI response');
+  }
 
   try {
-    return JSON.parse(content);
+    const parsed = JSON.parse(content);
+    log.ai('← response', { content: clip(content) });
+    return parsed;
   } catch {
+    // The model's own text was not valid JSON — this is the line you want whole.
+    log.error('deepseek content not JSON', { content });
     throw new Error('AI returned invalid JSON');
   }
 }
@@ -303,6 +368,10 @@ export async function runEnrichEngine(
     'Write the "label", "item", "note", "exercise" and "reasoning" text in',
     `${language}.`,
     contextCopy?.instruction ?? '',
+    // Output is never cached, so every character is billed at full rate. Minified
+    // JSON drops the newlines and indentation the model would otherwise spend
+    // tokens on — the values are unchanged, only the whitespace between them.
+    'Output minified JSON on a single line: no newlines, no indentation, no spaces except inside string values.',
   ]
     .filter(Boolean)
     .join(' ');

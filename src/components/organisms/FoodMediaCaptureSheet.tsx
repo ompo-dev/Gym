@@ -1,15 +1,11 @@
-import {
-  CameraView,
-  scanFromURLAsync,
-  useCameraPermissions,
-  type BarcodeScanningResult,
-} from 'expo-camera';
+import { CameraView, scanFromURLAsync, useCameraPermissions, type BarcodeScanningResult, } from 'expo-camera';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LoggedPressable } from '@/components/atoms/Logged';
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
@@ -238,11 +234,11 @@ export function FoodMediaCaptureSheet({
             },
           ]}>
           <View style={styles.header}>
-            <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('common.close')}>
+            <LoggedPressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('common.close')}>
               <GlassSurface glass="regular" isInteractive style={styles.iconButton}>
                 <AppIcon name="x" color="#FFFFFF" size={22} />
               </GlassSurface>
-            </Pressable>
+            </LoggedPressable>
             <GlassSurface glass="regular" style={styles.titlePill}>
               <AppText variant="label" color="#FFFFFF">
                 {isBarcode ? t('media.scanBarcode') : currentMode === 'foodPhoto' ? t('media.foodPhoto') : t('media.menuPhoto')}
@@ -270,11 +266,14 @@ export function FoodMediaCaptureSheet({
                 <AppText variant="body" color="#FFFFFF">
                   {t('media.cameraPermission')}
                 </AppText>
-                <Pressable onPress={() => void requestPermission()} accessibilityRole="button">
+                <LoggedPressable
+                  onPress={() => void requestPermission()}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('media.allowCamera')}>
                   <AppText variant="label" color={colors.accent}>
                     {t('media.allowCamera')}
                   </AppText>
-                </Pressable>
+                </LoggedPressable>
               </GlassSurface>
             )}
           </View>
@@ -310,13 +309,13 @@ export function FoodMediaCaptureSheet({
                     </View>
                   ) : null}
                 </View>
-                <Pressable onPress={takePhoto} accessibilityRole="button" accessibilityLabel={t('media.takePhoto')}>
+                <LoggedPressable onPress={takePhoto} accessibilityRole="button" accessibilityLabel={t('media.takePhoto')}>
                   <View style={styles.shutterOuter}>
                     <View style={styles.shutterInner} />
                   </View>
-                </Pressable>
+                </LoggedPressable>
                 <View style={[styles.gallerySlot, styles.gallerySlotEnd]}>
-                  <Pressable
+                  <LoggedPressable
                     onPress={() => void pickFromGallery()}
                     hitSlop={10}
                     accessibilityRole="button"
@@ -324,7 +323,7 @@ export function FoodMediaCaptureSheet({
                     <GlassSurface glass="regular" isInteractive style={styles.galleryButton}>
                       <AppIcon name="images" color="#FFFFFF" size={24} />
                     </GlassSurface>
-                  </Pressable>
+                  </LoggedPressable>
                 </View>
               </View>
             </View>

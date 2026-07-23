@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
@@ -58,9 +59,9 @@ export function TotalsDock({
   );
 
   return onPress ? (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="Open totals details">
+    <LoggedPressable onPress={onPress} accessibilityRole="button" accessibilityLabel="Open totals details">
       {body}
-    </Pressable>
+    </LoggedPressable>
   ) : (
     body
   );

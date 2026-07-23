@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
@@ -34,7 +35,7 @@ export function DayHeader({
   return (
     <View style={styles.header}>
       {onSaveDay && canSaveDay ? (
-        <Pressable
+        <LoggedPressable
           onPress={onSaveDay}
           hitSlop={10}
           accessibilityRole="button"
@@ -42,12 +43,12 @@ export function DayHeader({
           <GlassSurface glass="regular" isInteractive style={styles.settingsButton}>
             <AppIcon name="bookmark" color={colors.textSecondary} size={18} />
           </GlassSurface>
-        </Pressable>
+        </LoggedPressable>
       ) : (
         <View style={styles.sideSpacer} />
       )}
       <DateNav date={date} canNext={canNext} onPrev={onPrev} onNext={onNext} onToday={onToday} />
-      <Pressable
+      <LoggedPressable
         onPress={onOpenSettings}
         hitSlop={10}
         accessibilityRole="button"
@@ -55,7 +56,7 @@ export function DayHeader({
         <GlassSurface glass="regular" isInteractive style={styles.settingsButton}>
           <AppIcon name="settings" color={colors.textSecondary} size={18} />
         </GlassSurface>
-      </Pressable>
+      </LoggedPressable>
     </View>
   );
 }

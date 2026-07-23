@@ -1,4 +1,5 @@
 import { Lru } from '@/core/cache/lru';
+import { log } from '@/core/log';
 import { normalizeForEnrich } from '@/core/enrich/normalize';
 import type { EnrichRequest, EnrichResponse } from '@/core/enrich/types';
 import type { Domain, Entry, EntryMediaAttachment } from '@/core/types';
@@ -116,6 +117,7 @@ export class CommandBus {
     if (expected && this.undoStack.at(-1) !== expected) return null;
     const cmd = this.undoStack.pop();
     if (!cmd) return null;
+    log.note('undo', { label: cmd.label });
     await cmd.undo();
     return cmd.label;
   }
@@ -158,12 +160,14 @@ export class CommandBus {
     media?: EntryMediaAttachment[],
     date?: string,
   ): Promise<void> {
+    log.note(`add ${domain}`, { chars: text.trim().length, media: media?.length ?? 0, date });
     const cmd = this.createAddEntry(text, domain, media, date);
     if (cmd) await this.run(cmd);
   }
 
   /** Returns the command so the caller can undo exactly this delete. */
   async deleteEntry(entry: Entry): Promise<Command> {
+    log.note(`delete ${entry.domain}`, { id: entry.id, text: entry.text.slice(0, 40) });
     return this.run(new DeleteEntryCommand(this, entry));
   }
 
@@ -171,11 +175,13 @@ export class CommandBus {
   async editEntry(entry: Entry, newText: string): Promise<void> {
     const trimmed = newText.trim();
     if (!trimmed || trimmed === entry.text) return;
+    log.note(`edit ${entry.domain}`, { id: entry.id, chars: trimmed.length });
     await this.run(new EditEntryCommand(this, entry, trimmed));
   }
 
   /** Re-run enrichment for an entry that errored out. */
   retry(entry: Entry): void {
+    log.note(`retry ${entry.domain}`, { id: entry.id });
     this.attempts.delete(entry.id);
     this.cancelled.delete(entry.id);
     void this.setStatus(entry.domain, entry.id, 'thinking');
@@ -378,6 +384,11 @@ export class CommandBus {
             return cmd ? [cmd] : [];
           });
           if (commands.length) {
+            log.note('workout plan → notes', {
+              label: planLabel(plan.data),
+              days: plan.data.days.length,
+              notes: commands.length,
+            });
             await this.run(
               new CompositeCommand(planLabel(plan.data), [
                 ...commands,
@@ -469,6 +480,10 @@ export class CommandBus {
           return cmd ? [cmd] : [];
         });
         if (commands.length) {
+          log.note('split note', {
+            from: entry.text.slice(0, 40),
+            into: multi.data.notes.map((n) => ('purchase' in n.data ? 'purchase' : 'meal')),
+          });
           await this.run(
             new CompositeCommand(`${commands.length} notes`, [
               ...commands,
@@ -506,11 +521,13 @@ export class CommandBus {
     const attempt = (this.attempts.get(entry.id) ?? 0) + 1;
     this.attempts.set(entry.id, attempt);
     if (attempt >= MAX_ATTEMPTS) {
+      log.note('gave up (offline)', { id: entry.id, attempts: attempt });
       await this.setError(entry.domain, entry.id, ENRICH_ERROR.offline);
       return;
     }
-    await this.setStatus(entry.domain, entry.id, 'queued');
     const delay = Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), BACKOFF_MAX_MS);
+    log.note('queued for retry', { id: entry.id, attempt, delayMs: delay });
+    await this.setStatus(entry.domain, entry.id, 'queued');
     const fn = () => {
       if (this.cancelled.has(entry.id)) return;
       void this.runEnrich(entry).catch(() => {});
@@ -521,6 +538,14 @@ export class CommandBus {
 
   private async applyResolved(entry: Entry, data: EnrichData): Promise<void> {
     this.attempts.delete(entry.id);
+    const items =
+      'items' in data ? data.items.length : 'purchase' in data ? data.purchase.length : undefined;
+    log.note(`resolved ${entry.domain}`, {
+      id: entry.id,
+      shape: 'items' in data ? 'meal' : 'purchase' in data ? 'purchase' : 'workout',
+      items,
+      recipe: 'recipe' in data && data.recipe ? true : undefined,
+    });
     await this.patch(entry.domain, entry.id, { status: 'done', data, error: null });
     this.deps.onResolved?.();
   }
@@ -530,6 +555,7 @@ export class CommandBus {
   }
 
   private setError(domain: Domain, id: string, error: string): Promise<void> {
+    log.error(`note failed ${domain}`, { id, reason: error });
     return this.patch(domain, id, { status: 'error', error });
   }
 

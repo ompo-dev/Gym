@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
@@ -46,9 +47,10 @@ function ActionRow({
   const textColor = color ?? colors.text;
 
   return (
-    <Pressable
+    <LoggedPressable
       onPress={onPress}
       accessibilityRole="button"
+      accessibilityLabel={label}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <AppIcon
         name={icon}
@@ -60,7 +62,7 @@ function ActionRow({
         {label}
       </AppText>
       {trailing ? <AppIcon name={trailing} color={colors.textSecondary} size={22} /> : null}
-    </Pressable>
+    </LoggedPressable>
   );
 }
 
@@ -108,7 +110,12 @@ export function FoodEntryActionMenu({
 
   return (
     <View style={styles.overlay}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      <LoggedPressable
+        style={StyleSheet.absoluteFill}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.close')}
+      />
 
       <GlassSurface glass="regular" style={[styles.menu, menuPosition]}>
         {editing ? (

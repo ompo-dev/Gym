@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
@@ -55,12 +56,15 @@ export function SettingsRow({
   if (!onPress) return content;
 
   return (
-    <Pressable
+    <LoggedPressable
       onPress={onPress}
       accessibilityRole="button"
+      // Derived from the text the row already shows, so every settings row is
+      // labelled without each call site repeating its title.
+      accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
       style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
       {content}
-    </Pressable>
+    </LoggedPressable>
   );
 }
 

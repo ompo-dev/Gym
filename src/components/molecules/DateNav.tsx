@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
@@ -20,16 +21,16 @@ export function DateNav({ date, canNext, onPrev, onNext, onToday }: DateNavProps
 
   return (
     <GlassSurface glass="regular" isInteractive style={styles.pill}>
-      <Pressable
+      <LoggedPressable
         onPress={onPrev}
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel="Previous day"
         style={styles.iconButton}>
         <AppIcon name="chevronLeft" color={colors.textSecondary} size={18} />
-      </Pressable>
+      </LoggedPressable>
 
-      <Pressable
+      <LoggedPressable
         onPress={onToday}
         hitSlop={10}
         accessibilityRole="button"
@@ -38,9 +39,9 @@ export function DateNav({ date, canNext, onPrev, onNext, onToday }: DateNavProps
         <AppText variant="value" style={styles.label}>
           {dayLabel(date)}
         </AppText>
-      </Pressable>
+      </LoggedPressable>
 
-      <Pressable
+      <LoggedPressable
         onPress={canNext ? onNext : undefined}
         disabled={!canNext}
         hitSlop={10}
@@ -52,7 +53,7 @@ export function DateNav({ date, canNext, onPrev, onNext, onToday }: DateNavProps
           color={canNext ? colors.textSecondary : colors.textTertiary}
           size={18}
         />
-      </Pressable>
+      </LoggedPressable>
     </GlassSurface>
   );
 }

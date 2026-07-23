@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -8,6 +9,7 @@ import {
   SavedExerciseRepository,
   type SavedExercise,
 } from "@/data/SavedExerciseRepository";
+import { useRepositoryData } from "@/hooks/useRepositoryData";
 import { inferWorkoutKind, WORKOUT_METRIC_COLORS } from "@/domains/workout";
 import { useColors } from "@/hooks/use-colors";
 import { t } from "@/i18n";
@@ -81,14 +83,14 @@ function SavedExerciseRow({
           />
         </View>
       ) : onDelete ? (
-        <Pressable
+        <LoggedPressable
           onPress={() => onDelete(workout)}
           hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel={t("settings.workout.deleteSaved")}
         >
           <AppIcon name="trash" color={colors.danger} size={18} />
-        </Pressable>
+        </LoggedPressable>
       ) : (
         <Chevron />
       )}
@@ -97,14 +99,15 @@ function SavedExerciseRow({
 
   if (!onPress) return row;
   return (
-    <Pressable
+    <LoggedPressable
       onPress={onPress}
       accessibilityRole="button"
+      accessibilityLabel={workout.name}
       accessibilityState={selectable ? { selected } : undefined}
       style={({ pressed }) => [pressed && settingsStyles.pressed]}
     >
       {row}
-    </Pressable>
+    </LoggedPressable>
   );
 }
 
@@ -171,15 +174,18 @@ export function SavedExercisesSheet({
   onSelect: (workouts: SavedExercise[]) => void;
 }) {
   const colors = useColors();
-  const [workouts, setWorkouts] = useState<SavedExercise[]>([]);
+  const workouts = useRepositoryData<SavedExercise[]>(
+    () => SavedExerciseRepository.all(),
+    [],
+    [visible],
+    visible,
+  );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // Selection is UI state, not repository data — it clears when the picker
+  // closes, independent of the load above.
   useEffect(() => {
-    if (!visible) {
-      setSelectedIds([]);
-      return;
-    }
-    void SavedExerciseRepository.all().then(setWorkouts);
+    if (!visible) setSelectedIds([]);
   }, [visible]);
 
   const toggleWorkout = (workout: SavedExercise) => {
@@ -208,7 +214,7 @@ export function SavedExercisesSheet({
       hideDefaultClose={hasSelection}
       headerLeading={
         hasSelection ? (
-          <Pressable
+          <LoggedPressable
             onPress={onClose}
             hitSlop={10}
             accessibilityRole="button"
@@ -221,12 +227,12 @@ export function SavedExercisesSheet({
             >
               <AppIcon name="x" color={colors.textSecondary} size={18} />
             </GlassSurface>
-          </Pressable>
+          </LoggedPressable>
         ) : null
       }
       headerTrailing={
         hasSelection ? (
-          <Pressable
+          <LoggedPressable
             onPress={confirmSelection}
             hitSlop={10}
             accessibilityRole="button"
@@ -238,7 +244,7 @@ export function SavedExercisesSheet({
             ]}
           >
             <AppIcon name="check" color="#FFFFFF" size={18} />
-          </Pressable>
+          </LoggedPressable>
         ) : null
       }
       size="full"

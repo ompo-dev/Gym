@@ -2,6 +2,7 @@ import { type RefObject, useEffect, useRef, useState } from 'react';
 import { FlatList, Keyboard, type LayoutChangeEvent, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppText } from '@/components/atoms/AppText';
+import { LoggedTextInput } from '@/components/atoms/Logged';
 import { NoteRow } from '@/components/molecules/NoteRow';
 import { Spacing } from '@/constants/theme';
 import { COMPOSER_TRAY } from '@/core/appModals';
@@ -82,7 +83,8 @@ function NewNoteInput({
           onRemove={onRemoveMediaDraft}
         />
       ) : null}
-      <TextInput
+      <LoggedTextInput
+        label="composer"
         ref={inputRef}
         value={text}
         onChangeText={setText}

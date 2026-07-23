@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
@@ -60,7 +61,7 @@ export function SaveRoutineSheet({
       keyboardAwareScroll
       hideDefaultClose
       headerLeading={
-        <Pressable
+        <LoggedPressable
           onPress={onClose}
           hitSlop={10}
           accessibilityRole="button"
@@ -69,10 +70,10 @@ export function SaveRoutineSheet({
           <GlassSurface glass="regular" isInteractive style={styles.headerButton}>
             <AppIcon name="x" color={colors.textSecondary} size={18} />
           </GlassSurface>
-        </Pressable>
+        </LoggedPressable>
       }
       headerTrailing={
-        <Pressable
+        <LoggedPressable
           onPress={save}
           hitSlop={10}
           accessibilityRole="button"
@@ -80,7 +81,7 @@ export function SaveRoutineSheet({
           style={[styles.headerButton, { backgroundColor: colors.accent }]}
         >
           <AppIcon name="check" color="#FFFFFF" size={18} />
-        </Pressable>
+        </LoggedPressable>
       }
     >
       <View style={styles.body}>
@@ -105,7 +106,7 @@ export function SaveRoutineSheet({
             {WEEKDAYS.map((day) => {
               const selected = weekday === day;
               return (
-                <Pressable
+                <LoggedPressable
                   key={day}
                   onPress={() => setWeekday(selected ? null : day)}
                   accessibilityRole="button"
@@ -129,7 +130,7 @@ export function SaveRoutineSheet({
                       {t(`weekday.short.${day}` as 'weekday.short.0')}
                     </AppText>
                   </View>
-                </Pressable>
+                </LoggedPressable>
               );
             })}
           </View>

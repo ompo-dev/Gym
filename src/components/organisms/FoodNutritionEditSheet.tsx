@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { StyleSheet, Switch, TextInput, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
@@ -42,12 +43,11 @@ const MICRO_INPUTS: {
   key: OnboardingMicronutrient;
   field: EditableMicronutrientField;
   initial: string;
-  color: string;
   unit: string;
 }[] = [
-  { key: 'sugar', field: 'sugarG', initial: 'A', color: '#2E9BFF', unit: 'g' },
-  { key: 'fiber', field: 'fiberG', initial: 'F', color: '#34C759', unit: 'g' },
-  { key: 'sodium', field: 'sodiumMg', initial: 'S', color: '#FF922E', unit: 'mg' },
+  { key: 'sugar', field: 'sugarG', initial: 'A', unit: 'g' },
+  { key: 'fiber', field: 'fiberG', initial: 'F', unit: 'g' },
+  { key: 'sodium', field: 'sodiumMg', initial: 'S', unit: 'mg' },
 ];
 
 interface FoodNutritionEditSheetProps {
@@ -439,6 +439,7 @@ function FoodNutritionEditContent({
           <Switch
             value={autoCalculateTotal}
             onValueChange={setAutoCalculateTotal}
+            accessibilityLabel={t('details.autoCalculateTotal')}
             trackColor={{ true: colors.success, false: colors.backgroundSelected }}
           />
         </View>
@@ -453,6 +454,7 @@ function FoodNutritionEditContent({
           <Switch
             value={autoAdjustCalories}
             onValueChange={setAutoAdjustCalories}
+            accessibilityLabel={t('details.autoAdjustItemCalories')}
             trackColor={{ true: colors.success, false: colors.backgroundSelected }}
           />
         </View>
@@ -514,7 +516,7 @@ function FoodNutritionEditContent({
                 <NutrientInput
                   key={meta.key}
                   initial={meta.initial}
-                  color={meta.color}
+                  color={colors[meta.key]}
                   value={shownTotals[meta.field]}
                   onChangeText={(value) =>
                     updateManualTotals({
@@ -606,7 +608,7 @@ function FoodNutritionEditContent({
                   <NutrientInput
                     key={meta.key}
                     initial={meta.initial}
-                    color={meta.color}
+                    color={colors[meta.key]}
                     value={item[meta.field]}
                     onChangeText={(value) =>
                       updateItem(index, {
@@ -619,9 +621,10 @@ function FoodNutritionEditContent({
               </View>
             ) : null}
             <View style={styles.itemActions}>
-              <Pressable
+              <LoggedPressable
                 onPress={() => removeItem(index)}
                 accessibilityRole="button"
+                accessibilityLabel={t('details.removeItem')}
                 style={({ pressed }) => [
                   styles.removeButton,
                   { backgroundColor: `${colors.danger}24` },
@@ -630,9 +633,9 @@ function FoodNutritionEditContent({
                 <AppText variant="label" color={colors.danger}>
                   {t('details.removeItem')}
                 </AppText>
-              </Pressable>
+              </LoggedPressable>
 
-              <Pressable
+              <LoggedPressable
                 onPress={() => decrementItemQuantity(index)}
                 accessibilityRole="button"
                 accessibilityLabel={t('details.removeQuantity')}
@@ -644,9 +647,9 @@ function FoodNutritionEditContent({
                   pressed && styles.pressed,
                 ]}>
                 <AppIcon name="minus" color={colors.textSecondary} size={20} />
-              </Pressable>
+              </LoggedPressable>
 
-              <Pressable
+              <LoggedPressable
                 onPress={() => incrementItemQuantity(index)}
                 accessibilityRole="button"
                 accessibilityLabel={t('details.addQuantity')}
@@ -656,14 +659,15 @@ function FoodNutritionEditContent({
                   pressed && styles.pressed,
                 ]}>
                 <AppIcon name="plus" color={colors.accent} size={20} />
-              </Pressable>
+              </LoggedPressable>
             </View>
           </GlassSurface>
           );
         })}
-        <Pressable
+        <LoggedPressable
           onPress={addItem}
           accessibilityRole="button"
+          accessibilityLabel={t('details.addItem')}
           style={({ pressed }) => [
             styles.addButton,
             { backgroundColor: colors.backgroundElement },
@@ -673,7 +677,7 @@ function FoodNutritionEditContent({
           <AppText variant="label" color={colors.accent}>
             {t('details.addItem')}
           </AppText>
-        </Pressable>
+        </LoggedPressable>
       </View>
     </>
   );
@@ -691,7 +695,7 @@ export function FoodNutritionEditSheet({
   const colors = useColors();
   const editorRef = useRef<FoodNutritionEditHandle>(null);
   const closeButton = (
-    <Pressable
+    <LoggedPressable
       onPress={onClose}
       hitSlop={10}
       accessibilityRole="button"
@@ -699,7 +703,7 @@ export function FoodNutritionEditSheet({
       <GlassSurface glass="regular" isInteractive style={styles.saveButton}>
         <AppIcon name="x" color={colors.textSecondary} size={24} />
       </GlassSurface>
-    </Pressable>
+    </LoggedPressable>
   );
 
   return (
@@ -713,7 +717,7 @@ export function FoodNutritionEditSheet({
       headerLeading={closeButton}
       hideDefaultClose
       headerTrailing={
-        <Pressable
+        <LoggedPressable
           onPress={() => void editorRef.current?.save()}
           hitSlop={10}
           accessibilityRole="button"
@@ -721,7 +725,7 @@ export function FoodNutritionEditSheet({
           <View style={[styles.saveButton, { backgroundColor: colors.success }]}>
             <AppIcon name="check" color="#FFFFFF" size={22} />
           </View>
-        </Pressable>
+        </LoggedPressable>
       }>
       <FoodNutritionEditContent
         ref={editorRef}

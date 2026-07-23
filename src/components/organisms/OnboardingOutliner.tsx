@@ -1,5 +1,6 @@
 import { Check } from 'lucide-react-native';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppText } from '@/components/atoms/AppText';
 import { Metrics, Spacing } from '@/constants/theme';
@@ -71,7 +72,7 @@ export function OnboardingOutliner({
           const tint = option.color ?? question.color;
           return (
             <View key={option.value}>
-              <Pressable
+              <LoggedPressable
                 onPress={() => onPick(option)}
                 hitSlop={4}
                 accessibilityRole="checkbox"
@@ -97,7 +98,7 @@ export function OnboardingOutliner({
                 <AppText variant="body" color={picked ? tint : colors.text}>
                   {option.label}
                 </AppText>
-              </Pressable>
+              </LoggedPressable>
 
               {/* The explanation is a sub-item of the answer, one level deeper —
                   it only earns its space once that answer is the chosen one. */}
@@ -130,7 +131,7 @@ export function OnboardingOutliner({
             />
           </View>
         ) : question.options ? null : (
-          <Pressable
+          <LoggedPressable
             onPress={onOpenSheet}
             hitSlop={4}
             accessibilityRole="button"
@@ -148,7 +149,7 @@ export function OnboardingOutliner({
             <AppText variant="body" color={answered ? question.color : colors.textTertiary}>
               {display ?? question.hint ?? t('onboarding.tap')}
             </AppText>
-          </Pressable>
+          </LoggedPressable>
         )}
 
         {question.allowsText ? (
@@ -171,12 +172,12 @@ export function OnboardingOutliner({
         ) : null}
 
         {question.optional && !answered ? (
-          <Pressable onPress={onSkip} hitSlop={4} accessibilityRole="button" style={styles.subLine}>
+          <LoggedPressable onPress={onSkip} hitSlop={4} accessibilityRole="button" accessibilityLabel={`${t('onboarding.skip')}: ${question.question}`} style={styles.subLine}>
             <View style={styles.subMarker} />
             <AppText variant="caption" color={colors.textTertiary}>
               {t('onboarding.skip')}
             </AppText>
-          </Pressable>
+          </LoggedPressable>
         ) : null}
       </View>
     </View>

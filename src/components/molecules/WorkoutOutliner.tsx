@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -191,15 +192,25 @@ function SetDisplay({
 
   if (!set) {
     return (
-      <Pressable onPress={onPress} hitSlop={6} style={styles.setValuePress}>
+      <LoggedPressable
+        onPress={onPress}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={fallback}
+        style={styles.setValuePress}>
         <Text style={[styles.setValueText, { color: colors.text }]}>{fallback}</Text>
-      </Pressable>
+      </LoggedPressable>
     );
   }
 
   const effort = formatWorkoutSetEffort(set);
   return (
-    <Pressable onPress={onPress} hitSlop={6} style={styles.setValuePress}>
+    <LoggedPressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={formatWorkoutSetEffort(set) || fallback}
+      style={styles.setValuePress}>
       <View style={styles.setValueRow}>
         <SetSummaryText set={set} fallback={fallback} color={colors.text} />
         {effort ? (
@@ -208,7 +219,7 @@ function SetDisplay({
           </AppText>
         ) : null}
       </View>
-    </Pressable>
+    </LoggedPressable>
   );
 }
 
@@ -602,17 +613,17 @@ export function WorkoutOutliner({
               {t('status.needsKey')}
             </AppText>
           ) : (
-            <Pressable onPress={() => onRetry(entry)} hitSlop={10} accessibilityRole="button">
+            <LoggedPressable onPress={() => onRetry(entry)} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('status.retry')}>
               <AppText variant="label" color={colors.danger}>
                 {t('status.retry')}
               </AppText>
-            </Pressable>
+            </LoggedPressable>
           )
         ) : isPending ? null : (
           <>
             {entry.status === 'done' && onSaveExercise ? (
               <View style={styles.actionGroup}>
-                <Pressable
+                <LoggedPressable
                   onPress={toggleSaveExercise}
                   hitSlop={10}
                   accessibilityRole="button"
@@ -632,9 +643,9 @@ export function WorkoutOutliner({
                       />
                     </View>
                   </GlassSurface>
-                </Pressable>
+                </LoggedPressable>
 
-                <Pressable
+                <LoggedPressable
                   onPress={() => addSetAfter(lines.length - 1)}
                   hitSlop={10}
                   accessibilityRole="button"
@@ -642,10 +653,10 @@ export function WorkoutOutliner({
                   <GlassSurface glass="regular" style={[styles.actionSegment, styles.actionSegmentRight]}>
                     <AppIcon name="plus" color={colors.textSecondary} size={14} />
                   </GlassSurface>
-                </Pressable>
+                </LoggedPressable>
               </View>
             ) : (
-              <Pressable
+              <LoggedPressable
                 onPress={() => addSetAfter(lines.length - 1)}
                 hitSlop={10}
                 accessibilityRole="button"
@@ -653,7 +664,7 @@ export function WorkoutOutliner({
                 <GlassSurface glass="regular" style={styles.addButton}>
                   <AppIcon name="plus" color={colors.textSecondary} size={14} />
                 </GlassSurface>
-              </Pressable>
+              </LoggedPressable>
             )}
           </>
         )}

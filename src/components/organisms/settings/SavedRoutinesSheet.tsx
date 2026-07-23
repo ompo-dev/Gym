@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -111,14 +112,14 @@ export function SavedRoutinesSheet({
                     {routineSummary(routine)}
                   </AppText>
                 </View>
-                <Pressable
+                <LoggedPressable
                   onPress={() => void remove(routine)}
                   hitSlop={10}
                   accessibilityRole="button"
                   accessibilityLabel={t("routine.deleteSaved")}
                 >
                   <AppIcon name="trash" color={colors.danger} size={18} />
-                </Pressable>
+                </LoggedPressable>
               </View>
             </View>
           ))}

@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppText } from '@/components/atoms/AppText';
 import {
@@ -60,10 +61,11 @@ export function NativeSegmented<T extends string>({
       {options.map((option) => {
         const selected = option.value === value;
         return (
-          <Pressable
+          <LoggedPressable
             key={option.value}
             onPress={() => onChange(option.value)}
             accessibilityRole="button"
+            accessibilityLabel={option.label}
             accessibilityState={{ selected }}
             style={[
               styles.pill,
@@ -80,7 +82,7 @@ export function NativeSegmented<T extends string>({
             >
               {option.label}
             </AppText>
-          </Pressable>
+          </LoggedPressable>
         );
       })}
     </View>

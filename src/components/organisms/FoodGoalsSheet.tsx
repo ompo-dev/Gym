@@ -36,18 +36,18 @@ function progress(current: number, goal: number): number {
   return Math.max(0, Math.min(current / goal, 1));
 }
 
+// `key` is the theme colour token too — resolved as `colors[item.key]` below.
 const MICRO_GOALS: {
   key: OnboardingMicronutrient;
-  color: string;
   icon: AppIconName;
   labelKey: 'goals.sugar' | 'goals.fiber' | 'goals.sodium';
   current: (totals: FoodTotals) => number;
   goal: (goals: FoodGoals) => number;
   unit: string;
 }[] = [
-  { key: 'sugar', color: '#2E9BFF', icon: 'squareStack', labelKey: 'goals.sugar', current: (totals) => totals.sugarG, goal: (goals) => goals.sugarG, unit: 'g' },
-  { key: 'fiber', color: '#34C759', icon: 'apple', labelKey: 'goals.fiber', current: (totals) => totals.fiberG, goal: (goals) => goals.fiberG, unit: 'g' },
-  { key: 'sodium', color: '#FF922E', icon: 'asterisk', labelKey: 'goals.sodium', current: (totals) => totals.sodiumMg, goal: (goals) => goals.sodiumMg, unit: 'mg' },
+  { key: 'sugar', icon: 'squareStack', labelKey: 'goals.sugar', current: (totals) => totals.sugarG, goal: (goals) => goals.sugarG, unit: 'g' },
+  { key: 'fiber', icon: 'apple', labelKey: 'goals.fiber', current: (totals) => totals.fiberG, goal: (goals) => goals.fiberG, unit: 'g' },
+  { key: 'sodium', icon: 'asterisk', labelKey: 'goals.sodium', current: (totals) => totals.sodiumMg, goal: (goals) => goals.sodiumMg, unit: 'mg' },
 ];
 
 function MacroRing({
@@ -224,7 +224,7 @@ export function FoodGoalsSheet({ totals, visible, date }: FoodGoalsSheetProps) {
             return (
               <View key={item.key} style={styles.microRow}>
                 <View style={styles.microLabel}>
-                  <AppIcon name={item.icon} color={item.color} size={14} />
+                  <AppIcon name={item.icon} color={colors[item.key]} size={14} />
                   <AppText variant="secondary" color={colors.textSecondary}>
                     {t(item.labelKey)}
                   </AppText>

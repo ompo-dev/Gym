@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { ProgressRing } from '@/components/atoms/ProgressRing';
@@ -32,6 +33,7 @@ import {
   type OnboardingMicronutrient,
 } from '@/core/onboarding';
 import { PantryRepository } from '@/data/PantryRepository';
+import { useRepositoryData } from '@/hooks/useRepositoryData';
 import { formatFoodQuantity, formatWaterMl, sumFoodData } from '@/domains/food';
 import { formatPantryGrams } from '@/domains/pantry';
 import type { FoodData } from '@/domains/schemas';
@@ -107,16 +109,17 @@ interface MicroSource {
   sodiumMg: number;
 }
 
+// `key` doubles as the theme colour token — sugar/fiber/sodium live in the
+// palette now, so the row resolves `colors[stat.key]` and no hex is repeated.
 const MICRO_STATS: {
   key: OnboardingMicronutrient;
   icon: AppIconName;
-  color: string;
   labelKey: 'goals.sugar' | 'goals.fiber' | 'goals.sodium';
   value: (item: MicroSource) => string;
 }[] = [
-  { key: 'sugar', icon: 'squareStack', color: '#2E9BFF', labelKey: 'goals.sugar', value: (item) => `${item.sugarG.toFixed(1)} g` },
-  { key: 'fiber', icon: 'apple', color: '#34C759', labelKey: 'goals.fiber', value: (item) => `${item.fiberG.toFixed(1)} g` },
-  { key: 'sodium', icon: 'asterisk', color: '#FF922E', labelKey: 'goals.sodium', value: (item) => `${Math.round(item.sodiumMg)} mg` },
+  { key: 'sugar', icon: 'squareStack', labelKey: 'goals.sugar', value: (item) => `${item.sugarG.toFixed(1)} g` },
+  { key: 'fiber', icon: 'apple', labelKey: 'goals.fiber', value: (item) => `${item.fiberG.toFixed(1)} g` },
+  { key: 'sodium', icon: 'asterisk', labelKey: 'goals.sodium', value: (item) => `${Math.round(item.sodiumMg)} mg` },
 ];
 
 function ConfidenceRing({ value, color, track }: { value: number; color: string; track: string }) {
@@ -163,11 +166,19 @@ export function FoodEntryDetailSheet({
   const [aiScrollInset, setAiScrollInset] = useState(0);
   const [savedVisible, setSavedVisible] = useState(false);
   const [mealSaved, setMealSaved] = useState(initialMealSaved);
+  const drawsFromPantry = data?.items.some((item) => item.from) ?? false;
   // What is left of each pantry product a drawn item came from. Read on open,
   // like the pantry sheet — provenance itself is in the item's stored `from`,
   // this only adds the live "how much is left" beside it.
-  const [remainingByKey, setRemainingByKey] = useState<Record<string, number | undefined>>({});
-  const drawsFromPantry = data?.items.some((item) => item.from) ?? false;
+  const remainingByKey = useRepositoryData<Record<string, number | undefined>>(
+    async () =>
+      Object.fromEntries(
+        (await PantryRepository.all()).map((item) => [item.key, item.remainingGrams]),
+      ),
+    {},
+    [entry?.id, drawsFromPantry],
+    drawsFromPantry,
+  );
   const menuButtonRef = useRef<View>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deferredSheetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -212,23 +223,6 @@ export function FoodEntryDetailSheet({
     setMealSaved(initialMealSaved);
     setAiScrollInset(0);
   }, [entry?.id, initialMealSaved]);
-
-  useEffect(() => {
-    if (!drawsFromPantry) {
-      setRemainingByKey({});
-      return;
-    }
-    let alive = true;
-    void PantryRepository.all().then((items) => {
-      if (!alive) return;
-      setRemainingByKey(
-        Object.fromEntries(items.map((item) => [item.key, item.remainingGrams])),
-      );
-    });
-    return () => {
-      alive = false;
-    };
-  }, [entry?.id, drawsFromPantry]);
 
   useEffect(() => {
     if (!aiVisible) setAiScrollInset(0);
@@ -368,7 +362,7 @@ export function FoodEntryDetailSheet({
   ) : menuVisible ? (
     <View style={styles.headerButton} />
   ) : (
-    <Pressable
+    <LoggedPressable
       onPress={openMenu}
       hitSlop={10}
       accessibilityRole="button"
@@ -378,7 +372,7 @@ export function FoodEntryDetailSheet({
           <AppIcon name="ellipsis" color={colors.textSecondary} size={20} />
         </GlassSurface>
       </View>
-    </Pressable>
+    </LoggedPressable>
   );
   return (
     <SheetFrame
@@ -464,7 +458,7 @@ export function FoodEntryDetailSheet({
                     <MacroStat
                       key={stat.key}
                       icon={stat.icon}
-                      color={stat.color}
+                      color={colors[stat.key]}
                       label={t(stat.labelKey)}
                       value={stat.value(totals)}
                     />
@@ -494,7 +488,7 @@ export function FoodEntryDetailSheet({
                   );
                   return (
                     <GlassSurface key={`${item.label}-${index}`} glass="regular" style={styles.itemCard}>
-                      <Pressable
+                      <LoggedPressable
                         onPress={() =>
                           setExpanded((current) => ({ ...current, [index]: !current[index] }))
                         }
@@ -579,7 +573,7 @@ export function FoodEntryDetailSheet({
                             />
                           </View>
                         </View>
-                      </Pressable>
+                      </LoggedPressable>
 
                       {isOpen ? (
                         <View style={styles.itemExpanded}>
@@ -614,7 +608,7 @@ export function FoodEntryDetailSheet({
                                 <MacroStat
                                   key={stat.key}
                                   icon={stat.icon}
-                                  color={stat.color}
+                                  color={colors[stat.key]}
                                   label={t(stat.labelKey)}
                                   value={stat.value(item)}
                                 />

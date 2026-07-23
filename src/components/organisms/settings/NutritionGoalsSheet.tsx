@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, TextInput, View } from "react-native";
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon, type AppIconName } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -68,7 +69,6 @@ const MICRO_TARGETS = [
     key: "sugar" as const,
     label: "Monitorar açúcar",
     icon: "squareStack" as const,
-    color: TINT.blue,
     dailyLabel: "Máximo diário",
     dailyUnit: "g",
   },
@@ -76,7 +76,6 @@ const MICRO_TARGETS = [
     key: "fiber" as const,
     label: "Monitorar fibras",
     icon: "apple" as const,
-    color: "#34C759",
     dailyLabel: "Mínimo diário",
     dailyUnit: "g",
   },
@@ -84,7 +83,6 @@ const MICRO_TARGETS = [
     key: "sodium" as const,
     label: "Monitorar sódio",
     icon: "asterisk" as const,
-    color: "#FF922E",
     dailyLabel: "Máximo diário",
     dailyUnit: "mg",
   },
@@ -110,9 +108,10 @@ function GoalChip({
 }) {
   const colors = useColors();
   return (
-    <Pressable
+    <LoggedPressable
       onPress={onPress}
       accessibilityRole="button"
+      accessibilityLabel={option.label}
       accessibilityState={{ selected }}
       style={({ pressed }) => [
         styles.goalChip,
@@ -135,7 +134,7 @@ function GoalChip({
       >
         {option.label}
       </AppText>
-    </Pressable>
+    </LoggedPressable>
   );
 }
 
@@ -379,9 +378,10 @@ export function NutritionGoalsSheet({
               </AppText>
               <AppText variant="heading">{`${formatThousands(summary.tdee)} cal/dia`}</AppText>
             </View>
-            <Pressable
+            <LoggedPressable
               onPress={onOpenHealth}
               accessibilityRole="button"
+              accessibilityLabel="Editar perfil de saúde"
               style={({ pressed }) => [
                 settingsStyles.inlineAction,
                 pressed && settingsStyles.pressed,
@@ -395,7 +395,7 @@ export function NutritionGoalsSheet({
                 Editar perfil
               </AppText>
               <AppIcon name="chevronRight" color={TINT.purple} size={18} />
-            </Pressable>
+            </LoggedPressable>
           </View>
         </Section>
 
@@ -422,6 +422,7 @@ export function NutritionGoalsSheet({
               <Toggle
                 value={draft.goalDate !== null}
                 onValueChange={toggleGoalDate}
+                label="Definir data-alvo"
               />
             }
           />
@@ -445,9 +446,10 @@ export function NutritionGoalsSheet({
             { backgroundColor: colors.backgroundElement },
           ]}
         >
-          <Pressable
+          <LoggedPressable
             onPress={() => setPrefsOpen((current) => !current)}
             accessibilityRole="button"
+            accessibilityLabel="Preferências de estilo de vida e dieta"
             accessibilityState={{ expanded: prefsOpen }}
             style={({ pressed }) => [
               styles.preferencesHeader,
@@ -463,7 +465,7 @@ export function NutritionGoalsSheet({
               color={colors.textTertiary}
               size={18}
             />
-          </Pressable>
+          </LoggedPressable>
           {prefsOpen ? (
             <>
               <Divider />
@@ -541,10 +543,11 @@ export function NutritionGoalsSheet({
               {index > 0 ? <Divider /> : null}
               <SettingsRow
                 icon={target.icon}
-                iconColor={target.color}
+                iconColor={colors[target.key]}
                 title={target.label}
                 trailing={
                   <Toggle
+                    label={target.label}
                     value={Boolean(micros[target.key])}
                     onValueChange={(next) =>
                       setMicros((current) => ({
@@ -568,9 +571,10 @@ export function NutritionGoalsSheet({
             </View>
           ))}
           <Divider />
-          <Pressable
+          <LoggedPressable
             onPress={() => setHelpOpen((current) => !current)}
             accessibilityRole="button"
+            accessibilityLabel="Não sabe quais valores colocar aqui?"
             accessibilityState={{ expanded: helpOpen }}
             style={({ pressed }) => [
               styles.microHelpHeader,
@@ -589,7 +593,7 @@ export function NutritionGoalsSheet({
               color={colors.textTertiary}
               size={18}
             />
-          </Pressable>
+          </LoggedPressable>
           {helpOpen ? (
             <View style={styles.microHelpBody}>
               <AppText variant="secondary" color={colors.textSecondary}>
@@ -598,17 +602,17 @@ export function NutritionGoalsSheet({
               <View style={styles.microHelpMetrics}>
                 <SavedMealMetric
                   icon="squareStack"
-                  color={TINT.blue}
+                  color={colors.sugar}
                   value="Açúcar < 36g"
                 />
                 <SavedMealMetric
                   icon="apple"
-                  color="#34C759"
+                  color={colors.fiber}
                   value="Fibras 38g"
                 />
                 <SavedMealMetric
                   icon="asterisk"
-                  color="#FF922E"
+                  color={colors.sodium}
                   value="Sódio < 2,300mg"
                 />
               </View>

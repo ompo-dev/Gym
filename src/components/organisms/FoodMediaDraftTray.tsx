@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
@@ -120,7 +121,7 @@ export function FoodMediaDraftTray({
 
   return (
     <>
-      <Pressable
+      <LoggedPressable
         onPress={() => {
           if (!canOpenAppModal('day.root', 'food.mediaDraftTray')) return;
           replaceAppModal({ id: 'food.mediaDraftTray', domain: 'food', ownerId });
@@ -130,7 +131,7 @@ export function FoodMediaDraftTray({
         accessibilityLabel={t('media.photosAdded')}
         style={styles.galleryButton}>
         <DraftStack drafts={drafts} size={38} showMore />
-      </Pressable>
+      </LoggedPressable>
 
       <SheetFrame
         visible={open}
@@ -159,13 +160,13 @@ export function FoodMediaDraftTray({
               />
             </View>
             {onRemove ? (
-              <Pressable
+              <LoggedPressable
                 onPress={() => onRemove(draft.id)}
                 hitSlop={10}
                 accessibilityRole="button"
                 accessibilityLabel={t('media.removeAttachment')}>
                 <AppIcon name="x" color={colors.textSecondary} size={18} />
-              </Pressable>
+              </LoggedPressable>
             ) : null}
           </View>
         ))}

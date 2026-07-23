@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -126,9 +127,10 @@ export function WeightControlSheet({
 
   const registerButton = (
     <View pointerEvents="box-none" style={styles.weightSticky}>
-      <Pressable
+      <LoggedPressable
         onPress={onOpenRegisterWeight}
         accessibilityRole="button"
+        accessibilityLabel="Registrar peso"
         style={({ pressed }) => [
           settingsStyles.primaryAction,
           styles.weightStickyButton,
@@ -140,7 +142,7 @@ export function WeightControlSheet({
         <AppText variant="heading" color="#FFFFFF">
           Registrar peso
         </AppText>
-      </Pressable>
+      </LoggedPressable>
     </View>
   );
 

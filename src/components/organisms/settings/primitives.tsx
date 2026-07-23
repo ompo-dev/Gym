@@ -1,11 +1,6 @@
 import type { ReactNode, RefObject } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Switch,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { StyleSheet, Switch, useWindowDimensions, View } from "react-native";
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon, type AppIconName } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -144,16 +139,22 @@ export function OptionMenu<T extends string>({
 
   return (
     <View style={styles.optionMenuOverlay}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      <LoggedPressable
+        style={StyleSheet.absoluteFill}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.close')}
+      />
 
       <GlassSurface glass="regular" style={[styles.optionMenu, menuPosition]}>
         {options.map((option) => {
           const selected = option.value === selectedValue;
           return (
-            <Pressable
+            <LoggedPressable
               key={option.value}
               onPress={() => onSelect(option.value)}
               accessibilityRole="button"
+              accessibilityLabel={option.label}
               accessibilityState={{ selected }}
               style={({ pressed }) => [
                 styles.optionMenuRow,
@@ -168,7 +169,7 @@ export function OptionMenu<T extends string>({
               <AppText variant="body" style={styles.optionMenuText}>
                 {option.label}
               </AppText>
-            </Pressable>
+            </LoggedPressable>
           );
         })}
       </GlassSurface>
@@ -179,15 +180,19 @@ export function OptionMenu<T extends string>({
 export function Toggle({
   value,
   onValueChange,
+  label,
 }: {
   value: boolean;
   onValueChange: (v: boolean) => void;
+  /** Names the switch for the screen reader — the row's title next to it. */
+  label?: string;
 }) {
   const colors = useColors();
   return (
     <Switch
       value={value}
       onValueChange={onValueChange}
+      accessibilityLabel={label}
       trackColor={{ true: colors.success, false: colors.backgroundSelected }}
       thumbColor="#FFFFFF"
       ios_backgroundColor={colors.backgroundSelected}
@@ -207,7 +212,7 @@ function HeaderIconButton({
   const colors = useColors();
   const color = filled ? "#FFFFFF" : colors.textSecondary;
   return (
-    <Pressable
+    <LoggedPressable
       onPress={onPress}
       hitSlop={10}
       accessibilityRole="button"
@@ -229,7 +234,7 @@ function HeaderIconButton({
           <AppIcon name={icon} color={color} size={22} />
         </GlassSurface>
       )}
-    </Pressable>
+    </LoggedPressable>
   );
 }
 

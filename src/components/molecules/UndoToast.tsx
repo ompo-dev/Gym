@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
@@ -17,7 +18,7 @@ export function UndoToast({ label, onUndo }: UndoToastProps) {
   return (
     <GlassSurface glass="regular" style={styles.toast}>
       <AppText variant="secondary">{label}</AppText>
-      <Pressable
+      <LoggedPressable
         onPress={onUndo}
         hitSlop={10}
         accessibilityRole="button"
@@ -25,7 +26,7 @@ export function UndoToast({ label, onUndo }: UndoToastProps) {
         <AppText variant="label" color={colors.accent}>
           {t('undo.action')}
         </AppText>
-      </Pressable>
+      </LoggedPressable>
     </GlassSurface>
   );
 }

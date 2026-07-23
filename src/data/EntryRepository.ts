@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { log } from '@/core/log';
 import type { Domain, Entry, EntryMediaAttachment, EntryMediaKind, EntryStatus } from '@/core/types';
 import { type EnrichData, schemaByDomain } from '@/domains/schemas';
 
@@ -118,6 +119,7 @@ export const EntryRepository = {
   },
 
   async insert(entry: Entry): Promise<void> {
+    log.db('entries.insert', { id: entry.id, domain: entry.domain, status: entry.status });
     const db = await getDb();
     await insertRow(db, entry);
   },
@@ -157,11 +159,13 @@ export const EntryRepository = {
       params.push(patch.data ? JSON.stringify(patch.data) : null);
     }
     if (sets.length === 0) return;
+    log.db('entries.update', { id, fields: sets.map((s) => s.split(' ')[0]) });
     params.push(id);
     await db.runAsync(`UPDATE entries SET ${sets.join(', ')} WHERE id = ?`, params);
   },
 
   async delete(id: string): Promise<void> {
+    log.db('entries.delete', { id });
     const db = await getDb();
     await db.runAsync('DELETE FROM entries WHERE id = ?', [id]);
   },

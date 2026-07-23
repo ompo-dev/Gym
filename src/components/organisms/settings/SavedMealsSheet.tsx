@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon, type AppIconName } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -10,6 +11,7 @@ import {
   SavedMealRepository,
   type SavedMeal,
 } from "@/data/SavedMealRepository";
+import { useRepositoryData } from "@/hooks/useRepositoryData";
 import { formatWaterMl, sumFoodData } from "@/domains/food";
 import { useColors } from "@/hooks/use-colors";
 import { t } from "@/i18n";
@@ -139,9 +141,10 @@ function SavedMealRow({
   ];
 
   return (
-    <Pressable
+    <LoggedPressable
       onPress={onPress}
       accessibilityRole="button"
+      accessibilityLabel={meal.name}
       accessibilityState={selectable ? { selected } : undefined}
       style={({ pressed }) => [pressed && settingsStyles.pressed]}
     >
@@ -180,7 +183,7 @@ function SavedMealRow({
 
         {selectable ? <SavedMealSelectIcon selected={selected} /> : <Chevron />}
       </View>
-    </Pressable>
+    </LoggedPressable>
   );
 }
 
@@ -245,15 +248,17 @@ export function SavedMealsSheet({
   onSelect: (meals: SavedMeal[]) => void;
 }) {
   const colors = useColors();
-  const [meals, setMeals] = useState<SavedMeal[]>([]);
+  const meals = useRepositoryData<SavedMeal[]>(
+    () => SavedMealRepository.all(),
+    [],
+    [visible],
+    visible,
+  );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // Selection is UI state, not repository data — clears when the picker closes.
   useEffect(() => {
-    if (!visible) {
-      setSelectedIds([]);
-      return;
-    }
-    void SavedMealRepository.all().then(setMeals);
+    if (!visible) setSelectedIds([]);
   }, [visible]);
 
   const toggleMeal = (meal: SavedMeal) => {
@@ -280,7 +285,7 @@ export function SavedMealsSheet({
       hideDefaultClose={hasSelection}
       headerLeading={
         hasSelection ? (
-          <Pressable
+          <LoggedPressable
             onPress={onClose}
             hitSlop={10}
             accessibilityRole="button"
@@ -293,12 +298,12 @@ export function SavedMealsSheet({
             >
               <AppIcon name="x" color={colors.textSecondary} size={18} />
             </GlassSurface>
-          </Pressable>
+          </LoggedPressable>
         ) : null
       }
       headerTrailing={
         hasSelection ? (
-          <Pressable
+          <LoggedPressable
             onPress={confirmSelection}
             hitSlop={10}
             accessibilityRole="button"
@@ -310,7 +315,7 @@ export function SavedMealsSheet({
             ]}
           >
             <AppIcon name="check" color="#FFFFFF" size={18} />
-          </Pressable>
+          </LoggedPressable>
         ) : null
       }
       size="full"

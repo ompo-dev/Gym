@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 
+import { log } from '@/core/log';
 import { useAppStore } from '@/store/useAppStore';
 
 import { DeepSeekTransportError, runEnrichEngine } from './deepseek';
@@ -109,10 +110,23 @@ export async function enrich(req: EnrichRequest): Promise<EnrichResponse> {
   const keys = activeKeys();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  // The whole request in one line: what went out, and — on the returned span —
+  // how long it took and whether the model answered or failed.
+  const end = log.time('ai', `enrich ${req.domain}/${req.intent ?? 'parse'}`, {
+    via: keys ? 'own-key' : 'proxy',
+    chars: req.text.length,
+    media: req.media?.length ?? 0,
+    hasContext: Boolean(req.userContext),
+  });
   try {
-    return keys
+    const res = keys
       ? await enrichDirect(req, keys, controller.signal)
       : await enrichViaProxy(req, controller.signal);
+    end(res.ok ? { ok: true } : { ok: false, error: res.error });
+    return res;
+  } catch (e) {
+    end({ threw: e instanceof Error ? e.message : String(e) });
+    throw e;
   } finally {
     clearTimeout(timer);
   }

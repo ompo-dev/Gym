@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -564,6 +565,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
                   <Toggle
                     value={autoTimezone}
                     onValueChange={setAutoTimezone}
+                    label={t("settings.device.autoTimezone")}
                   />
                 }
               />
@@ -582,9 +584,10 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
                     {t("settings.sub.hint")}
                   </AppText>
                 </View>
-                <Pressable
+                <LoggedPressable
                   onPress={noop}
                   accessibilityRole="button"
+                  accessibilityLabel={t("settings.sub.upgrade")}
                   style={({ pressed }) => [
                     styles.upgrade,
                     pressed && settingsStyles.pressed,
@@ -593,7 +596,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
                   <AppText variant="label" color={UPGRADE_FG}>
                     {t("settings.sub.upgrade")}
                   </AppText>
-                </Pressable>
+                </LoggedPressable>
               </View>
             </Section>
 
@@ -669,9 +672,10 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
               />
             </Section>
 
-            <Pressable
+            <LoggedPressable
               onPress={handleSignOut}
               accessibilityRole="button"
+              accessibilityLabel={t("settings.signOut")}
               style={({ pressed }) => [
                 styles.signOut,
                 { backgroundColor: colors.backgroundElement },
@@ -681,7 +685,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
               <AppText variant="body" color={colors.danger} style={settingsStyles.bold}>
                 {t("settings.signOut")}
               </AppText>
-            </Pressable>
+            </LoggedPressable>
 
             <AppText
               variant="caption"

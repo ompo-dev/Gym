@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppText } from '@/components/atoms/AppText';
 import { MultiLineChart } from '@/components/molecules/MultiLineChart';
 import { Spacing } from '@/constants/theme';
 import { PantryRepository } from '@/data/PantryRepository';
+import { useRepositoryData } from '@/hooks/useRepositoryData';
 import { pantryItemToEntry, pantryPriceSeries, type PantryItem } from '@/domains/pantry';
 import { formatMoney } from '@/domains/purchase';
 import { useColors } from '@/hooks/use-colors';
@@ -68,21 +70,10 @@ interface PantrySheetProps {
  */
 export function PantrySheet({ visible, onClose }: PantrySheetProps) {
   const colors = useColors();
-  const [items, setItems] = useState<PantryItem[]>([]);
+  const items = useRepositoryData<PantryItem[]>(() => PantryRepository.all(), [], [visible], visible);
   // The very same sheet a meal note opens — a pantry item is just read as a
   // 100 g meal on the way in. See `pantryItemToEntry`.
   const [detail, setDetail] = useState<PantryItem | null>(null);
-
-  useEffect(() => {
-    if (!visible) return;
-    let alive = true;
-    void PantryRepository.all().then((next) => {
-      if (alive) setItems(next);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [visible]);
 
   return (
     <SheetFrame visible={visible} title={t('pantry.title')} onClose={onClose} centerTitle size="full">
@@ -108,7 +99,7 @@ export function PantrySheet({ visible, onClose }: PantrySheetProps) {
           {items.map((item, index) => (
             <View key={item.key}>
               {index > 0 ? <Divider /> : null}
-              <Pressable
+              <LoggedPressable
                 onPress={() => setDetail(item)}
                 // Nothing was ever recorded about this product, so there is no
                 // detail to open and the row must not pretend otherwise.
@@ -147,7 +138,7 @@ export function PantrySheet({ visible, onClose }: PantrySheetProps) {
                   </SavedMealMetrics>
                 </View>
                 {item.nutrition ? <Chevron /> : null}
-              </Pressable>
+              </LoggedPressable>
             </View>
           ))}
           </View>

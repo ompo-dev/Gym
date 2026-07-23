@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
@@ -9,6 +8,7 @@ import { PantryRepository } from '@/data/PantryRepository';
 import { recipeShoppingList } from '@/domains/food';
 import { matchRecipeToPantry, type PantryItem } from '@/domains/pantry';
 import { formatMoney } from '@/domains/purchase';
+import { useRepositoryData } from '@/hooks/useRepositoryData';
 import type { FoodRecipe } from '@/domains/schemas';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
@@ -37,20 +37,10 @@ function RecipeMetric({ icon, label }: { icon: 'utensils' | 'clock'; label: stri
  */
 export function FoodRecipeCard({ recipe }: FoodRecipeCardProps) {
   const colors = useColors();
-  const [pantry, setPantry] = useState<PantryItem[]>([]);
-
-  // Read when the sheet is opened, not frozen when the recipe was written: what
-  // is in the fridge changes, and a list that answers "do I have this" has to
-  // answer for now. Same load `PantrySheet` does.
-  useEffect(() => {
-    let alive = true;
-    void PantryRepository.all().then((items) => {
-      if (alive) setPantry(items);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  // Read when the sheet opens, not frozen when the recipe was written: what is
+  // in the fridge changes, and a list that answers "do I have this" answers for
+  // now. Same load `PantrySheet` does.
+  const pantry = useRepositoryData<PantryItem[]>(() => PantryRepository.all(), [], []);
 
   const matched = matchRecipeToPantry(recipe, pantry);
   const { missing, totalCents } = recipeShoppingList(matched);

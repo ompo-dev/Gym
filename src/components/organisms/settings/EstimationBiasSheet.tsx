@@ -1,6 +1,7 @@
 import Slider from "@react-native-community/slider";
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppText } from "@/components/atoms/AppText";
 import {
@@ -90,10 +91,11 @@ export function EstimationBiasSheet({
         />
         <View style={styles.biasLabels}>
           {BIAS_VALUES.map((item) => (
-            <Pressable
+            <LoggedPressable
               key={item}
               onPress={() => changeBias(item)}
               accessibilityRole="button"
+              accessibilityLabel={biasMeta[item].title[lang]}
               accessibilityState={{ selected: item === bias }}
               style={styles.biasLabelItem}
             >
@@ -111,7 +113,7 @@ export function EstimationBiasSheet({
               >
                 {biasMeta[item].title[lang]}
               </AppText>
-            </Pressable>
+            </LoggedPressable>
           ))}
         </View>
       </Section>

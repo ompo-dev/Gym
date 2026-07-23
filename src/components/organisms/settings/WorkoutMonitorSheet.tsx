@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { AppText } from "@/components/atoms/AppText";
@@ -11,6 +11,7 @@ import { Radii, Spacing } from "@/constants/theme";
 import type { AppModalAnchor } from "@/core/appModals";
 import type { Entry } from "@/core/types";
 import { EntryRepository } from "@/data/EntryRepository";
+import { useRepositoryData } from "@/hooks/useRepositoryData";
 import {
   GROUP_COLORS,
   GROUP_ORDER,
@@ -188,7 +189,12 @@ export function WorkoutMonitorSheet({
   onClose: () => void;
 }) {
   const colors = useColors();
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const entries = useRepositoryData<Entry[]>(
+    () => EntryRepository.findAll("workout"),
+    [],
+    [visible],
+    visible,
+  );
   const [period, setPeriod] = useState<MonitorPeriod>(7);
   const [tab, setTab] = useState<"strength" | "cardio">("strength");
   const [focus, setFocus] = useState<MonitorFocus>({});
@@ -200,11 +206,6 @@ export function WorkoutMonitorSheet({
   const muscleRowRef = useRef<View>(null);
   const portionRowRef = useRef<View>(null);
   const today = useAppStore((s) => s.workout.date);
-
-  useEffect(() => {
-    if (!visible) return;
-    void EntryRepository.findAll("workout").then(setEntries);
-  }, [visible]);
 
   const report = useMemo(
     () => buildMonitorReport(entries, today, period, focus),

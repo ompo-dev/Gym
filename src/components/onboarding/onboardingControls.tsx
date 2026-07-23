@@ -1,8 +1,9 @@
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Modal, ScrollView, StyleSheet, View } from "react-native";
 
+import { LoggedPressable } from "@/components/atoms/Logged";
 import { AppText } from "@/components/atoms/AppText";
 import type { OnboardingProfile } from "@/core/onboarding";
 import { copy } from "./onboardingContent";
@@ -66,11 +67,15 @@ export function PrimaryButton({
   }
 
   return (
-    <Pressable style={styles.primaryButton} onPress={onPress}>
+    <LoggedPressable
+      style={styles.primaryButton}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}>
       <AppText variant="heading" style={styles.primaryButtonText}>
         {label}
       </AppText>
-    </Pressable>
+    </LoggedPressable>
   );
 }
 
@@ -321,7 +326,12 @@ export function PickerSheet({
         presentation === "overlay" && StyleSheet.absoluteFill,
       ]}
     >
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <LoggedPressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Fechar"
+        />
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetHeader}>
@@ -331,9 +341,12 @@ export function PickerSheet({
                 {(["cm", "ftin"] as const).map((unit) => {
                   const active = heightUnit === unit;
                   return (
-                    <Pressable
+                    <LoggedPressable
                       key={unit}
                       onPress={() => setHeightUnit(unit)}
+                      accessibilityRole="button"
+                      accessibilityLabel={unit}
+                      accessibilityState={{ selected: active }}
                       style={[styles.segment, active && styles.segmentActive]}
                     >
                       <AppText
@@ -344,7 +357,7 @@ export function PickerSheet({
                       >
                         {unit === "cm" ? "cm" : "ft/in"}
                       </AppText>
-                    </Pressable>
+                    </LoggedPressable>
                   );
                 })}
               </View>
@@ -408,8 +421,11 @@ export function PickerSheet({
               {nativeItems.map((item) => {
                 const active = item.nativeValue === iosSelection;
                 return (
-                  <Pressable
+                  <LoggedPressable
                     key={String(item.label)}
+                    accessibilityRole="button"
+                    accessibilityLabel={String(item.label)}
+                    accessibilityState={{ selected: active }}
                     style={[styles.sheetItem, active && styles.sheetItemActive]}
                     onPress={() => setIosSelection(item.nativeValue)}
                   >
@@ -421,7 +437,7 @@ export function PickerSheet({
                     >
                       {item.label}
                     </AppText>
-                  </Pressable>
+                  </LoggedPressable>
                 );
               })}
             </ScrollView>
@@ -485,7 +501,12 @@ export function DatePickerSheet({
         presentation === "overlay" && StyleSheet.absoluteFill,
       ]}
     >
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <LoggedPressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Fechar"
+        />
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetHeader}>

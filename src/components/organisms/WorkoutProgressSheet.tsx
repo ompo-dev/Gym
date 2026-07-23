@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 
 import { AppIcon } from "@/components/atoms/AppIcon";
@@ -7,6 +7,7 @@ import { GlassSurface } from "@/components/atoms/GlassSurface";
 import { Radii, Spacing } from "@/constants/theme";
 import type { Entry } from "@/core/types";
 import { EntryRepository } from "@/data/EntryRepository";
+import { useRepositoryData } from "@/hooks/useRepositoryData";
 import { WORKOUT_METRIC_COLORS } from "@/domains/workout";
 import {
   buildProgressRows,
@@ -27,12 +28,12 @@ export function WorkoutProgressSheet({
   visible,
 }: WorkoutProgressSheetProps) {
   const colors = useColors();
-  const [history, setHistory] = useState<Entry[]>([]);
-
-  useEffect(() => {
-    if (!visible) return;
-    void EntryRepository.findAll("workout").then(setHistory);
-  }, [visible]);
+  const history = useRepositoryData<Entry[]>(
+    () => EntryRepository.findAll("workout"),
+    [],
+    [visible],
+    visible,
+  );
 
   const toneColor: Record<ProgressTone, string> = useMemo(
     () => ({

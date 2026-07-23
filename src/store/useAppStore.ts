@@ -2,6 +2,7 @@ import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
 import { todayISO } from '@/core/date';
+import { log } from '@/core/log';
 import type { ApiKeyMode, ApiKeys } from '@/core/enrich/types';
 import {
   defaultOnboardingProfile,
@@ -87,8 +88,10 @@ export const useAppStore = create<AppState>((set) => ({
   onboardingProfile: null,
   apiKeys: defaultApiKeys(),
 
-  setDate: (domain, date) =>
-    set(() => ({ [domain]: { date, entries: [] } }) as Partial<AppState>),
+  setDate: (domain, date) => {
+    log.store(`setDate ${domain}`, { date });
+    return set(() => ({ [domain]: { date, entries: [] } }) as Partial<AppState>);
+  },
 
   setEntries: (domain, entries) =>
     set((s) => ({ [domain]: { ...s[domain], entries } }) as Partial<AppState>),
@@ -154,12 +157,14 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   setTheme: async (theme) => {
+    log.store('setTheme', { theme });
     applyTheme(theme);
     set({ theme });
     await SettingsRepository.set(THEME_KEY, theme);
   },
 
   setLang: async (lang) => {
+    log.store('setLang', { lang });
     set({ lang });
     await SettingsRepository.set(LANG_KEY, lang);
   },

@@ -11,6 +11,7 @@ import { OnboardingOutliner } from '@/components/organisms/OnboardingOutliner';
 import { TotalsDock } from '@/components/organisms/TotalsDock';
 import { Spacing } from '@/constants/theme';
 import { addDays, todayISO } from '@/core/date';
+import { log } from '@/core/log';
 import {
   buildOnboardingSummary,
   defaultOnboardingProfile,
@@ -92,8 +93,16 @@ export function OnboardingTemplate() {
   // reveals itself line by line instead of dumping nine blocks at once.
   const visible = questions.slice(0, activeIndex(questions, active) + 1);
 
-  const answer = (id: Question['id'], value: string | string[]) =>
+  // The single place every onboarding answer flows through — pick, skip, date
+  // save, picker done. Logging here is what tells the terminal WHICH field was
+  // captured and WHAT value, instead of a dozen identical "pular"/"Concluir"
+  // taps with no context.
+  const answer = (id: Question['id'], value: string | string[]) => {
+    log.nav(`onboarding: ${id}`, {
+      value: Array.isArray(value) ? (value.length ? value : '(skipped)') : value,
+    });
     setAnswers((current) => ({ ...current, [id]: value }));
+  };
 
   const pick = (question: Question, option: QuestionOption) => {
     if (question.kind !== 'multi') {

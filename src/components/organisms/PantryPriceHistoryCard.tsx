@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
@@ -9,6 +8,7 @@ import { MultiLineChart } from '@/components/molecules/MultiLineChart';
 import { PantryRepository } from '@/data/PantryRepository';
 import { pantryPriceChart, type PantryPriceChart } from '@/domains/pantry';
 import { formatMoney } from '@/domains/purchase';
+import { useRepositoryData } from '@/hooks/useRepositoryData';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 
@@ -32,19 +32,13 @@ const MAX_LINES = 6;
  */
 export function PantryPriceHistoryCard() {
   const colors = useColors();
-  const [chart, setChart] = useState<PantryPriceChart | null>(null);
-
   // Read on open, like `PantrySheet` and `FoodRecipeCard`: the shelf is derived
   // from every purchase note, not held in memory.
-  useEffect(() => {
-    let alive = true;
-    void PantryRepository.all().then((items) => {
-      if (alive) setChart(pantryPriceChart(items.slice(0, MAX_LINES)));
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const chart = useRepositoryData<PantryPriceChart | null>(
+    async () => pantryPriceChart((await PantryRepository.all()).slice(0, MAX_LINES)),
+    null,
+    [],
+  );
 
   if (!chart) return null;
 

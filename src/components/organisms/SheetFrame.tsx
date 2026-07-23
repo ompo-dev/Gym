@@ -1,15 +1,10 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {
-  Keyboard,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  type KeyboardEvent,
-  View,
-} from "react-native";
+  Keyboard, Modal, ScrollView, StyleSheet, type KeyboardEvent, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { LoggedPressable } from "@/components/atoms/Logged";
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -87,7 +82,7 @@ export function SheetFrame({
   );
 
   const closeButton = (
-    <Pressable
+    <LoggedPressable
       onPress={onClose}
       hitSlop={10}
       accessibilityRole="button"
@@ -96,7 +91,7 @@ export function SheetFrame({
       <GlassSurface glass="regular" isInteractive style={styles.iconButton}>
         <AppIcon name="x" color={colors.textSecondary} size={18} />
       </GlassSurface>
-    </Pressable>
+    </LoggedPressable>
   );
 
   const header = centerTitle ? (
@@ -207,9 +202,10 @@ export function SheetFrame({
       onDismiss={onDismiss}
     >
       <View style={[styles.modal, { backgroundColor: colors.overlay }]}>
-        <Pressable
+        <LoggedPressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
+          accessibilityRole="button"
           accessibilityLabel={t("common.close")}
         />
         <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>

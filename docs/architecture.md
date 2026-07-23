@@ -150,9 +150,50 @@ consulta SQLite e troca apenas a lista visivel.
 Ele cria entradas em `thinking`, salva localmente, chama IA quando necessario,
 aplica cache LRU, faz backoff em falha de rede e atualiza repository + store.
 
+O cache LRU (`src/core/cache/lru.ts`) **nao** e uma camada entre store e banco:
+e dedupe de resultado da IA, chaveado por hash do texto + contexto. Store <-
+repository <- SQLite e o caminho de leitura; o LRU so evita reprocessar uma nota
+identica. Nao existe tier de cache generico, de proposito — seria estado a mais
+para sincronizar sem ganho.
+
+Duas notas nascem de uma quando o modelo devolve mais de uma acao: "comprei X e
+comi Y" volta como `notes[]` e o bus explode em uma nota por acao num
+`CompositeCommand` (um undo desfaz o conjunto), igual ao plano de treino que vira
+uma nota por exercicio. Nota de refeicao que puxa da geladeira e vinculada e
+reprecificada com o produto real em `attachPantryProvenance` antes de resolver.
+
 Comida com foto/barcode tem caminho especial em `DayTemplate`, porque precisa
 juntar dados de Open Food Facts, imagens, descricoes e nota em um unico
 resultado.
+
+## Geladeira (derivada, nunca armazenada)
+
+Nao ha tabela de estoque. `PantryRepository.all()` = `pantryItems(EntryRepository
+.findAll('food'))`: cada leitura recalcula a partir das notas de compra e das
+notas de refeicao que puxaram da geladeira. Comer desconta grama; apagar a nota
+apaga o desconto e o proximo recalculo devolve o estoque — sem ledger, sem
+codigo de reversao. Os componentes da geladeira (`PantrySheet`,
+`FoodRecipeCard`, `PantryPriceHistoryCard`, e a proveniencia no detalhe) leem o
+repository sob demanda ao abrir, fora do store — mesma regra do historico de
+treino, pois nao e o dia visivel e sincronizar no store nao pagaria por si.
+
+## Observabilidade
+
+`src/core/log.ts` e um logger unico para o terminal do `expo start`. Silencioso
+em release (`__DEV__`) e sob jest (`NODE_ENV === 'test'`). A instrumentacao mora
+nos pontos por onde tudo ja passa, nao espalhada por componente:
+
+- `useAppModalStore`: toda navegacao (sheet/modal/menu/picker) com de -> para.
+- `CommandBus`: ciclo de vida da nota (add/edit/delete/undo/retry/split/resolved).
+- `enrich/client` + `enrich/deepseek`: request e response reais, com `usage` de
+  cache do DeepSeek (hit/miss) e o corpo inteiro no erro.
+- `useAppStore`, `EntryRepository`: troca de dia e escritas no banco.
+- `installErrorLogging` (chamado no root): todo erro/rejeicao nao tratada.
+
+`LoggedPressable`/`LoggedTextInput` (`src/components/atoms/Logged.tsx`) sao
+drop-ins que logam tap/foco a partir do `accessibilityLabel`. Cada letra e cada
+frame de scroll ficam atras de `logConfig.verbose` — firehose desligado por
+padrao.
 
 ## IA
 
@@ -198,8 +239,14 @@ Hoje o uso nativo aparece em:
 - carbs: roxo.
 - fat: amarelo.
 - water: azul claro.
+- sugar / fiber / sodium: os micronutrientes. Eram os mesmos tres hexes copiados
+  na sheet de metas, no detalhe e no editor de nutricao — hoje sao tokens. A
+  chave da config (`key: 'sugar'`) coincide com o token, entao o render resolve
+  `colors[stat.key]` sem repetir cor. Neutros por tema (iguais em light/dark)
+  para preservar a aparencia; podem ganhar valor por tema se o contraste exigir.
 
 Os totais e inputs usam estes tokens; numeros principais ficam em texto do tema.
+Regra: cor repetida em 3+ lugares vira token aqui, nunca hex solto no componente.
 
 ## Limites Atuais
 

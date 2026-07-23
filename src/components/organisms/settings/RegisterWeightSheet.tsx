@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, TextInput, View } from "react-native";
+import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -93,9 +94,10 @@ export function RegisterWeightSheet({
         >
           Peso
         </AppText>
-        <Pressable
+        <LoggedPressable
           onPress={openWeightPicker}
           accessibilityRole="button"
+          accessibilityLabel={`Peso: ${formatWeight(weightKg)}`}
           style={({ pressed }) => [
             styles.formRowCard,
             { backgroundColor: colors.backgroundElement },
@@ -104,7 +106,7 @@ export function RegisterWeightSheet({
         >
           <AppText variant="body">{formatWeight(weightKg)}</AppText>
           <Chevron />
-        </Pressable>
+        </LoggedPressable>
       </View>
 
       <View style={styles.formSection}>
@@ -171,9 +173,10 @@ export function RegisterWeightSheet({
         </View>
       </View>
 
-      <Pressable
+      <LoggedPressable
         onPress={save}
         accessibilityRole="button"
+        accessibilityLabel="Save Weight"
         style={({ pressed }) => [
           settingsStyles.primaryAction,
           { backgroundColor: TINT.purple },
@@ -183,7 +186,7 @@ export function RegisterWeightSheet({
         <AppText variant="heading" color="#FFFFFF">
           Save Weight
         </AppText>
-      </Pressable>
+      </LoggedPressable>
     </PageSheet>
   );
 }
