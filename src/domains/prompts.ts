@@ -191,7 +191,16 @@ export const recipePrompt = [
  */
 export const foodRouterPrompt = [
   'You receive ONE note typed into the diet tab of a notes app.',
-  'FIRST decide what the person meant, THEN answer in the matching shape.',
+  // Counting the actions has to be step one. When this said "decide what the
+  // person meant, then answer in the matching shape" — singular — the model
+  // picked ONE branch and silently dropped the rest: "comprei batatas e comi
+  // repolho" came back as a meal of cabbage, and the groceries vanished.
+  'STEP 1: count the distinct actions in the note. STEP 2: answer.',
+  'EXACTLY ONE action — answer in that action\'s bare shape (MEAL, PURCHASE or RECIPE below).',
+  'MORE THAN ONE action — you MUST return { "notes": [ { "text": string, "data": <MEAL | RECIPE | PURCHASE> } ] }, one entry per action, and never wrap a single action in "notes".',
+  'NEVER drop an action. If answering in one shape would force you to ignore part of the note, that note is a SPLIT.',
+  'Example: "comprei batatas e comi repolho" is TWO actions — a PURCHASE of batatas and a LOG of repolho. Answering with only the cabbage loses the shopping.',
+  'Each split note carries its OWN "text": the fragment it covers, rewritten to stand alone.',
   'Decide from meaning, never from keywords: people type casually, with typos, without accents, and mixing Portuguese and English.',
   'LOG — the note records food or drink they ate, are eating, or are recording as eaten. Answer in the MEAL shape.',
   'PURCHASE — the note records groceries they BOUGHT. Nothing was eaten. Answer in the PURCHASE shape.',
@@ -205,13 +214,10 @@ export const foodRouterPrompt = [
   'A line starting "Already scanned and identified:" lists food the person has in hand — it is attached exactly like a photo. Treat those foods as available ingredients, and read a request beside them as pointing AT them. When the note also names ingredients of its own, the person has both.',
   'Read the typed text AND the images together — never answer from only one of them when both are present.',
   'Asking is not eating: never return a plain MEAL for a note that requested a dish.',
-  'If a note both records a purchase and asks for something, treat it as RECIPE.',
-  // The split. "comprei 3 coisas e comi 4" is two actions, not one — the app
-  // stores each as its own note, so mixing them into a single shape loses one.
-  'SPLIT — when ONE note records MORE THAN ONE distinct action (bought some things AND ate others, ate a meal AND asked for a recipe, etc.), return { "notes": [ { "text": string, "data": <MEAL | RECIPE | PURCHASE> } ] } with one entry per action.',
-  'Each split note carries its OWN "text" — the fragment of the note it covers, rewritten to stand alone — and its OWN data in the matching shape.',
-  'A note with a SINGLE action is NOT a split: return its bare shape, never wrap one action in "notes".',
-  'When the person ate something they had bought or had in the pantry, that is still a MEAL. Return it in the MEAL shape as usual — the app reconciles it against the fridge, you do not.',
+  // This used to say "treat it as RECIPE", which threw the purchase away — the
+  // exact drop STEP 1 exists to prevent. Buying and asking are two actions.
+  'A note that records a purchase AND asks for a dish is TWO actions: split it into a PURCHASE and a RECIPE.',
+  'When the person ate something they had bought or had in the pantry, that is still ONE action, a MEAL. Return the MEAL shape — the app reconciles it against the fridge, you do not.',
   '=== MEAL shape ===',
   promptByDomain.food,
   '=== RECIPE — the MEAL shape plus this ===',

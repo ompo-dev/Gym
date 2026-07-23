@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -93,18 +93,32 @@ export function OnboardingTemplate() {
   // reveals itself line by line instead of dumping nine blocks at once.
   const visible = questions.slice(0, activeIndex(questions, active) + 1);
 
-  // The single place every onboarding answer flows through — pick, skip, date
-  // save, picker done. Logging here is what tells the terminal WHICH field was
-  // captured and WHAT value, instead of a dozen identical "pular"/"Concluir"
-  // taps with no context.
+  const store = (id: Question['id'], value: string | string[]) =>
+    setAnswers((current) => ({ ...current, [id]: value }));
+
+  /**
+   * A settled answer: a tap on an option, a skip, a date saved, a picker
+   * confirmed. Logged, because each is one deliberate decision.
+   */
   const answer = (id: Question['id'], value: string | string[]) => {
     log.nav(`onboarding: ${id}`, {
       value: Array.isArray(value) ? (value.length ? value : '(skipped)') : value,
     });
-    setAnswers((current) => ({ ...current, [id]: value }));
+    store(id, value);
   };
 
+  /**
+   * Free text, stored on every keystroke but NOT logged there — one line per
+   * letter buries the log. `LoggedTextInput` already carries the per-keystroke
+   * firehose behind `logConfig.verbose`; the settled value is logged on blur.
+   */
+  const typeAnswer = (id: Question['id'], text: string) => store(id, text);
+
   const pick = (question: Question, option: QuestionOption) => {
+    // Touching anything else means the text field is done — `keyboardShould
+    // PersistTaps="handled"` keeps the keyboard up for a tap it handles, which
+    // is right for the tap but wrong for the field left focused behind it.
+    Keyboard.dismiss();
     if (question.kind !== 'multi') {
       answer(question.id, option.value);
       return;
@@ -121,6 +135,7 @@ export function OnboardingTemplate() {
   };
 
   const openSheet = (question: Question) => {
+    Keyboard.dismiss();
     if (question.kind === 'date') {
       const id = question.id as 'birthDate' | 'goalDate';
       setSheet({
@@ -187,11 +202,29 @@ export function OnboardingTemplate() {
                 display={displayFor(question, answers, lang)}
                 notes={question.allowsText ? notes : undefined}
                 listText={typeof answers[question.id] === 'string' ? (answers[question.id] as string) : ''}
-                onChangeList={(text) => answer(question.id, text)}
+                onChangeList={(text) => typeAnswer(question.id, text)}
                 onPick={(option) => pick(question, option)}
                 onOpenSheet={() => openSheet(question)}
-                onSkip={() => answer(question.id, [])}
+                onSkip={() => {
+                  Keyboard.dismiss();
+                  answer(question.id, []);
+                }}
                 onChangeNotes={setNotes}
+                // The keyboard shrinks the viewport without moving the content,
+                // so the line being typed lands behind it. The active question
+                // is always the last block, so scrolling to the end puts it
+                // above the keyboard. Deferred one frame past the keyboard
+                // animation, or it scrolls to the pre-keyboard height.
+                onFocusInput={() => {
+                  setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+                }}
+                // One line with the finished text, instead of one per letter.
+                onBlurInput={() => {
+                  const value = answers[question.id];
+                  if (typeof value === 'string' && value.trim()) {
+                    log.nav(`onboarding: ${question.id}`, { value });
+                  }
+                }}
               />
             ))}
           </ScrollView>

@@ -40,6 +40,10 @@ import {
   type PickerValue,
 } from "./onboardingUtils";
 
+/** Exact by definition, so a round trip kg → lb → kg lands back on itself. */
+const LB_PER_KG = 2.2046226218487757;
+const KG_PER_LB = 0.45359237;
+
 export function PrimaryButton({
   label,
   onPress,
@@ -172,10 +176,18 @@ export function PickerSheet({
   const isWeightPicker =
     activePicker === "weight" || activePicker === "goalWeight";
   const [heightUnit, setHeightUnit] = useState<"cm" | "ftin">("cm");
-  const [weightKgSelection, setWeightKgSelection] = useState(0);
-  const [weightGramSelection, setWeightGramSelection] = useState(0);
-  const weightKgOptions = useMemo(() => range(45, 180, 1), []);
-  const weightGramOptions = useMemo(() => range(0, 900, 100), []);
+  // Display unit only — the profile always stores kilos, exactly like the
+  // height picker offers ft/in while `heightCm` stays centimetres. Converting
+  // at the two edges (fill in, read out) keeps one unit in the data.
+  const [weightUnit, setWeightUnit] = useState<"kg" | "lb">("kg");
+  // Whole part and tenths, in whatever unit is on screen.
+  const [weightWholeSelection, setWeightWholeSelection] = useState(0);
+  const [weightTenthSelection, setWeightTenthSelection] = useState(0);
+  const weightWholeOptions = useMemo(
+    () => (weightUnit === "lb" ? range(100, 400, 1) : range(45, 180, 1)),
+    [weightUnit],
+  );
+  const weightTenthOptions = useMemo(() => range(0, 900, 100), []);
 
   const items = useMemo(
     () =>
@@ -263,11 +275,11 @@ export function PickerSheet({
 
   useEffect(() => {
     if (!isWeightPicker || typeof selected !== "number") return;
-    const kg = Math.floor(selected);
-    const grams = Math.round((selected - kg) * 10) * 100;
-    setWeightKgSelection(kg);
-    setWeightGramSelection(grams);
-  }, [isWeightPicker, selected]);
+    const shown = weightUnit === "lb" ? selected * LB_PER_KG : selected;
+    const whole = Math.floor(shown);
+    setWeightWholeSelection(whole);
+    setWeightTenthSelection(Math.round((shown - whole) * 10) * 100);
+  }, [isWeightPicker, selected, weightUnit]);
 
   if (!picker) return null;
 
@@ -362,36 +374,62 @@ export function PickerSheet({
                 })}
               </View>
             ) : null}
+            {/* Same affordance the height picker already had — the unit is a
+                switch inside the picker, not a question of its own. */}
+            {isWeightPicker ? (
+              <View style={styles.segmented}>
+                {(["kg", "lb"] as const).map((unit) => {
+                  const active = weightUnit === unit;
+                  return (
+                    <LoggedPressable
+                      key={unit}
+                      onPress={() => setWeightUnit(unit)}
+                      accessibilityRole="button"
+                      accessibilityLabel={unit}
+                      accessibilityState={{ selected: active }}
+                      style={[styles.segment, active && styles.segmentActive]}
+                    >
+                      <AppText
+                        variant="label"
+                        color={active ? colors.text : colors.textSecondary}
+                      >
+                        {unit}
+                      </AppText>
+                    </LoggedPressable>
+                  );
+                })}
+              </View>
+            ) : null}
           </View>
           {activePicker !== "goalDate" ? (
             isWeightPicker ? (
               <View style={styles.weightPickerRow}>
                 <Picker
-                  selectedValue={weightKgSelection}
-                  onValueChange={(value) => setWeightKgSelection(value)}
+                  selectedValue={weightWholeSelection}
+                  onValueChange={(value) => setWeightWholeSelection(value)}
                   itemStyle={styles.pickerItem}
                   style={styles.weightPickerColumn}
                 >
-                  {weightKgOptions.map((kg) => (
+                  {weightWholeOptions.map((whole) => (
                     <Picker.Item
-                      key={kg}
-                      label={`${kg} kg`}
-                      value={kg}
+                      key={whole}
+                      label={`${whole} ${weightUnit}`}
+                      value={whole}
                       color={colors.text}
                     />
                   ))}
                 </Picker>
                 <Picker
-                  selectedValue={weightGramSelection}
-                  onValueChange={(value) => setWeightGramSelection(value)}
+                  selectedValue={weightTenthSelection}
+                  onValueChange={(value) => setWeightTenthSelection(value)}
                   itemStyle={styles.pickerItem}
                   style={styles.weightPickerColumn}
                 >
-                  {weightGramOptions.map((grams) => (
+                  {weightTenthOptions.map((tenths) => (
                     <Picker.Item
-                      key={grams}
-                      label={`${grams} g`}
-                      value={grams}
+                      key={tenths}
+                      label={weightUnit === "lb" ? `,${tenths / 100}` : `${tenths} g`}
+                      value={tenths}
                       color={colors.text}
                     />
                   ))}
@@ -445,8 +483,12 @@ export function PickerSheet({
           <PrimaryButton
             label={text.pickerDone}
             onPress={() => {
+              // Back to kilos on the way out, whatever the wheel was showing.
+              const shown = weightWholeSelection + weightTenthSelection / 1000;
               const nextValue = isWeightPicker
-                ? weightKgSelection + weightGramSelection / 1000
+                ? weightUnit === "lb"
+                  ? Math.round(shown * KG_PER_LB * 10) / 10
+                  : shown
                 : (nativeItems.find((item) => item.nativeValue === iosSelection)
                     ?.value ?? null);
               onPick(activePicker, nextValue);

@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react-native';
-import { StyleSheet, TextInput, View } from 'react-native';
-import { LoggedPressable } from '@/components/atoms/Logged';
+import { StyleSheet, View } from 'react-native';
+import { LoggedPressable, LoggedTextInput } from '@/components/atoms/Logged';
 
 import { AppText } from '@/components/atoms/AppText';
 import { Metrics, Spacing } from '@/constants/theme';
@@ -22,6 +22,14 @@ interface OnboardingOutlinerProps {
   onOpenSheet: () => void;
   onSkip: () => void;
   onChangeNotes: (text: string) => void;
+  /**
+   * A text field took focus. The parent scrolls the block into view — the
+   * keyboard shrinks the scroll viewport but does not move its content, so the
+   * line being typed ends up behind the keyboard without this.
+   */
+  onFocusInput?: () => void;
+  /** The field was left — the parent logs the settled text once, here. */
+  onBlurInput?: () => void;
 }
 
 /**
@@ -43,6 +51,8 @@ export function OnboardingOutliner({
   onOpenSheet,
   onSkip,
   onChangeNotes,
+  onFocusInput,
+  onBlurInput,
 }: OnboardingOutlinerProps) {
   const colors = useColors();
   const answered = isAnswered(answers, question.id);
@@ -120,9 +130,12 @@ export function OnboardingOutliner({
                 {answered ? '✓' : '1.'}
               </AppText>
             </View>
-            <TextInput
+            <LoggedTextInput
+              label={question.question}
               value={listText ?? ''}
               onChangeText={onChangeList}
+              onFocus={onFocusInput}
+              onBlur={onBlurInput}
               placeholder={t('onboarding.listPlaceholder')}
               placeholderTextColor={colors.textTertiary}
               multiline
@@ -159,9 +172,12 @@ export function OnboardingOutliner({
                 {'+'}
               </AppText>
             </View>
-            <TextInput
+            <LoggedTextInput
+              label={t('onboarding.notesPlaceholder')}
               value={notes ?? ''}
               onChangeText={onChangeNotes}
+              onFocus={onFocusInput}
+              onBlur={onBlurInput}
               placeholder={t('onboarding.notesPlaceholder')}
               placeholderTextColor={colors.textTertiary}
               multiline

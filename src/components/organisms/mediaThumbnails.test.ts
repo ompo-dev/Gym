@@ -54,3 +54,23 @@ test('photo drafts carry no nutrition, so they are not listed here', () => {
 test('the router prompt knows the prefix the composer writes', () => {
   expect(foodRouterPrompt).toContain(SCANNED_PREFIX);
 });
+
+// "comprei batatas e comi repolho" came back as a meal of cabbage — the
+// groceries were dropped because SPLIT sat 15 rules deep, after the model had
+// already been told to answer "in the matching shape". Counting the actions has
+// to be the first instruction, and the failing note has to be the example.
+test('the router is told to count actions before choosing a shape', () => {
+  const stepOne = foodRouterPrompt.indexOf('STEP 1');
+  const firstShape = foodRouterPrompt.indexOf('LOG —');
+
+  expect(stepOne).toBeGreaterThanOrEqual(0);
+  expect(stepOne).toBeLessThan(firstShape);
+  expect(foodRouterPrompt).toContain('NEVER drop an action');
+  expect(foodRouterPrompt).toContain('comprei batatas e comi repolho');
+});
+
+// The old rule collapsed buy+ask into RECIPE, throwing the purchase away — the
+// exact drop the split exists to stop.
+test('buying and asking in one note is a split, not a recipe', () => {
+  expect(foodRouterPrompt).not.toContain('treat it as RECIPE');
+});

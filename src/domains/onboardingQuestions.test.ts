@@ -19,8 +19,10 @@ test('the script covers every field the summary is sensitive to', () => {
     'weightKg',
     'goalWeightKg',
     'goalDate',
+    // Sem 'weightUnit': as perguntas de peso ja sao em kg, entao perguntar a
+    // unidade depois e pedir para confirmar o que a pessoa acabou de responder.
+    // Virou a chavinha kg/lb dentro do proprio seletor de peso.
     'activity',
-    'weightUnit',
     'trainingLevel',
     'workoutGoal',
     'considerations',

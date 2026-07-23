@@ -175,13 +175,11 @@ export function buildQuestions(lang: Lang): Question[] {
         Icon: o.Icon,
       })),
     },
-    {
-      ...base('weightUnit', 'choice'),
-      options: [
-        { value: 'kg', label: t('onboarding.unit.kg') },
-        { value: 'lb', label: t('onboarding.unit.lb') },
-      ],
-    },
+    // `weightUnit` deliberadamente NAO e perguntado: as perguntas de peso ja
+    // vieram em kg, entao perguntar depois e pedir para confirmar o que o
+    // usuario acabou de responder. A unidade agora e uma chavinha dentro do
+    // proprio seletor de peso, como cm/ft-in ja era na altura. O campo continua
+    // no perfil com default 'kg'.
     {
       ...base('trainingLevel', 'choice'),
       options: [
