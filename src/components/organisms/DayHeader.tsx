@@ -18,6 +18,8 @@ interface DayHeaderProps {
   /** Absent (or with nothing to save) leaves the slot empty, keeping the nav centred. */
   onSaveDay?: () => void;
   canSaveDay?: boolean;
+  /** True once this day's routine has been saved — fills the bookmark, matching the meal-save affordance. */
+  daySaved?: boolean;
 }
 
 export function DayHeader({
@@ -29,6 +31,7 @@ export function DayHeader({
   onOpenSettings,
   onSaveDay,
   canSaveDay = false,
+  daySaved = false,
 }: DayHeaderProps) {
   const colors = useColors();
 
@@ -39,10 +42,17 @@ export function DayHeader({
           onPress={onSaveDay}
           hitSlop={10}
           accessibilityRole="button"
+          accessibilityState={{ selected: daySaved }}
           accessibilityLabel={t('routine.saveDay')}>
-          <GlassSurface glass="regular" isInteractive style={styles.settingsButton}>
-            <AppIcon name="bookmark" color={colors.textSecondary} size={18} />
-          </GlassSurface>
+          {daySaved ? (
+            <View style={[styles.settingsButton, styles.savedButton]}>
+              <AppIcon name="bookmark" color={colors.background} fill={colors.background} size={18} />
+            </View>
+          ) : (
+            <GlassSurface glass="regular" isInteractive style={styles.settingsButton}>
+              <AppIcon name="bookmark" color={colors.textSecondary} size={18} />
+            </GlassSurface>
+          )}
         </LoggedPressable>
       ) : (
         <View style={styles.sideSpacer} />
@@ -78,5 +88,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  savedButton: {
+    backgroundColor: '#FFFFFF',
   },
 });

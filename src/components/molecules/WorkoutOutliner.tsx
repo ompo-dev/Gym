@@ -253,6 +253,11 @@ export function WorkoutOutliner({
   const linesRef = useRef(lines);
   const focusedRef = useRef<number | null>(null);
   const syncedText = useRef(entry.text);
+  // The text a blur just committed, held until the store round-trips it back.
+  // Editing re-enriches (status → thinking, data → null), and that is async, so
+  // for a frame the headline would otherwise render the *old* resolved
+  // `data.exercise` — the "name flashed back to the old one" bug.
+  const pendingCommit = useRef<string | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -275,6 +280,9 @@ export function WorkoutOutliner({
   }, [lines]);
 
   useEffect(() => {
+    if (pendingCommit.current !== null && entry.text === pendingCommit.current) {
+      pendingCommit.current = null;
+    }
     if (entry.text !== syncedText.current && focusedRef.current === null) {
       syncedText.current = entry.text;
       setLines(splitLines(entry.text));
@@ -376,7 +384,10 @@ export function WorkoutOutliner({
       onDelete(entry);
       return;
     }
-    if (text !== entry.text) onEdit(entry, text);
+    if (text !== entry.text) {
+      pendingCommit.current = text;
+      onEdit(entry, text);
+    }
   };
 
   const reportFocusedLine = (index: number) => {
@@ -488,7 +499,12 @@ export function WorkoutOutliner({
       .catch(() => setExerciseSaved(!next));
   };
 
-  const exerciseValue = focused === 0 ? lines[0] : formattedExercise(entry, lines[0] ?? '');
+  // While a commit is in flight, keep showing the buffer (what the user typed)
+  // rather than the stale resolved name — see `pendingCommit`.
+  const exerciseValue =
+    focused === 0 || pendingCommit.current !== null
+      ? lines[0]
+      : formattedExercise(entry, lines[0] ?? '');
 
   return (
     <View style={styles.container}>

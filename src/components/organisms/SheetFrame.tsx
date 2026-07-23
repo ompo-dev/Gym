@@ -177,6 +177,7 @@ export function SheetFrame({
 
   const content = scroll ? (
     <ScrollView
+      style={styles.sheetScroll}
       contentContainerStyle={[
         styles.content,
         scrollBottomInset > 0 && { paddingBottom: scrollBottomInset },
@@ -208,7 +209,10 @@ export function SheetFrame({
           accessibilityRole="button"
           accessibilityLabel={t("common.close")}
         />
-        <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
+        <SafeAreaView
+          style={styles.safe}
+          edges={["left", "right", "bottom"]}
+          pointerEvents="box-none">
           <GlassSurface glass="regular" style={styles.sheet}>
             {handle}
             {header}
@@ -227,8 +231,22 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   safe: {
+    // Fill the screen so the card can anchor to the bottom AND so the sheet's
+    // percentage maxHeight has a definite height to resolve against. box-none in
+    // the JSX lets taps on the empty area above the card fall through to the
+    // backdrop that closes the sheet.
+    flex: 1,
+    justifyContent: "flex-end",
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.four,
+  },
+  // The card hugs its content (flexGrow 0) but yields (flexShrink 1) once the
+  // content would push the sheet past maxHeight — that is what turns on scroll
+  // instead of clipping. Only the bottom-sheet mode uses this; `size="full"`
+  // has its own full-height ScrollView.
+  sheetScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
   },
   fill: {
     flex: 1,

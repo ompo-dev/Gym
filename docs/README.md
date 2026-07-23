@@ -11,6 +11,7 @@ principalmente para enriquecimento por IA e consulta de codigo de barras.
 - [Fluxos de dados](./data-flows.md): caminhos completos de onboarding, notas, IA, fotos, barcode e edicao.
 - [Contratos de dados](./data-contracts.md): formatos JSON, tabelas SQLite, payloads da IA e schemas principais.
 - [Padroes do projeto](./patterns.md): convencoes para evoluir a aplicacao sem baguncar o fluxo.
+- [Integracao com a Siri](./siri-integration.md): mapa de funcionalidades + deep link `gym://add` que a Siri/Atalhos dispara.
 
 ## Principios do Produto
 

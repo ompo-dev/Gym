@@ -257,6 +257,7 @@ export function DayTemplate<TData, TTotals>({
   const [foodMediaMenuVisible, setFoodMediaMenuVisible] = useState(false);
   const [foodMediaDrafts, setFoodMediaDrafts] = useState<FoodMediaDraft[]>([]);
   const [savedExerciseEntryIds, setSavedExerciseEntryIds] = useState<Set<string>>(new Set());
+  const [daySaved, setDaySaved] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const undoCommand = useRef<Promise<Command> | null>(null);
   const barcodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -768,9 +769,17 @@ export function DayTemplate<TData, TTotals>({
     (name: string, weekday: Weekday | null) => {
       closeAppModal('day.saveRoutine');
       void SavedRoutineRepository.save(config.id, name, routineItems, weekday, date);
+      setDaySaved(true);
     },
     [closeAppModal, config.id, date, routineItems],
   );
+
+  // A saved snapshot goes stale the moment the day changes or its items do, so
+  // the filled bookmark falls back to the empty one — nothing here dedupes by
+  // day, so "saved" means "saved this exact set", not "exists somewhere".
+  useEffect(() => {
+    setDaySaved(false);
+  }, [date, routineItems]);
 
   const openSavedExercisePicker = useCallback(() => {
     if (!canOpenAppModal('day.root', 'workout.savedExercisePicker')) return;
@@ -864,6 +873,7 @@ export function DayTemplate<TData, TTotals>({
           <DayHeader
             onSaveDay={openSaveRoutine}
             canSaveDay={routineItems.length > 0}
+            daySaved={daySaved}
             date={date}
             canNext={canGoNext}
             onPrev={goPrev}
