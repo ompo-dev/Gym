@@ -9,7 +9,8 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.ompinho.gymnotes",
-      "icon": "./assets/gym.icon"
+      "icon": "./assets/gym.icon",
+      "appleTeamId": "0000000000"
     },
     "android": {
       "package": "com.ompinho.gymnotes",
@@ -54,7 +55,8 @@
         {
           "photosPermission": "Permitir que o Gym acesse suas fotos para anexar imagens de alimentos e cardapios"
         }
-      ]
+      ],
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,

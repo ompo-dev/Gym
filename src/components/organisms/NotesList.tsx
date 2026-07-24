@@ -280,8 +280,14 @@ export function NotesList<TData, TTotals>({
     });
   };
 
+  // The tall bottom padding only exists to centre a focused line while the
+  // keyboard is up. With the keyboard down it turned into an over-scroll dead
+  // zone: dragging up scrolled into the empty space and pushed every note (and
+  // the composer) off-screen. Keep it minimal when nothing is being edited.
   const contentPaddingBottom =
-    viewportHeight > 0 ? Math.max(Spacing.four, Math.round(viewportHeight * 0.45)) : Spacing.four;
+    keyboardVisible && viewportHeight > 0
+      ? Math.max(Spacing.four, Math.round(viewportHeight * 0.45))
+      : Spacing.four;
 
   return (
     <View

@@ -235,6 +235,22 @@ struct LogToGym: AppIntent {
 atrito, e só adicionar App Intents quando houver um build nativo dedicado
 (fora do Expo Go).
 
+### 8.1 Scaffold nativo (feito — 2026-07-24)
+
+Agora existe um target nativo em [`targets/widget/`](../targets/widget/) via
+`@bacons/apple-targets` (plugin em `app.json`), **deep-link only** (sem App
+Group): um `AppIntent` `AddToGymIntent` + `GymShortcuts` (`AppShortcutsProvider`)
+que abrem `gym://add?...`, mais um Widget "Adicionar no Gym" (Comida / Treino)
+que faz `Link` pro mesmo deep link. `ios.appleTeamId` é um placeholder
+(`0000000000`) porque o build é unsigned (workflow YML) e o sideloadly re-assina.
+
+**Não verificável no Windows** (prebuild iOS + Swift só compilam no macOS) —
+o teste é o build do workflow + sideloadly no device. **Incerteza conhecida:** o
+`AppShortcutsProvider` num *widget extension* pode não ser exposto pela Siri; se
+as frases não aparecerem, o fallback garantido é o Atalho manual (§5), e a
+correção seria mover o provider pro target principal. Widget com dados ao vivo
+(totais de hoje) fica pra depois — precisa App Group + storage compartilhado.
+
 ---
 
 ## 9. Limitações e roadmap
