@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {
   Keyboard, Modal, ScrollView, StyleSheet, type KeyboardEvent, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LoggedPressable } from "@/components/atoms/Logged";
 
@@ -48,6 +48,7 @@ export function SheetFrame({
   size = "sheet",
 }: SheetFrameProps) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const isFull = size === "full";
   const [headerHeight, setHeaderHeight] = useState(0);
   const [keyboardInset, setKeyboardInset] = useState(0);
@@ -119,16 +120,19 @@ export function SheetFrame({
   // Native iOS page sheet with a glass header that frosts content scrolling under it.
   if (isFull) {
     const page = (
-        <SafeAreaView
-          style={[styles.fill, { backgroundColor: colors.background }]}
-          edges={["bottom"]}
-        >
+        // Not a bottom-inset SafeAreaView: that left a fixed background band
+        // under the scroll. The scroll fills edge to edge and the safe area is
+        // folded into the content padding, so the last card clears the home
+        // indicator without a dead bar below it.
+        <View style={[styles.fill, { backgroundColor: colors.background }]}>
           <ScrollView
             style={styles.fill}
             contentContainerStyle={[
               styles.contentFull,
-              { paddingTop: headerHeight + Spacing.four },
-              scrollBottomInset > 0 && { paddingBottom: Spacing.four + scrollBottomInset },
+              {
+                paddingTop: headerHeight + Spacing.four,
+                paddingBottom: Spacing.four + insets.bottom + scrollBottomInset,
+              },
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -159,7 +163,7 @@ export function SheetFrame({
             {header}
           </View>
           {overlay}
-        </SafeAreaView>
+        </View>
     );
 
     return (

@@ -380,7 +380,7 @@ export function FoodEntryDetailSheet({
         title={t('details.nutrition')}
         onClose={onClose}
         size="full"
-        contentBottomInset={Math.max(aiScrollInset, Spacing.eight)}
+        contentBottomInset={aiScrollInset}
         overlay={hasActions ? (
           <>
             {!useNativeMenu ? (
