@@ -1,7 +1,7 @@
-import { Check } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 import { LoggedPressable, LoggedTextInput } from '@/components/atoms/Logged';
 
+import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import { Metrics, Spacing } from '@/constants/theme';
 import type { Answers, Question, QuestionOption } from '@/domains/onboardingQuestions';
@@ -91,15 +91,16 @@ export function OnboardingOutliner({
                 style={styles.subLine}>
                 <View style={styles.subMarker}>
                   {picked ? (
-                    <Check size={14} strokeWidth={3} color={tint} />
+                    <AppIcon name="check" size={14} strokeWidth={3} color={tint} />
                   ) : (
                     <AppText variant="caption" color={colors.textTertiary}>
                       {`${index + 1}.`}
                     </AppText>
                   )}
                 </View>
-                {option.Icon ? (
-                  <option.Icon
+                {option.icon ? (
+                  <AppIcon
+                    name={option.icon}
                     size={15}
                     strokeWidth={2.2}
                     color={picked ? tint : colors.textTertiary}
@@ -152,7 +153,7 @@ export function OnboardingOutliner({
             style={styles.subLine}>
             <View style={styles.subMarker}>
               {answered ? (
-                <Check size={14} strokeWidth={3} color={question.color} />
+                <AppIcon name="check" size={14} strokeWidth={3} color={question.color} />
               ) : (
                 <AppText variant="caption" color={colors.textTertiary}>
                   1.

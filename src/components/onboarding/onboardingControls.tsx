@@ -1,4 +1,3 @@
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Modal, ScrollView, StyleSheet, View } from "react-native";
@@ -507,6 +506,86 @@ export function PickerSheet({
   );
 }
 
+const MONTH_LABELS: Record<'pt-BR' | 'en-US', string[]> = {
+  'pt-BR': ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'],
+  'en-US': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+};
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+/**
+ * Day / month / year wheels using the same inline `Picker` as the weight and
+ * height sheets — so the date question feels identical instead of popping the
+ * native Android calendar dialog. Composed dates are clamped to the month's
+ * real length (no Feb 30) and to min/max.
+ */
+function DateWheels({
+  value,
+  lang,
+  minimumDate,
+  maximumDate,
+  onChange,
+}: {
+  value: string;
+  lang: 'pt-BR' | 'en-US';
+  minimumDate?: Date;
+  maximumDate?: Date;
+  onChange: (value: string) => void;
+}) {
+  const { colors, styles } = useOnboardingTheme();
+  const current = isoToDate(value);
+  const year = current.getFullYear();
+  const month = current.getMonth();
+  const day = current.getDate();
+
+  const minYear = minimumDate ? minimumDate.getFullYear() : year - 100;
+  const maxYear = maximumDate ? maximumDate.getFullYear() : year + 8;
+  const years = Array.from({ length: Math.max(1, maxYear - minYear + 1) }, (_, i) => minYear + i);
+  const days = Array.from({ length: daysInMonth(year, month) }, (_, i) => i + 1);
+
+  const commit = (y: number, m: number, d: number) => {
+    const clampedDay = Math.min(d, daysInMonth(y, m));
+    let next = new Date(y, m, clampedDay);
+    if (minimumDate && next < minimumDate) next = minimumDate;
+    if (maximumDate && next > maximumDate) next = maximumDate;
+    onChange(formatISODate(next));
+  };
+
+  return (
+    <View style={styles.weightPickerRow}>
+      <Picker
+        selectedValue={day}
+        onValueChange={(v) => commit(year, month, Number(v))}
+        itemStyle={styles.pickerItem}
+        style={styles.weightPickerColumn}>
+        {days.map((d) => (
+          <Picker.Item key={d} label={String(d)} value={d} color={colors.text} />
+        ))}
+      </Picker>
+      <Picker
+        selectedValue={month}
+        onValueChange={(v) => commit(year, Number(v), day)}
+        itemStyle={styles.pickerItem}
+        style={styles.weightPickerColumn}>
+        {MONTH_LABELS[lang].map((name, i) => (
+          <Picker.Item key={name} label={name} value={i} color={colors.text} />
+        ))}
+      </Picker>
+      <Picker
+        selectedValue={year}
+        onValueChange={(v) => commit(Number(v), month, day)}
+        itemStyle={styles.pickerItem}
+        style={styles.weightPickerColumn}>
+        {years.map((y) => (
+          <Picker.Item key={y} label={String(y)} value={y} color={colors.text} />
+        ))}
+      </Picker>
+    </View>
+  );
+}
+
 export function DatePickerSheet({
   visible,
   title,
@@ -554,18 +633,12 @@ export function DatePickerSheet({
           <View style={styles.sheetHeader}>
             <AppText variant="heading">{title}</AppText>
           </View>
-          <DateTimePicker
-            value={isoToDate(value)}
-            mode="date"
-            display="spinner"
-            themeVariant={colors.scheme}
-            locale={lang}
+          <DateWheels
+            value={value}
+            lang={lang}
             minimumDate={minimumDate}
             maximumDate={maximumDate}
-            onChange={(_event, date) => {
-              if (date) onChange(formatISODate(date));
-            }}
-            style={styles.nativePicker}
+            onChange={onChange}
           />
           <PrimaryButton label={buttonLabel} onPress={onSave} />
         </View>

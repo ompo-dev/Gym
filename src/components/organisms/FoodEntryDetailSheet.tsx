@@ -117,9 +117,9 @@ const MICRO_STATS: {
   labelKey: 'goals.sugar' | 'goals.fiber' | 'goals.sodium';
   value: (item: MicroSource) => string;
 }[] = [
-  { key: 'sugar', icon: 'squareStack', labelKey: 'goals.sugar', value: (item) => `${item.sugarG.toFixed(1)} g` },
+  { key: 'sugar', icon: 'sugar', labelKey: 'goals.sugar', value: (item) => `${item.sugarG.toFixed(1)} g` },
   { key: 'fiber', icon: 'apple', labelKey: 'goals.fiber', value: (item) => `${item.fiberG.toFixed(1)} g` },
-  { key: 'sodium', icon: 'asterisk', labelKey: 'goals.sodium', value: (item) => `${Math.round(item.sodiumMg)} mg` },
+  { key: 'sodium', icon: 'sodium', labelKey: 'goals.sodium', value: (item) => `${Math.round(item.sodiumMg)} mg` },
 ];
 
 function ConfidenceRing({ value, color, track }: { value: number; color: string; track: string }) {

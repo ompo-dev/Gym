@@ -45,9 +45,9 @@ const MICRO_GOALS: {
   goal: (goals: FoodGoals) => number;
   unit: string;
 }[] = [
-  { key: 'sugar', icon: 'squareStack', labelKey: 'goals.sugar', current: (totals) => totals.sugarG, goal: (goals) => goals.sugarG, unit: 'g' },
+  { key: 'sugar', icon: 'sugar', labelKey: 'goals.sugar', current: (totals) => totals.sugarG, goal: (goals) => goals.sugarG, unit: 'g' },
   { key: 'fiber', icon: 'apple', labelKey: 'goals.fiber', current: (totals) => totals.fiberG, goal: (goals) => goals.fiberG, unit: 'g' },
-  { key: 'sodium', icon: 'asterisk', labelKey: 'goals.sodium', current: (totals) => totals.sodiumMg, goal: (goals) => goals.sodiumMg, unit: 'mg' },
+  { key: 'sodium', icon: 'sodium', labelKey: 'goals.sodium', current: (totals) => totals.sodiumMg, goal: (goals) => goals.sodiumMg, unit: 'mg' },
 ];
 
 function MacroRing({
@@ -86,7 +86,8 @@ function MacroRing({
         variant="secondary"
         color={colors.textSecondary}
         numberOfLines={1}
-        adjustsFontSizeToFit>
+        adjustsFontSizeToFit
+        minimumFontScale={0.9}>
         {label}
       </AppText>
     </View>

@@ -89,6 +89,8 @@ export const foodEditPrompt = [
   '{ "description": string, "meal": { "items": [ { "label": string, "mediaId": string | null, "quantity": number | null, "unit": string | null, "calories": number, "protein": number, "carbs": number, "fat": number, "waterMl": number, "sugarG": number, "fiberG": number, "sodiumMg": number } ], "reasoning": string, "confidence": number }, "changes": [ { "action": "added" | "edited" | "removed", "item": string, "note": string } ] }.',
   'The user may ask to add, remove, rename, resize portions, change macros, change calories, or adjust hydration.',
   'A single instruction may contain multiple edits; apply all of them and include one change object per concrete edit.',
+  'For an edited or removed item, set changes[].item to the item ORIGINAL label from the current meal, not the new name — the app matches on it.',
+  'To rename or replace an item, put ONLY the new item in meal.items and record one change with action "edited" and item set to the original label; never leave both the old and the new item in meal.items.',
   'Preserve unchanged items exactly unless the instruction clearly affects them.',
   'Preserve quantity and unit for unchanged items.',
   'Preserve mediaId for unchanged items.',

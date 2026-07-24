@@ -289,15 +289,27 @@ export function mergeFoodEdit(current: FoodData, edit: FoodEditData, instruction
       .filter((change) => change.action === 'removed')
       .map((change) => foodLabelKey(change.item)),
   );
+  // Items the model said it edited, keyed by their ORIGINAL label. A rename
+  // ("feijão" → "feijão preto") returns the new item under a new key, so the
+  // old row never key-matches and used to survive beside it — the "edit added
+  // a duplicate" bug. If the model touched an item and did not return it under
+  // its old key, it was renamed/replaced, so the old row is dropped. Items the
+  // model never mentioned are still kept when absent (it may omit unchanged
+  // ones), which is what keeps a plain "add X" from wiping the rest of the meal.
+  const editedAway = new Set(
+    edit.changes
+      .filter((change) => change.action === 'edited')
+      .map((change) => foodLabelKey(change.item)),
+  );
   const returnedItems = new Map(
     mergeDuplicateFoodItems(edit.meal.items).map((item) => [foodLabelKey(item.label), item]),
   );
   const keptOrEdited = current.items
     .filter((item) => !removed.has(foodLabelKey(item.label)))
-    .map((item) => {
+    .flatMap((item) => {
       const key = foodLabelKey(item.label);
       const returned = returnedItems.get(key);
-      if (!returned) return item;
+      if (!returned) return editedAway.has(key) ? [] : [item];
       returnedItems.delete(key);
       const additive =
         hasAdditiveIntent(instruction) ||
@@ -305,13 +317,15 @@ export function mergeFoodEdit(current: FoodData, edit: FoodEditData, instruction
       const returnedLooksFinal =
         (returned.quantity ?? 1) > (item.quantity ?? 1) || returned.calories > item.calories;
       const merged = additive && !returnedLooksFinal ? sumFoodItems(item, returned) : returned;
-      return {
-        ...merged,
-        label: item.label,
-        mediaId: merged.mediaId ?? item.mediaId,
-        quantity: merged.quantity ?? item.quantity,
-        unit: merged.unit ?? item.unit,
-      };
+      return [
+        {
+          ...merged,
+          label: item.label,
+          mediaId: merged.mediaId ?? item.mediaId,
+          quantity: merged.quantity ?? item.quantity,
+          unit: merged.unit ?? item.unit,
+        },
+      ];
     });
 
   return foodSchema.parse({

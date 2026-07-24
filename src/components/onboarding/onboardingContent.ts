@@ -1,16 +1,4 @@
-import {
-  Bike,
-  CircleHelp,
-  Dumbbell,
-  Fish,
-  Footprints,
-  Leaf,
-  Mars,
-  MoonStar,
-  Target,
-  Users,
-  Venus,
-} from "lucide-react-native";
+import type { AppIconName } from "@/components/atoms/AppIcon";
 
 import type {
   OnboardingActivity,
@@ -193,27 +181,27 @@ export const copy: Record<LangKey, OnboardingText> = {
 export const genderOptions: {
   value: GenderOption;
   label: Record<"pt-BR" | "en-US", string>;
-  Icon: typeof Mars;
+  icon: AppIconName;
 }[] = [
   {
     value: "male",
     label: { "pt-BR": "Masculino", "en-US": "Male" },
-    Icon: Mars,
+    icon: "mars",
   },
   {
     value: "female",
     label: { "pt-BR": "Feminino", "en-US": "Female" },
-    Icon: Venus,
+    icon: "venus",
   },
   {
     value: "other",
     label: { "pt-BR": "Outro", "en-US": "Other" },
-    Icon: Users,
+    icon: "users",
   },
   {
     value: "private",
     label: { "pt-BR": "Prefiro não dizer", "en-US": "Prefer not to say" },
-    Icon: CircleHelp,
+    icon: "circleHelp",
   },
 ];
 
@@ -221,7 +209,7 @@ export const activityOptions: {
   value: OnboardingActivity;
   label: Record<"pt-BR" | "en-US", string>;
   body: Record<"pt-BR" | "en-US", string>;
-  Icon: typeof MoonStar;
+  icon: AppIconName;
 }[] = [
   {
     value: "sedentary",
@@ -230,7 +218,7 @@ export const activityOptions: {
       "pt-BR": "Pouco ou nenhum exercício, rotina mais parada.",
       "en-US": "Little to no exercise, mostly inactive days.",
     },
-    Icon: MoonStar,
+    icon: "moonStar",
   },
   {
     value: "light",
@@ -239,7 +227,7 @@ export const activityOptions: {
       "pt-BR": "Treino leve 1-3 vezes por semana.",
       "en-US": "Light training 1-3 times per week.",
     },
-    Icon: Footprints,
+    icon: "footprints",
   },
   {
     value: "moderate",
@@ -248,7 +236,7 @@ export const activityOptions: {
       "pt-BR": "Treino moderado 3-5 vezes por semana.",
       "en-US": "Moderate training 3-5 times per week.",
     },
-    Icon: Bike,
+    icon: "bike",
   },
   {
     value: "high",
@@ -257,44 +245,44 @@ export const activityOptions: {
       "pt-BR": "Treinos intensos ou rotina fisicamente pesada.",
       "en-US": "Intense training or very active routine.",
     },
-    Icon: Dumbbell,
+    icon: "dumbbell",
   },
 ];
 
 export const considerationOptions: {
   value: OnboardingConsideration;
   label: Record<"pt-BR" | "en-US", string>;
-  Icon: typeof Fish;
+  icon: AppIconName;
 }[] = [
   {
     value: "high-protein",
     label: { "pt-BR": "Alta proteína", "en-US": "High protein" },
-    Icon: Fish,
+    icon: "fish",
   },
   {
     value: "low-carb",
     label: { "pt-BR": "Baixo carboidrato", "en-US": "Low carb" },
-    Icon: Leaf,
+    icon: "leaf",
   },
   {
     value: "athlete",
     label: { "pt-BR": "Atleta", "en-US": "Athlete" },
-    Icon: Target,
+    icon: "target",
   },
   {
     value: "strength",
     label: { "pt-BR": "Treino de força", "en-US": "Strength training" },
-    Icon: Dumbbell,
+    icon: "dumbbell",
   },
   {
     value: "endurance",
     label: { "pt-BR": "Treino de resistência", "en-US": "Endurance" },
-    Icon: Bike,
+    icon: "bike",
   },
   {
     value: "vegetarian",
     label: { "pt-BR": "Vegetariano/Vegano", "en-US": "Vegetarian/Vegan" },
-    Icon: Leaf,
+    icon: "leaf",
   },
 ];
 

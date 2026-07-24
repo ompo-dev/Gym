@@ -51,6 +51,33 @@ test('food AI edit merges duplicate returned items and replaces reasoning', () =
   );
 });
 
+test('food AI edit renames an item in place instead of duplicating it', () => {
+  // "muda o feijão para feijão preto": the model returns the new item under a
+  // new label and marks the original as edited. The old row must not survive.
+  const result = mergeFoodEdit(
+    {
+      items: [
+        { label: 'arroz', calories: 120, protein: 2, carbs: 24, fat: 1, waterMl: 0 },
+        { label: 'feijão', calories: 100, protein: 6, carbs: 18, fat: 1, waterMl: 0 },
+      ],
+    },
+    {
+      meal: {
+        items: [
+          { label: 'arroz', calories: 120, protein: 2, carbs: 24, fat: 1, waterMl: 0 },
+          { label: 'feijão preto', calories: 110, protein: 7, carbs: 20, fat: 1, waterMl: 0 },
+        ],
+      },
+      changes: [{ action: 'edited', item: 'feijão' }],
+    },
+    'muda o feijão para feijão preto',
+  );
+
+  expect(result.items).toHaveLength(2);
+  expect(result.items.map((item) => item.label).sort()).toEqual(['arroz', 'feijão preto']);
+  expect(result.items.find((item) => item.label === 'feijão')).toBeUndefined();
+});
+
 test('food quantity label only shows useful quantities over one', () => {
   expect(formatFoodQuantity({ label: 'ovo', quantity: 2, unit: 'ovos', calories: 1, protein: 1, carbs: 1, fat: 1, waterMl: 0 })).toBe('2');
   expect(formatFoodQuantity({ label: 'arroz branco cozido', quantity: 2, calories: 1, protein: 1, carbs: 1, fat: 1, waterMl: 0 })).toBeNull();

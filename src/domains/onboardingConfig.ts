@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { AppIconName } from '@/components/atoms/AppIcon';
 
 import { activityOptions, genderOptions } from '@/components/onboarding/onboardingContent';
 import { Colors } from '@/constants/theme';
@@ -130,7 +130,7 @@ export interface OnboardingAskOption {
   label: string;
   /** The sentence picking this writes into the thread — a shortcut for typing. */
   text: string;
-  Icon?: ComponentType<{ size?: number; strokeWidth?: number; color?: string }>;
+  icon?: AppIconName;
 }
 
 export interface OnboardingAsk {
@@ -175,7 +175,7 @@ function optionsFor(field: OnboardingField, lang: Lang): readonly OnboardingAskO
       value: option.value,
       label: option.label[lang],
       text: option.label[lang],
-      Icon: option.Icon,
+      icon: option.icon,
     }));
   }
   if (field === 'activity') {
@@ -185,7 +185,7 @@ function optionsFor(field: OnboardingField, lang: Lang): readonly OnboardingAskO
       // The label, not the description: "Treino moderado 3-5 vezes por semana"
       // would parse its own "5 vezes" back as `high`.
       text: option.label[lang],
-      Icon: option.Icon,
+      icon: option.icon,
     }));
   }
   return undefined;

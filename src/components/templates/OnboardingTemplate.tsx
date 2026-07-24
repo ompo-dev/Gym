@@ -190,7 +190,10 @@ export function OnboardingTemplate() {
           <ScrollView
             ref={scrollRef}
             style={styles.scroll}
-            contentContainerStyle={styles.content}
+            // Bottom edge only insets 'top', so the last block's skip line used
+            // to sit under the Android nav bar, barely tappable. Give it real
+            // room below.
+            contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.eight }]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>

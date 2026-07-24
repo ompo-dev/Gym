@@ -68,7 +68,7 @@ const MICRO_TARGETS = [
   {
     key: "sugar" as const,
     label: "Monitorar açúcar",
-    icon: "squareStack" as const,
+    icon: "sugar" as const,
     dailyLabel: "Máximo diário",
     dailyUnit: "g",
   },
@@ -82,7 +82,7 @@ const MICRO_TARGETS = [
   {
     key: "sodium" as const,
     label: "Monitorar sódio",
-    icon: "asterisk" as const,
+    icon: "sodium" as const,
     dailyLabel: "Máximo diário",
     dailyUnit: "mg",
   },
@@ -521,7 +521,7 @@ export function NutritionGoalsSheet({
           />
           <Divider />
           <TargetRow
-            icon="apple"
+            icon="wheat"
             color="#FF2D55"
             label="Meta de carboidratos"
             value={summary.carbs}

@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { AppIconName } from '@/components/atoms/AppIcon';
 
 import {
   activityOptions,
@@ -63,7 +63,7 @@ export interface QuestionOption {
   description?: string;
   /** Overrides the question colour when picked — the bias scale reads as a scale. */
   color?: string;
-  Icon?: ComponentType<{ size?: number; strokeWidth?: number; color?: string }>;
+  icon?: AppIconName;
 }
 
 export interface Question {
@@ -159,7 +159,7 @@ export function buildQuestions(lang: Lang): Question[] {
   return [
     {
       ...base('gender', 'choice'),
-      options: genderOptions.map((o) => ({ value: o.value, label: o.label[lang], Icon: o.Icon })),
+      options: genderOptions.map((o) => ({ value: o.value, label: o.label[lang], icon: o.icon })),
     },
     { ...base('birthDate', 'date'), hint: t('onboarding.tap') },
     { ...base('heightCm', 'picker'), hint: t('onboarding.tap') },
@@ -172,7 +172,7 @@ export function buildQuestions(lang: Lang): Question[] {
         value: o.value,
         label: o.label[lang],
         description: o.body[lang],
-        Icon: o.Icon,
+        icon: o.icon,
       })),
     },
     // `weightUnit` deliberadamente NAO e perguntado: as perguntas de peso ja
@@ -216,7 +216,7 @@ export function buildQuestions(lang: Lang): Question[] {
       options: considerationOptions.map((o) => ({
         value: o.value,
         label: o.label[lang],
-        Icon: o.Icon,
+        icon: o.icon,
       })),
     },
     {

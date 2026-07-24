@@ -8,8 +8,20 @@ import {
   type ScrollViewProps,
   type TextInputProps,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 
 import { log } from '@/core/log';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+// Fast in, softer out — the "pressed" feel iOS gives natively, added to every
+// RN/fallback pressable. Scale only, so it never nudges layout.
+const PRESS_IN = { duration: 90, easing: Easing.out(Easing.quad) };
+const PRESS_OUT = { duration: 160, easing: Easing.out(Easing.quad) };
 
 /**
  * Drop-in replacements for the raw RN primitives that log as they are used.
@@ -20,10 +32,33 @@ import { log } from '@/core/log';
  * as the action it performs, not as pixels. Nothing new to name.
  */
 
-export function LoggedPressable({ onPress, ...rest }: PressableProps & { ref?: Ref<View> }) {
+export function LoggedPressable({
+  onPress,
+  onPressIn,
+  onPressOut,
+  style,
+  ...rest
+}: PressableProps & { ref?: Ref<View> }) {
+  const scale = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
   return (
-    <Pressable
+    <AnimatedPressable
       {...rest}
+      onPressIn={(event) => {
+        scale.value = withTiming(0.97, PRESS_IN);
+        onPressIn?.(event);
+      }}
+      onPressOut={(event) => {
+        scale.value = withTiming(1, PRESS_OUT);
+        onPressOut?.(event);
+      }}
+      // Merge the press scale with whatever the caller passed, function or not.
+      style={
+        typeof style === 'function'
+          ? (state) => [style(state), pressStyle]
+          : [style, pressStyle]
+      }
       onPress={(event) => {
         // Best name available: the a11y label, then the hint, then the role —
         // so a button with none at least logs "press(button)" instead of a bare
