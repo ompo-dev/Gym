@@ -407,7 +407,11 @@ export function NutritionGoalsSheet({
           <View ref={goalTypeRowRef} collapsable={false}>
             <SettingsRow
               title="Tipo de meta"
-              trailing={<ValueTrailing label={goalTypeLabel(draft)} />}
+              select={{
+                value: goalTypeFor(draft),
+                options: goalTypeOptions,
+                onSelect: (value) => selectGoalType(value as GoalType),
+              }}
               onPress={toggleGoalTypeMenu}
             />
           </View>

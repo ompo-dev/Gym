@@ -43,7 +43,6 @@ import {
   OptionMenu,
   PageSheet,
   Section,
-  ValueTrailing,
   type OptionMenuItem,
 } from "./primitives";
 import { settingsStyles } from "./styles";
@@ -261,11 +260,11 @@ export function WorkoutMonitorSheet({
 
   // Narrowing resets everything below it — a porcao from another muscle would
   // silently filter the chart to nothing.
-  const selectScope = (value: string) => {
+  const selectScope = (which: "group" | "muscle" | "portion", value: string) => {
     setFocus((current) => {
-      if (openSelect === "group")
+      if (which === "group")
         return value ? { group: value as MuscleGroupId } : {};
-      if (openSelect === "muscle") {
+      if (which === "muscle") {
         return value
           ? { group: current.group, muscle: value }
           : { group: current.group };
@@ -317,7 +316,9 @@ export function WorkoutMonitorSheet({
                 ? muscleOptions
                 : portionOptions
           }
-          onSelect={selectScope}
+          onSelect={(value) => {
+            if (openSelect) selectScope(openSelect, value);
+          }}
           onClose={() => setOpenSelect(null)}
         />
       }
@@ -437,15 +438,11 @@ export function WorkoutMonitorSheet({
                   <View ref={groupRowRef} collapsable={false}>
                     <SettingsRow
                       title={t("monitor.levelGroup")}
-                      trailing={
-                        <ValueTrailing
-                          label={
-                            focus.group
-                              ? t(`muscle.${focus.group}` as "muscle.legs")
-                              : t("monitor.allScopes")
-                          }
-                        />
-                      }
+                      select={{
+                        value: focus.group ?? "",
+                        options: groupOptions,
+                        onSelect: (value) => selectScope("group", value),
+                      }}
                       onPress={() => openScopeSelect("group", groupRowRef)}
                     />
                   </View>
@@ -456,17 +453,11 @@ export function WorkoutMonitorSheet({
                       <View ref={muscleRowRef} collapsable={false}>
                         <SettingsRow
                           title={t("monitor.levelMuscle")}
-                          trailing={
-                            <ValueTrailing
-                              label={
-                                focus.muscle
-                                  ? t(
-                                      `muscleName.${focus.muscle}` as "muscleName.quadriceps",
-                                    )
-                                  : t("monitor.allScopes")
-                              }
-                            />
-                          }
+                          select={{
+                            value: focus.muscle ?? "",
+                            options: muscleOptions,
+                            onSelect: (value) => selectScope("muscle", value),
+                          }}
                           onPress={() =>
                             openScopeSelect("muscle", muscleRowRef)
                           }
@@ -481,11 +472,11 @@ export function WorkoutMonitorSheet({
                       <View ref={portionRowRef} collapsable={false}>
                         <SettingsRow
                           title={t("monitor.levelPortion")}
-                          trailing={
-                            <ValueTrailing
-                              label={focus.portion ?? t("monitor.allScopes")}
-                            />
-                          }
+                          select={{
+                            value: focus.portion ?? "",
+                            options: portionOptions,
+                            onSelect: (value) => selectScope("portion", value),
+                          }}
                           onPress={() =>
                             openScopeSelect("portion", portionRowRef)
                           }

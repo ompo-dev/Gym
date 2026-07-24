@@ -37,6 +37,8 @@ export function TotalsDock({
   const body = (
     <GlassSurface
       glass="regular"
+      // Interactive glass when it's a button, matching the header day-changer.
+      isInteractive={!!onPress}
       style={[
         styles.dock,
         compact && styles.dockCompact,

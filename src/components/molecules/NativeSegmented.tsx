@@ -40,7 +40,12 @@ export function NativeSegmented<T extends string>({
 
   if (IOS_NATIVE_ENABLED) {
     return (
-      <SwiftHost style={styles.host} colorScheme={scheme} matchContents>
+      // Stretch to full width (hug height only) so the segmented control fills
+      // the row instead of hugging its labels.
+      <SwiftHost
+        style={styles.host}
+        colorScheme={scheme}
+        matchContents={{ horizontal: false, vertical: true }}>
         <SwiftPicker
           selection={value}
           onSelectionChange={(next: string) => onChange(next as T)}
@@ -92,6 +97,7 @@ export function NativeSegmented<T extends string>({
 const styles = StyleSheet.create({
   host: {
     height: 34,
+    alignSelf: 'stretch',
   },
   row: {
     flexDirection: 'row',

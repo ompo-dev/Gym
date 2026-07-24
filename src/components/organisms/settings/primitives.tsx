@@ -20,9 +20,6 @@ import { t } from "@/i18n";
 import { SheetFrame } from "../SheetFrame";
 import { settingsStyles } from "./styles";
 
-// A UISwitch is a fixed 51x31; reserve that so the native toggle doesn't collapse
-// before SwiftUI lays it out.
-const NATIVE_TOGGLE_HOST = { width: 51, height: 31 } as const;
 
 // Tints pulled from the reference screenshots (no theme token for these).
 export const TINT = {
@@ -202,8 +199,11 @@ export function Toggle({
   const scheme = useColorScheme() === "dark" ? "dark" : "light";
 
   if (IOS_NATIVE_ENABLED) {
+    // matchContents so the Host is exactly the switch's natural size; the row's
+    // alignItems:'center' then centres it. A fixed height was shorter than the
+    // toggle and pinned it to the top of the row.
     return (
-      <SwiftHost colorScheme={scheme} style={NATIVE_TOGGLE_HOST}>
+      <SwiftHost matchContents colorScheme={scheme}>
         <SwiftToggle
           isOn={value}
           onIsOnChange={onValueChange}

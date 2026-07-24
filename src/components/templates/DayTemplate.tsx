@@ -972,6 +972,7 @@ export function DayTemplate<TData, TTotals>({
                         // floating popover (FoodMediaActionMenu) on iOS.
                         <SwiftHost matchContents style={styles.keyboardButton}>
                           <SwiftMenu
+                            label={t('media.addAttachment')}
                             systemImage="camera"
                             modifiers={[
                               swiftButtonStyle?.('glass'),

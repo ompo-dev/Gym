@@ -313,10 +313,12 @@ export function FoodEntryDetailSheet({
       label={t('details.actions')}
       systemImage="ellipsis"
       modifiers={[
-        swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
+        // frame LAST so it constrains the final glass button to a square
+        // (capsule of a square = circle), matching the round close button.
         swiftButtonStyle?.('glass'),
         swiftControlSize?.('large'),
         swiftLabelStyle?.('iconOnly'),
+        swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
       ].filter(Boolean)}>
       {SwiftGroup ? (
         <SwiftGroup modifiers={[swiftMenuActionDismissBehavior?.('disabled')].filter(Boolean)}>
