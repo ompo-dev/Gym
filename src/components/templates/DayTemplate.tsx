@@ -11,6 +11,8 @@ import { AppModalHost } from '@/components/organisms/AppModalHost';
 import { DayHeader } from '@/components/organisms/DayHeader';
 import { FoodGoalsSheet } from '@/components/organisms/FoodGoalsSheet';
 import { FoodMediaActionMenu } from '@/components/organisms/FoodMediaActionMenu';
+import { NativeMenuButton } from '@/components/molecules/NativeMenuButton';
+import { IOS_NATIVE_ENABLED, SwiftButton } from '@/components/onboarding/onboardingNative';
 import { buildBarcodeText, type FoodMediaDraft } from '@/components/organisms/FoodMediaDraftTray';
 import { NotesList } from '@/components/organisms/NotesList';
 import { SaveRoutineSheet } from '@/components/organisms/SaveRoutineSheet';
@@ -933,7 +935,7 @@ export function DayTemplate<TData, TTotals>({
                   visible={workoutProgressVisible}
                 />
               ) : null}
-              {keyboardVisible && isFood ? (
+              {keyboardVisible && isFood && !IOS_NATIVE_ENABLED ? (
                 <FoodMediaActionMenu
                   visible={foodMediaMenuVisible}
                   onSelect={handleSelectFoodMedia}
@@ -960,15 +962,38 @@ export function DayTemplate<TData, TTotals>({
 
                   {isFood ? (
                     <>
-                      <LoggedPressable
-                        onPress={() => setFoodMediaMenuVisible((current) => !current)}
-                        hitSlop={10}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('media.addAttachment')}>
-                        <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
-                          <AppIcon name="camera" color={colors.carbs} size={20} />
-                        </GlassSurface>
-                      </LoggedPressable>
+                      {IOS_NATIVE_ENABLED ? (
+                        <NativeMenuButton
+                          systemImage="camera"
+                          tint={colors.carbs}
+                          label={t('media.addAttachment')}>
+                          <SwiftButton
+                            label={t('media.foodPhoto')}
+                            systemImage="camera"
+                            onPress={() => handleSelectFoodMedia('foodPhoto')}
+                          />
+                          <SwiftButton
+                            label={t('media.menuPhoto')}
+                            systemImage="menucard"
+                            onPress={() => handleSelectFoodMedia('menuPhoto')}
+                          />
+                          <SwiftButton
+                            label={t('media.barcode')}
+                            systemImage="barcode.viewfinder"
+                            onPress={() => handleSelectFoodMedia('barcode')}
+                          />
+                        </NativeMenuButton>
+                      ) : (
+                        <LoggedPressable
+                          onPress={() => setFoodMediaMenuVisible((current) => !current)}
+                          hitSlop={10}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('media.addAttachment')}>
+                          <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
+                            <AppIcon name="camera" color={colors.carbs} size={20} />
+                          </GlassSurface>
+                        </LoggedPressable>
+                      )}
 
                       <LoggedPressable
                         onPress={openSavedMealPicker}

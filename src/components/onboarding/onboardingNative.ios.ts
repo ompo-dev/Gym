@@ -21,6 +21,7 @@ export {
   VStack as SwiftVStack,
 } from '@expo/ui/swift-ui';
 export {
+  buttonBorderShape as swiftButtonBorderShape,
   buttonStyle as swiftButtonStyle,
   controlSize as swiftControlSize,
   font as swiftFont,

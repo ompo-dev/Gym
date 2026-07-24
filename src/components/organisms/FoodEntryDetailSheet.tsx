@@ -11,14 +11,10 @@ import {
   SwiftButton,
   SwiftDivider,
   SwiftGroup,
-  SwiftHost,
   SwiftMenu,
-  swiftButtonStyle,
-  swiftControlSize,
-  swiftFrame,
-  swiftLabelStyle,
   swiftMenuActionDismissBehavior,
 } from '@/components/onboarding/onboardingNative';
+import { NativeMenuButton } from '@/components/molecules/NativeMenuButton';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
 import {
   APP_MODAL_TRANSITION_MS,
@@ -307,18 +303,9 @@ export function FoodEntryDetailSheet({
   const hasActions = Boolean(onDelete || onSaveMeal || onSaveNutrition || onAiEdit);
   const saveMealLabel = mealSaved ? t('details.mealSaved') : t('details.saveMeal');
 
-  const useNativeMenu = hasActions && IOS_NATIVE_ENABLED && SwiftHost && SwiftMenu && SwiftButton;
+  const useNativeMenu = hasActions && IOS_NATIVE_ENABLED && SwiftMenu && SwiftButton;
   const nativeMenu = useNativeMenu ? (
-    <SwiftMenu
-      label={t('details.actions')}
-      systemImage="ellipsis"
-      modifiers={[
-        // No controlSize (its padding made a pill); frame LAST pins the glass
-        // button to a square → capsule of a square = circle, like the X.
-        swiftButtonStyle?.('glass'),
-        swiftLabelStyle?.('iconOnly'),
-        swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
-      ].filter(Boolean)}>
+    <NativeMenuButton systemImage="ellipsis" label={t('details.actions')} marginRight>
       {SwiftGroup ? (
         <SwiftGroup modifiers={[swiftMenuActionDismissBehavior?.('disabled')].filter(Boolean)}>
           <SwiftButton
@@ -355,14 +342,12 @@ export function FoodEntryDetailSheet({
         role="destructive"
         onPress={handleDelete}
       />
-    </SwiftMenu>
+    </NativeMenuButton>
   ) : null;
   const menuButton = !hasActions ? (
     <View style={styles.headerButton} />
   ) : useNativeMenu ? (
-    <SwiftHost style={styles.nativeMenuHost}>
-      {nativeMenu}
-    </SwiftHost>
+    nativeMenu
   ) : menuVisible ? (
     <View style={styles.headerButton} />
   ) : (
@@ -691,11 +676,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  nativeMenuHost: {
-    width: Metrics.iconButton,
-    height: Metrics.iconButton,
-    marginRight: Spacing.two,
   },
   hero: {
     gap: Spacing.four,

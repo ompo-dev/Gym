@@ -20,6 +20,7 @@ export const SwiftText: any = undefined;
 export const SwiftToggle: any = undefined;
 export const SwiftVStack: any = undefined;
 
+export const swiftButtonBorderShape: any = undefined;
 export const swiftButtonStyle: any = undefined;
 export const swiftControlSize: any = undefined;
 export const swiftFont: any = undefined;

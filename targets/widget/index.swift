@@ -1,4 +1,3 @@
-import AppIntents
 import SwiftUI
 import WidgetKit
 
@@ -231,36 +230,6 @@ struct QuickAddWidget: Widget {
     .configurationDisplayName("Adicionar no Gym")
     .description("Registrar comida ou treino rápido.")
     .supportedFamilies([.systemSmall, .systemMedium])
-  }
-}
-
-// MARK: - Siri App Intent (opens the same gym://add deep link)
-
-struct AddToGymIntent: AppIntent {
-  static var title: LocalizedStringResource = "Adicionar no Gym"
-
-  @Parameter(title: "O que", requestValueDialog: "O que você comeu, comprou ou treinou?")
-  var text: String
-
-  func perform() async throws -> some IntentResult & OpensIntent {
-    let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? text
-    let url = URL(string: "\(scheme)://add?domain=food&text=\(encoded)")!
-    return .result(opensIntent: OpenURLIntent(url))
-  }
-}
-
-struct GymShortcuts: AppShortcutsProvider {
-  static var appShortcuts: [AppShortcut] {
-    AppShortcut(
-      intent: AddToGymIntent(),
-      phrases: [
-        "Adicionar no \(.applicationName)",
-        "Registrar no \(.applicationName)",
-        "Anotar no \(.applicationName)",
-      ],
-      shortTitle: "Adicionar no Gym",
-      systemImageName: "plus.circle.fill"
-    )
   }
 }
 
