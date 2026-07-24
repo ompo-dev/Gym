@@ -284,9 +284,15 @@ export function NotesList<TData, TTotals>({
   // keyboard is up. With the keyboard down it turned into an over-scroll dead
   // zone: dragging up scrolled into the empty space and pushed every note (and
   // the composer) off-screen. Keep it minimal when nothing is being edited.
+  // Top-anchored list (notes start at the top, oldest→newest). A moderate
+  // breathing pad below lets you scroll a little past the composer (which stays
+  // visible — at most ~20% up) and back up for older notes; the big 45% pad only
+  // exists while editing, to centre the focused line.
   const contentPaddingBottom =
-    keyboardVisible && viewportHeight > 0
-      ? Math.max(Spacing.four, Math.round(viewportHeight * 0.45))
+    viewportHeight > 0
+      ? keyboardVisible
+        ? Math.max(Spacing.four, Math.round(viewportHeight * 0.45))
+        : Math.max(Spacing.four, Math.round(viewportHeight * 0.2))
       : Spacing.four;
 
   return (
@@ -399,11 +405,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    // Bottom-anchor the list: short content sticks to the bottom (composer near
-    // the dock, always visible) instead of floating at the top with a big empty
-    // gap; long content scrolls normally. The composer can never scroll off.
-    flexGrow: 1,
-    justifyContent: 'flex-end',
     paddingBottom: Spacing.four,
   },
   newRow: {

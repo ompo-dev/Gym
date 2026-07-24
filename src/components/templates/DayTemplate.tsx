@@ -11,17 +11,6 @@ import { AppModalHost } from '@/components/organisms/AppModalHost';
 import { DayHeader } from '@/components/organisms/DayHeader';
 import { FoodGoalsSheet } from '@/components/organisms/FoodGoalsSheet';
 import { FoodMediaActionMenu } from '@/components/organisms/FoodMediaActionMenu';
-import {
-  IOS_NATIVE_ENABLED,
-  SwiftButton,
-  SwiftHost,
-  SwiftMenu,
-  swiftButtonStyle,
-  swiftControlSize,
-  swiftFrame,
-  swiftLabelStyle,
-  swiftTint,
-} from '@/components/onboarding/onboardingNative';
 import { buildBarcodeText, type FoodMediaDraft } from '@/components/organisms/FoodMediaDraftTray';
 import { NotesList } from '@/components/organisms/NotesList';
 import { SaveRoutineSheet } from '@/components/organisms/SaveRoutineSheet';
@@ -944,7 +933,7 @@ export function DayTemplate<TData, TTotals>({
                   visible={workoutProgressVisible}
                 />
               ) : null}
-              {keyboardVisible && isFood && !IOS_NATIVE_ENABLED ? (
+              {keyboardVisible && isFood ? (
                 <FoodMediaActionMenu
                   visible={foodMediaMenuVisible}
                   onSelect={handleSelectFoodMedia}
@@ -971,49 +960,15 @@ export function DayTemplate<TData, TTotals>({
 
                   {isFood ? (
                     <>
-                      {IOS_NATIVE_ENABLED ? (
-                        // Native SwiftUI menu — the button IS the menu, so no
-                        // floating popover (FoodMediaActionMenu) on iOS.
-                        <SwiftHost matchContents style={styles.keyboardButton}>
-                          <SwiftMenu
-                            label={t('media.addAttachment')}
-                            systemImage="camera"
-                            modifiers={[
-                              swiftButtonStyle?.('glass'),
-                              swiftControlSize?.('large'),
-                              swiftLabelStyle?.('iconOnly'),
-                              swiftTint?.(colors.carbs),
-                              // frame LAST → square glass button = round, like the +.
-                              swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
-                            ].filter(Boolean)}>
-                            <SwiftButton
-                              label={t('media.foodPhoto')}
-                              systemImage="camera"
-                              onPress={() => handleSelectFoodMedia('foodPhoto')}
-                            />
-                            <SwiftButton
-                              label={t('media.menuPhoto')}
-                              systemImage="doc.text"
-                              onPress={() => handleSelectFoodMedia('menuPhoto')}
-                            />
-                            <SwiftButton
-                              label={t('media.barcode')}
-                              systemImage="barcode.viewfinder"
-                              onPress={() => handleSelectFoodMedia('barcode')}
-                            />
-                          </SwiftMenu>
-                        </SwiftHost>
-                      ) : (
-                        <LoggedPressable
-                          onPress={() => setFoodMediaMenuVisible((current) => !current)}
-                          hitSlop={10}
-                          accessibilityRole="button"
-                          accessibilityLabel={t('media.addAttachment')}>
-                          <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
-                            <AppIcon name="camera" color={colors.carbs} size={20} />
-                          </GlassSurface>
-                        </LoggedPressable>
-                      )}
+                      <LoggedPressable
+                        onPress={() => setFoodMediaMenuVisible((current) => !current)}
+                        hitSlop={10}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('media.addAttachment')}>
+                        <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
+                          <AppIcon name="camera" color={colors.carbs} size={20} />
+                        </GlassSurface>
+                      </LoggedPressable>
 
                       <LoggedPressable
                         onPress={openSavedMealPicker}

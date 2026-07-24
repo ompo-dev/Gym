@@ -10,6 +10,8 @@ export {
   Form as SwiftForm,
   Group as SwiftGroup,
   Host as SwiftHost,
+  HStack as SwiftHStack,
+  Image as SwiftImage,
   Menu as SwiftMenu,
   Picker as SwiftPicker,
   Section as SwiftSection,

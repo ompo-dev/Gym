@@ -6,11 +6,15 @@ import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import {
   IOS_NATIVE_ENABLED,
+  SwiftButton,
   SwiftHost,
-  SwiftPicker,
+  SwiftHStack,
+  SwiftImage,
+  SwiftMenu,
   SwiftText,
-  swiftPickerStyle,
-  swiftTag,
+  swiftButtonStyle,
+  swiftFont,
+  swiftForegroundStyle,
 } from '@/components/onboarding/onboardingNative';
 import { Metrics, Spacing } from '@/constants/theme';
 import { useColors } from '@/hooks/use-colors';
@@ -57,9 +61,11 @@ export function SettingsRow({
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
 
   if (select && IOS_NATIVE_ENABLED) {
-    // Native menu Picker lives in the trailing slot so the row reads
-    // "title  ......  value ⌄" like every other settings row — not a lone
-    // centred value. The Picker owns the tap, so no LoggedPressable wrapper.
+    // Native Menu (not Picker) in the trailing slot so we control the look:
+    // the value in the app's secondary text colour + a single chevron.down,
+    // matching the other value rows instead of the blue "⇅" default Picker.
+    const currentLabel =
+      select.options.find((o) => o.value === select.value)?.label ?? '';
     return (
       <View style={styles.row}>
         {icon ? (
@@ -77,17 +83,35 @@ export function SettingsRow({
             </AppText>
           ) : null}
         </View>
-        <SwiftHost matchContents colorScheme={scheme} style={styles.selectTrailing}>
-          <SwiftPicker
-            selection={select.value}
-            onSelectionChange={(value: string) => select.onSelect(value)}
-            modifiers={[swiftPickerStyle('menu')]}>
+        <SwiftHost
+          matchContents={{ horizontal: true, vertical: false }}
+          colorScheme={scheme}
+          style={styles.selectTrailing}>
+          <SwiftMenu
+            modifiers={[swiftButtonStyle?.('plain')].filter(Boolean)}
+            label={
+              <SwiftHStack spacing={4}>
+                <SwiftText
+                  modifiers={[swiftForegroundStyle?.(colors.textSecondary)].filter(Boolean)}>
+                  {currentLabel}
+                </SwiftText>
+                <SwiftImage
+                  systemName="chevron.down"
+                  modifiers={[
+                    swiftForegroundStyle?.(colors.textSecondary),
+                    swiftFont?.({ size: 13, weight: 'semibold' }),
+                  ].filter(Boolean)}
+                />
+              </SwiftHStack>
+            }>
             {select.options.map((option) => (
-              <SwiftText key={option.value} modifiers={[swiftTag(option.value)]}>
-                {option.label}
-              </SwiftText>
+              <SwiftButton
+                key={option.value}
+                label={option.label}
+                onPress={() => select.onSelect(option.value)}
+              />
             ))}
-          </SwiftPicker>
+          </SwiftMenu>
         </SwiftHost>
       </View>
     );
@@ -173,7 +197,10 @@ const styles = StyleSheet.create({
   },
   selectTrailing: {
     flexShrink: 0,
-    minHeight: 34,
+    // Fixed height (not measured) so the native Menu doesn't render shifted-up
+    // on first layout and snap into place only after being tapped.
+    height: 30,
+    justifyContent: 'center',
   },
   pressed: {
     opacity: 0.6,
