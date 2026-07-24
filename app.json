@@ -10,7 +10,10 @@
     "ios": {
       "bundleIdentifier": "com.ompinho.gymnotes",
       "icon": "./assets/gym.icon",
-      "appleTeamId": "0000000000"
+      "appleTeamId": "0000000000",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.ompinho.gymnotes"]
+      }
     },
     "android": {
       "package": "com.ompinho.gymnotes",
@@ -36,9 +39,14 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#F1EBE1",
+          "image": "./assets/images/ios-light.png",
+          "imageWidth": 120,
+          "dark": {
+            "backgroundColor": "#242424",
+            "image": "./assets/images/ios-dark.png",
+            "imageWidth": 120
+          }
         }
       ],
       "expo-sqlite",
