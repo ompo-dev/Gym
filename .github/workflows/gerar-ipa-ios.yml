@@ -128,6 +128,16 @@ jobs:
             build \
             2>&1 | tee xcodebuild.log
 
+      - name: Mostrar erros de compilação
+        if: failure()
+        shell: bash
+        run: |
+          echo "===== error: / warning: (Swift + Clang) ====="
+          grep -nE "error:|warning:" xcodebuild.log | tail -120 || true
+          echo ""
+          echo "===== comandos que falharam ====="
+          grep -nE "BUILD FAILED|The following build commands failed|Compiling .*\.swift" xcodebuild.log | tail -40 || true
+
       - name: Encontrar aplicativo compilado
         id: compiled-app
         shell: bash

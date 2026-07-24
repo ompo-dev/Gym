@@ -210,7 +210,7 @@ struct QuickAddView: View {
       Label(title, systemImage: symbol)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .background(tint.opacity(0.22), in: .rect(cornerRadius: 12))
+        .background(tint.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
     }
   }
   var body: some View {
@@ -238,7 +238,6 @@ struct QuickAddWidget: Widget {
 
 struct AddToGymIntent: AppIntent {
   static var title: LocalizedStringResource = "Adicionar no Gym"
-  static var description = IntentDescription("Registra uma comida ou treino ditado no Gym.")
 
   @Parameter(title: "O que", requestValueDialog: "O que você comeu, comprou ou treinou?")
   var text: String
