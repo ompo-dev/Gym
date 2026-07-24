@@ -57,23 +57,39 @@ export function SettingsRow({
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
 
   if (select && IOS_NATIVE_ENABLED) {
+    // Native menu Picker lives in the trailing slot so the row reads
+    // "title  ......  value ⌄" like every other settings row — not a lone
+    // centred value. The Picker owns the tap, so no LoggedPressable wrapper.
     return (
-      <SwiftHost
-        colorScheme={scheme}
-        style={styles.selectHost}
-        matchContents={{ horizontal: false, vertical: true }}>
-        <SwiftPicker
-          label={title}
-          selection={select.value}
-          onSelectionChange={(value: string) => select.onSelect(value)}
-          modifiers={[swiftPickerStyle('menu')]}>
-          {select.options.map((option) => (
-            <SwiftText key={option.value} modifiers={[swiftTag(option.value)]}>
-              {option.label}
-            </SwiftText>
-          ))}
-        </SwiftPicker>
-      </SwiftHost>
+      <View style={styles.row}>
+        {icon ? (
+          <View style={styles.iconWrap}>
+            <AppIcon name={icon} color={iconColor ?? colors.text} size={20} />
+          </View>
+        ) : null}
+        <View style={styles.text}>
+          <AppText variant="body" color={titleColor} numberOfLines={2}>
+            {title}
+          </AppText>
+          {subtitle ? (
+            <AppText variant="secondary" color={colors.textSecondary} numberOfLines={2}>
+              {subtitle}
+            </AppText>
+          ) : null}
+        </View>
+        <SwiftHost matchContents colorScheme={scheme} style={styles.selectTrailing}>
+          <SwiftPicker
+            selection={select.value}
+            onSelectionChange={(value: string) => select.onSelect(value)}
+            modifiers={[swiftPickerStyle('menu')]}>
+            {select.options.map((option) => (
+              <SwiftText key={option.value} modifiers={[swiftTag(option.value)]}>
+                {option.label}
+              </SwiftText>
+            ))}
+          </SwiftPicker>
+        </SwiftHost>
+      </View>
     );
   }
 
@@ -155,11 +171,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.one,
   },
-  selectHost: {
-    minHeight: Metrics.rowMinHeight,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.four,
-    justifyContent: 'center',
+  selectTrailing: {
+    flexShrink: 0,
+    minHeight: 34,
   },
   pressed: {
     opacity: 0.6,

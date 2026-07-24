@@ -18,7 +18,9 @@ import {
   SwiftMenu,
   swiftButtonStyle,
   swiftControlSize,
+  swiftFrame,
   swiftLabelStyle,
+  swiftTint,
 } from '@/components/onboarding/onboardingNative';
 import { buildBarcodeText, type FoodMediaDraft } from '@/components/organisms/FoodMediaDraftTray';
 import { NotesList } from '@/components/organisms/NotesList';
@@ -52,7 +54,9 @@ import { useAppModalStore } from '@/store/useAppModalStore';
 import { useAppStore } from '@/store/useAppStore';
 
 const UNDO_MS = 4_000;
-const TAB_BAR_CLEARANCE = 64;
+// Space reserved below the footer for the floating tab bar. Tune this if the
+// macro dock sits too far from / too close to the Dieta/Treino pill.
+const TAB_BAR_CLEARANCE = 40;
 const REFRESH_REASONING_INSTRUCTION =
   'Rewrite only description, meal.reasoning and meal.confidence for this final meal. Preserve meal.items exactly.';
 
@@ -978,6 +982,9 @@ export function DayTemplate<TData, TTotals>({
                               swiftButtonStyle?.('glass'),
                               swiftControlSize?.('large'),
                               swiftLabelStyle?.('iconOnly'),
+                              swiftTint?.(colors.carbs),
+                              // frame LAST → square glass button = round, like the +.
+                              swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
                             ].filter(Boolean)}>
                             <SwiftButton
                               label={t('media.foodPhoto')}

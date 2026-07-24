@@ -313,10 +313,9 @@ export function FoodEntryDetailSheet({
       label={t('details.actions')}
       systemImage="ellipsis"
       modifiers={[
-        // frame LAST so it constrains the final glass button to a square
-        // (capsule of a square = circle), matching the round close button.
+        // No controlSize (its padding made a pill); frame LAST pins the glass
+        // button to a square → capsule of a square = circle, like the X.
         swiftButtonStyle?.('glass'),
-        swiftControlSize?.('large'),
         swiftLabelStyle?.('iconOnly'),
         swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
       ].filter(Boolean)}>
@@ -361,7 +360,7 @@ export function FoodEntryDetailSheet({
   const menuButton = !hasActions ? (
     <View style={styles.headerButton} />
   ) : useNativeMenu ? (
-    <SwiftHost matchContents style={styles.nativeMenuHost}>
+    <SwiftHost style={styles.nativeMenuHost}>
       {nativeMenu}
     </SwiftHost>
   ) : menuVisible ? (
@@ -696,6 +695,7 @@ const styles = StyleSheet.create({
   nativeMenuHost: {
     width: Metrics.iconButton,
     height: Metrics.iconButton,
+    marginRight: Spacing.two,
   },
   hero: {
     gap: Spacing.four,

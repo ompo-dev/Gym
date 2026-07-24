@@ -399,6 +399,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
+    // Bottom-anchor the list: short content sticks to the bottom (composer near
+    // the dock, always visible) instead of floating at the top with a big empty
+    // gap; long content scrolls normally. The composer can never scroll off.
+    flexGrow: 1,
+    justifyContent: 'flex-end',
     paddingBottom: Spacing.four,
   },
   newRow: {

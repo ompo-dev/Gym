@@ -39,12 +39,12 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#F1EBE1",
-          "image": "./assets/images/ios-light.png",
+          "backgroundColor": "#242424",
+          "image": "./assets/images/splash-icon.png",
           "imageWidth": 120,
           "dark": {
             "backgroundColor": "#242424",
-            "image": "./assets/images/ios-dark.png",
+            "image": "./assets/images/splash-icon.png",
             "imageWidth": 120
           }
         }

@@ -1,17 +1,10 @@
 import type { ReactNode, RefObject } from "react";
-import { StyleSheet, Switch, useColorScheme, useWindowDimensions, View } from "react-native";
+import { StyleSheet, Switch, useWindowDimensions, View } from "react-native";
 import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon, type AppIconName } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
 import { GlassSurface } from "@/components/atoms/GlassSurface";
-import {
-  IOS_NATIVE_ENABLED,
-  SwiftHost,
-  SwiftToggle,
-  swiftLabelsHidden,
-  swiftTint,
-} from "@/components/onboarding/onboardingNative";
 import { Metrics, Radii, Spacing } from "@/constants/theme";
 import type { AppModalAnchor } from "@/core/appModals";
 import { useColors } from "@/hooks/use-colors";
@@ -196,24 +189,11 @@ export function Toggle({
   label?: string;
 }) {
   const colors = useColors();
-  const scheme = useColorScheme() === "dark" ? "dark" : "light";
 
-  if (IOS_NATIVE_ENABLED) {
-    // matchContents so the Host is exactly the switch's natural size; the row's
-    // alignItems:'center' then centres it. A fixed height was shorter than the
-    // toggle and pinned it to the top of the row.
-    return (
-      <SwiftHost matchContents colorScheme={scheme}>
-        <SwiftToggle
-          isOn={value}
-          onIsOnChange={onValueChange}
-          label={label ?? ""}
-          modifiers={[swiftLabelsHidden?.(), swiftTint?.(colors.success)].filter(Boolean)}
-        />
-      </SwiftHost>
-    );
-  }
-
+  // RN Switch IS the native iOS UISwitch and centres correctly in the row. The
+  // @expo/ui SwiftUI Toggle top-aligned inside its Host no matter how it was
+  // sized (fixed height and matchContents both failed), so we keep the native
+  // switch here — same control, no alignment bug.
   return (
     <Switch
       value={value}

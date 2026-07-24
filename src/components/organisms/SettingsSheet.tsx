@@ -501,7 +501,11 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
                   icon="contrast"
                   iconColor={TINT.indigo}
                   title={t("settings.device.appearance")}
-                  trailing={<ValueTrailing label={t(`theme.${theme}`)} />}
+                  select={{
+                    value: theme,
+                    options: themeOptions,
+                    onSelect: (value) => selectTheme(value as ThemeMode),
+                  }}
                   onPress={toggleThemeMenu}
                 />
               </View>
