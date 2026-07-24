@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { LoggedPressable } from '@/components/atoms/Logged';
 
@@ -187,12 +187,15 @@ export function NutritionGoalsSheet({
   onClose,
   onDismiss,
   onOpenHealth,
+  nested,
 }: {
   visible: boolean;
   domain: Domain;
   onClose: () => void;
   onDismiss?: () => void;
   onOpenHealth: () => void;
+  /** Sheet stacked on top of this one — see `SheetFrame`'s `nested`. */
+  nested?: ReactNode;
 }) {
   const colors = useColors();
   const lang = getLang();
@@ -322,6 +325,7 @@ export function NutritionGoalsSheet({
         onClose={onClose}
         onDismiss={onDismiss}
         onSave={save}
+        nested={nested}
         overlay={
           <>
             <OptionMenu

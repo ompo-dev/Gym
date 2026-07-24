@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import { LoggedPressable } from '@/components/atoms/Logged';
 
@@ -7,7 +7,11 @@ import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
 import { SettingsRow } from "@/components/molecules/SettingsRow";
 import { Metrics, Radii, Spacing } from "@/constants/theme";
-import { canOpenAppModal, type AppModalAnchor } from "@/core/appModals";
+import {
+  canOpenAppModal,
+  type AppModal,
+  type AppModalAnchor,
+} from "@/core/appModals";
 import { enrich } from "@/core/enrich/client";
 import {
   buildOnboardingPromptContext,
@@ -92,8 +96,6 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
       )
     : [];
   const activeSettingsId = settingsStack.at(-1)?.id ?? null;
-  const hasSettingsModal = (id: string) =>
-    settingsStack.some((modal) => modal.id === id);
 
   const [autoTimezone, setAutoTimezone] = useState(true);
   const [savedMealsCount, setSavedMealsCount] = useState(0);
@@ -106,7 +108,6 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   );
   const [settingsOptionAnchor, setSettingsOptionAnchor] =
     useState<AppModalAnchor | null>(null);
-  const showSavedMeals = hasSettingsModal("settings.savedMeals");
   const savedMealDetailModal = [...settingsStack]
     .reverse()
     .find(
@@ -124,34 +125,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const selectedSavedMealEntry = selectedSavedMeal
     ? savedMealToEntry(selectedSavedMeal)
     : null;
-  const savedMealDetailVisible =
-    selectedSavedMeal !== null &&
-    (activeSettingsId === "settings.savedMealDetails" ||
-      activeSettingsId === "settings.savedMealActionMenu" ||
-      activeSettingsId === "settings.savedMealAiEdit");
-  const savedMealNutritionEditVisible =
-    selectedSavedMeal !== null &&
-    activeSettingsId === "settings.savedMealNutritionEdit";
-  const rootVisible =
-    activeSettingsId === "settings.root" ||
-    activeSettingsId === "settings.savedMeals";
-  const nutritionGoalsVisible =
-    activeSettingsId === "settings.nutritionGoals" ||
-    activeSettingsId === "settings.goalWeightPicker" ||
-    activeSettingsId === "settings.goalDatePicker";
-  const healthProfileVisible =
-    activeSettingsId === "settings.healthProfile" ||
-    activeSettingsId === "settings.birthDatePicker" ||
-    activeSettingsId === "settings.healthProfilePicker";
-  const weightControlVisible = activeSettingsId === "settings.weightControl";
-  const registerWeightVisible =
-    activeSettingsId === "settings.registerWeight" ||
-    activeSettingsId === "settings.registerWeightPicker";
-  const estimationBiasVisible = activeSettingsId === "settings.estimationBias";
-  const workoutMonitorVisible = activeSettingsId === "settings.workoutMonitor";
-  const savedExercisesVisible = activeSettingsId === "settings.savedExercises";
-  const apiKeysVisible = activeSettingsId === "settings.apiKeys";
-  const routinesVisible = activeSettingsId === "settings.routines";
+  const rootVisible = activeSettingsId === "settings.root";
   const [routineCounts, setRoutineCounts] = useState({ food: 0, workout: 0 });
   // Which domain's routines the sheet shows. Separate from the modal's `domain`,
   // which is the routing key the stack filters on — Settings shows both
@@ -409,32 +383,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     setSettingsOptionMenu(null);
   };
 
-  return (
-    <>
-      <SheetFrame
-        visible={rootVisible}
-        title={
-          showSavedMeals ? t("settings.meals.manage") : t("settings.title")
-        }
-        onClose={closeSettings}
-        size="full"
-        overlay={
-          <OptionMenu
-            visible={settingsOptionMenu === "theme"}
-            anchor={settingsOptionAnchor}
-            selectedValue={theme}
-            options={themeOptions}
-            onSelect={selectTheme}
-            onClose={() => setSettingsOptionMenu(null)}
-          />
-        }
-      >
-        {showSavedMeals ? (
-          <SavedMealsContent
-            meals={savedMeals}
-            onSelect={openSavedMealDetails}
-          />
-        ) : (
+  const settingsBody = (
           <>
             <AccountCard />
 
@@ -695,99 +644,190 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
               {`GymNotes ${Constants.expoConfig?.version ?? ""}`}
             </AppText>
           </>
-        )}
-      </SheetFrame>
+  );
 
-      <NutritionGoalsSheet
-        visible={nutritionGoalsVisible}
-        domain={domain}
-        onClose={closeNutritionGoals}
-        onOpenHealth={openHealthFromNutrition}
-      />
+  /**
+   * One sheet per settings modal on the stack, each rendered *inside* the one
+   * below it — the fridge behaviour: opening a row slides a sheet over a parent
+   * that stays put instead of swapping it out. RN only stacks Modals nested in
+   * each other's view tree, hence `nested` (see `SheetFrame`).
+   *
+   * `null` = this entry draws no sheet of its own (a picker or menu the sheet
+   * below already renders as an overlay); the stack above it belongs to that
+   * same sheet.
+   */
+  const renderSettingsModal = (
+    item: AppModal,
+    nested: ReactNode,
+  ): ReactNode | null => {
+    switch (item.id) {
+      case "settings.root":
+        return (
+          <SheetFrame
+            visible
+            title={t("settings.title")}
+            onClose={() => closeAppModal("settings.root")}
+            size="full"
+            nested={nested}
+            overlay={
+              <OptionMenu
+                visible={settingsOptionMenu === "theme"}
+                anchor={settingsOptionAnchor}
+                selectedValue={theme}
+                options={themeOptions}
+                onSelect={selectTheme}
+                onClose={() => setSettingsOptionMenu(null)}
+              />
+            }
+          >
+            {settingsBody}
+          </SheetFrame>
+        );
 
-      <HealthProfileSheet
-        visible={healthProfileVisible}
-        domain={domain}
-        onClose={closeHealthProfile}
-      />
+      case "settings.savedMeals":
+        return (
+          <SheetFrame
+            visible
+            title={t("settings.meals.manage")}
+            onClose={() => closeAppModal("settings.savedMeals")}
+            centerTitle
+            size="full"
+            nested={nested}
+          >
+            <SavedMealsContent meals={savedMeals} onSelect={openSavedMealDetails} />
+          </SheetFrame>
+        );
 
-      <WeightControlSheet
-        visible={weightControlVisible}
-        onClose={closeWeightControl}
-        onOpenRegisterWeight={openRegisterFromWeight}
-      />
+      case "settings.nutritionGoals":
+        return (
+          <NutritionGoalsSheet
+            visible
+            domain={domain}
+            onClose={closeNutritionGoals}
+            onOpenHealth={openHealthFromNutrition}
+            nested={nested}
+          />
+        );
 
-      <RegisterWeightSheet
-        visible={registerWeightVisible}
-        domain={domain}
-        onClose={closeRegisterWeight}
-      />
+      case "settings.healthProfile":
+        return (
+          <HealthProfileSheet
+            visible
+            domain={domain}
+            onClose={closeHealthProfile}
+            nested={nested}
+          />
+        );
 
-      <EstimationBiasSheet
-        visible={estimationBiasVisible}
-        onClose={closeEstimationBias}
-      />
+      case "settings.weightControl":
+        return (
+          <WeightControlSheet
+            visible
+            onClose={closeWeightControl}
+            onOpenRegisterWeight={openRegisterFromWeight}
+            nested={nested}
+          />
+        );
 
-      <WorkoutMonitorSheet
-        visible={workoutMonitorVisible}
-        onClose={closeWorkoutMonitor}
-      />
+      case "settings.registerWeight":
+        return (
+          <RegisterWeightSheet
+            visible
+            domain={domain}
+            onClose={closeRegisterWeight}
+          />
+        );
 
-      <PantrySheet
-        visible={activeSettingsId === "settings.pantry"}
-        onClose={() => closeAppModal("settings.pantry")}
-      />
+      case "settings.estimationBias":
+        return <EstimationBiasSheet visible onClose={closeEstimationBias} />;
 
-      <ApiKeysSheet
-        visible={apiKeysVisible}
-        onClose={() => closeAppModal("settings.apiKeys")}
-      />
+      case "settings.workoutMonitor":
+        return <WorkoutMonitorSheet visible onClose={closeWorkoutMonitor} />;
 
-      <SavedRoutinesSheet
-        visible={routinesVisible}
-        domain={routinesDomain}
-        onClose={() => closeAppModal("settings.routines")}
-      />
+      case "settings.pantry":
+        return (
+          <PantrySheet
+            visible
+            onClose={() => closeAppModal("settings.pantry")}
+          />
+        );
 
-      <SheetFrame
-        visible={savedExercisesVisible}
-        title={t("settings.workout.saved")}
-        onClose={closeSavedExercises}
-        centerTitle
-        size="full"
-      >
-        <SavedExercisesContent
-          workouts={savedExercises}
-          onDelete={deleteSavedExercise}
-        />
-      </SheetFrame>
+      case "settings.apiKeys":
+        return (
+          <ApiKeysSheet
+            visible
+            onClose={() => closeAppModal("settings.apiKeys")}
+          />
+        );
 
-      <FoodEntryDetailSheet
-        visible={savedMealDetailVisible}
-        entry={selectedSavedMealEntry}
-        modalScope="savedMeal"
-        modalDomain={domain}
-        onClose={() => closeAppModal()}
-        onDelete={handleSavedMealDelete}
-        onSaveMeal={handleSavedMealSaveMeal}
-        onSaveNutrition={handleSavedMealSaveNutrition}
-        onAiEdit={handleSavedMealAiEdit}
-        initialMealSaved={selectedSavedMeal !== null}
-      />
+      case "settings.routines":
+        return (
+          <SavedRoutinesSheet
+            visible
+            domain={routinesDomain}
+            onClose={() => closeAppModal("settings.routines")}
+          />
+        );
 
-      {selectedSavedMealEntry?.data &&
-      "items" in selectedSavedMealEntry.data ? (
-        <FoodNutritionEditSheet
-          visible={savedMealNutritionEditVisible}
-          text={selectedSavedMealEntry.text}
-          data={selectedSavedMealEntry.data as FoodData}
-          media={selectedSavedMealEntry.media}
-          onClose={() => closeAppModal("settings.savedMealNutritionEdit")}
-          onSave={(text, data) =>
-            handleSavedMealSaveNutrition(selectedSavedMealEntry, text, data)
-          }
-        />
-      ) : null}
+      case "settings.savedExercises":
+        return (
+          <SheetFrame
+            visible
+            title={t("settings.workout.saved")}
+            onClose={closeSavedExercises}
+            centerTitle
+            size="full"
+          >
+            <SavedExercisesContent
+              workouts={savedExercises}
+              onDelete={deleteSavedExercise}
+            />
+          </SheetFrame>
+        );
+
+      case "settings.savedMealDetails":
+        return (
+          <FoodEntryDetailSheet
+            visible={selectedSavedMealEntry !== null}
+            entry={selectedSavedMealEntry}
+            modalScope="savedMeal"
+            modalDomain={domain}
+            onClose={() => closeAppModal("settings.savedMealDetails")}
+            onDelete={handleSavedMealDelete}
+            onSaveMeal={handleSavedMealSaveMeal}
+            onSaveNutrition={handleSavedMealSaveNutrition}
+            onAiEdit={handleSavedMealAiEdit}
+            initialMealSaved={selectedSavedMeal !== null}
+            nested={nested}
+          />
+        );
+
+      case "settings.savedMealNutritionEdit":
+        return selectedSavedMealEntry?.data &&
+          "items" in selectedSavedMealEntry.data ? (
+          <FoodNutritionEditSheet
+            visible
+            text={selectedSavedMealEntry.text}
+            data={selectedSavedMealEntry.data as FoodData}
+            media={selectedSavedMealEntry.media}
+            onClose={() => closeAppModal("settings.savedMealNutritionEdit")}
+            onSave={(text, data) =>
+              handleSavedMealSaveNutrition(selectedSavedMealEntry, text, data)
+            }
+          />
+        ) : null;
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <>
+      {settingsStack.reduceRight<ReactNode>(
+        (nested, item) => renderSettingsModal(item, nested) ?? nested,
+        null,
+      )}
     </>
   );
 }

@@ -24,6 +24,17 @@ interface SheetFrameProps {
   hideDefaultClose?: boolean;
   centerTitle?: boolean;
   overlay?: ReactNode;
+  /**
+   * A sheet that stacks ON TOP of this one — the fridge behaviour: the parent
+   * stays presented underneath while its child slides over it.
+   *
+   * It has to render *inside* this Modal's own view tree: RN presents a Modal
+   * from `[self reactViewController]`, i.e. the closest view controller above
+   * its host view. A sibling Modal resolves to the root VC, which is already
+   * presenting this one, so UIKit refuses it and the child never appears.
+   * Nested here, it resolves to this sheet's VC and stacks properly.
+   */
+  nested?: ReactNode;
   scroll?: boolean;
   keyboardAwareScroll?: boolean;
   contentBottomInset?: number;
@@ -42,6 +53,7 @@ export function SheetFrame({
   hideDefaultClose = false,
   centerTitle = false,
   overlay,
+  nested,
   scroll = true,
   keyboardAwareScroll = false,
   contentBottomInset = 0,
@@ -163,6 +175,7 @@ export function SheetFrame({
             {header}
           </View>
           {overlay}
+          {nested}
         </View>
     );
 
@@ -224,6 +237,7 @@ export function SheetFrame({
           </GlassSurface>
           {overlay}
         </SafeAreaView>
+        {nested}
       </View>
     </Modal>
   );

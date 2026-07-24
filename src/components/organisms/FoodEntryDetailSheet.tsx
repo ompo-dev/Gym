@@ -73,6 +73,8 @@ interface FoodEntryDetailSheetProps {
    * knowing what a pantry is.
    */
   belowNutrition?: ReactNode;
+  /** Sheet stacked on top of this one — see `SheetFrame`'s `nested`. */
+  nested?: ReactNode;
 }
 
 function MacroStat({
@@ -150,6 +152,7 @@ export function FoodEntryDetailSheet({
   reasoningLoading = false,
   initialMealSaved = false,
   belowNutrition,
+  nested,
 }: FoodEntryDetailSheetProps) {
   const colors = useColors();
   const profile = useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
@@ -381,6 +384,7 @@ export function FoodEntryDetailSheet({
         onClose={onClose}
         size="full"
         contentBottomInset={aiScrollInset}
+        nested={nested}
         overlay={hasActions ? (
           <>
             {!useNativeMenu ? (

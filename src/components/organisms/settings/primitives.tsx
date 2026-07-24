@@ -246,6 +246,7 @@ export function PageSheet({
   onSave,
   children,
   overlay,
+  nested,
   contentBottomInset,
   keyboardAwareScroll,
 }: {
@@ -256,6 +257,8 @@ export function PageSheet({
   onSave?: () => void;
   children: ReactNode;
   overlay?: ReactNode;
+  /** Sheet stacked on top of this one — see `SheetFrame`'s `nested`. */
+  nested?: ReactNode;
   contentBottomInset?: number;
   keyboardAwareScroll?: boolean;
 }) {
@@ -270,6 +273,7 @@ export function PageSheet({
       keyboardAwareScroll={keyboardAwareScroll}
       contentBottomInset={contentBottomInset}
       overlay={overlay}
+      nested={nested}
       headerLeading={
         onSave ? <HeaderIconButton icon="x" onPress={onClose} /> : null
       }

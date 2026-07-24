@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { LoggedPressable } from '@/components/atoms/Logged';
 
@@ -113,11 +114,14 @@ export function WeightControlSheet({
   onClose,
   onDismiss,
   onOpenRegisterWeight,
+  nested,
 }: {
   visible: boolean;
   onClose: () => void;
   onDismiss?: () => void;
   onOpenRegisterWeight: () => void;
+  /** Sheet stacked on top of this one — see `SheetFrame`'s `nested`. */
+  nested?: ReactNode;
 }) {
   const colors = useColors();
   const lang = getLang();
@@ -155,6 +159,7 @@ export function WeightControlSheet({
       centerTitle
       contentBottomInset={112}
       overlay={registerButton}
+      nested={nested}
       size="full"
     >
       <View style={styles.weightHero}>

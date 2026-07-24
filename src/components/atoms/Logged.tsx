@@ -1,4 +1,4 @@
-import type { Ref } from 'react';
+import { useState, type Ref } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -41,24 +41,31 @@ export function LoggedPressable({
 }: PressableProps & { ref?: Ref<View> }) {
   const scale = useSharedValue(1);
   const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  // Reanimated's wrapper runs `flattenArray` over `style`, so a *function* style
+  // arrives at Pressable as `[fn]` — an array, which Pressable no longer treats
+  // as a callback. RN then drops it as an invalid style entry and the caller's
+  // whole layout goes with it (row → column, icons landing above their labels).
+  // So resolve the callback here and hand the animated component plain objects.
+  const [pressed, setPressed] = useState(false);
 
   return (
     <AnimatedPressable
       {...rest}
       onPressIn={(event) => {
+        setPressed(true);
         scale.value = withTiming(0.97, PRESS_IN);
         onPressIn?.(event);
       }}
       onPressOut={(event) => {
+        setPressed(false);
         scale.value = withTiming(1, PRESS_OUT);
         onPressOut?.(event);
       }}
       // Merge the press scale with whatever the caller passed, function or not.
-      style={
-        typeof style === 'function'
-          ? (state) => [style(state), pressStyle]
-          : [style, pressStyle]
-      }
+      style={[
+        typeof style === 'function' ? style({ pressed, hovered: false }) : style,
+        pressStyle,
+      ]}
       onPress={(event) => {
         // Best name available: the a11y label, then the hint, then the role —
         // so a button with none at least logs "press(button)" instead of a bare

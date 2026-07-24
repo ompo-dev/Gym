@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
@@ -51,11 +51,14 @@ export function HealthProfileSheet({
   domain,
   onClose,
   onDismiss,
+  nested,
 }: {
   visible: boolean;
   domain: Domain;
   onClose: () => void;
   onDismiss?: () => void;
+  /** Sheet stacked on top of this one — see `SheetFrame`'s `nested`. */
+  nested?: ReactNode;
 }) {
   const colors = useColors();
   const lang = getLang();
@@ -157,6 +160,7 @@ export function HealthProfileSheet({
       onClose={onClose}
       onDismiss={onDismiss}
       onSave={save}
+      nested={nested}
       overlay={
         <>
           <OptionMenu

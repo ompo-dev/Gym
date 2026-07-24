@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 import {
@@ -41,8 +41,16 @@ describe('app modal registry', () => {
  * and it is the only check here that fails when the two drift apart.
  */
 describe('every registered settings modal is rendered by a sheet', () => {
-  const source = ['SettingsSheet.tsx', 'settings/PantrySheet.tsx']
-    .map((file) => readFileSync(join(__dirname, '../components/organisms', file), 'utf8'))
+  // Every sheet, not a hand-kept list of two: the pickers are gated inside the
+  // sheet that owns them, and naming files here is the same rot the check exists
+  // to catch.
+  const organisms = join(__dirname, '../components/organisms');
+  const source = [organisms, join(organisms, 'settings')]
+    .flatMap((dir) =>
+      readdirSync(dir)
+        .filter((file) => file.endsWith('.tsx'))
+        .map((file) => readFileSync(join(dir, file), 'utf8')),
+    )
     .join('\n');
 
   const settingsIds = modalIds.filter((id) => id.startsWith('settings.'));

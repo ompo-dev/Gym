@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 import type { FoodMediaAction, Domain, Entry } from '@/core/types';
+import type { AppModal } from '@/core/appModals';
 import type { FoodData } from '@/domains/schemas';
 import type { SavedMeal } from '@/data/SavedMealRepository';
 import type { SavedExercise } from '@/data/SavedExerciseRepository';
@@ -41,6 +42,13 @@ interface AppModalHostProps {
   onSelectSavedExercises: (workouts: SavedExercise[]) => void;
 }
 
+const FOOD_ENTRY_MODALS: readonly string[] = [
+  'food.entryDetail',
+  'food.actionMenu',
+  'food.aiEdit',
+  'food.nutritionEdit',
+];
+
 export function AppModalHost({
   domain,
   entries,
@@ -58,132 +66,136 @@ export function AppModalHost({
   onSelectSavedMeals,
   onSelectSavedExercises,
 }: AppModalHostProps) {
-  const activeModal = useAppModalStore((state) => state.stack.at(-1));
   const stack = useAppModalStore((state) => state.stack);
   const closeAppModal = useAppModalStore((state) => state.closeAppModal);
+  const activeModal = stack.at(-1);
   const modal = activeModal?.domain === domain ? activeModal : null;
-  const foodDetailModal = [...stack]
-    .reverse()
-    .find((item) =>
-      item.domain === domain &&
-      (item.id === 'food.entryDetail' ||
-        item.id === 'food.actionMenu' ||
-        item.id === 'food.aiEdit' ||
-        item.id === 'food.nutritionEdit')
-    );
-  const foodEntry =
-    foodDetailModal && 'entryId' in foodDetailModal
-      ? entries.find((entry) => entry.id === foodDetailModal.entryId) ?? null
+
+  const entryOf = (item: AppModal): Entry | null =>
+    'entryId' in item ? (entries.find((entry) => entry.id === item.entryId) ?? null) : null;
+  const dataOf = (entry: Entry | null): FoodData | null =>
+    entry?.status === 'done' && entry.data && 'items' in entry.data
+      ? (entry.data as FoodData)
       : null;
-  const foodData =
-    foodEntry?.status === 'done' && foodEntry.data && 'items' in foodEntry.data
-      ? (foodEntry.data as FoodData)
-      : null;
+  // The note this modal is about, gone from under it — deleting it must close
+  // the sheet rather than leave an empty one open.
+  const orphaned = Boolean(modal && FOOD_ENTRY_MODALS.includes(modal.id) && !entryOf(modal));
 
   useEffect(() => {
-    if (
-      modal &&
-      (modal.id === 'food.entryDetail' ||
-        modal.id === 'food.actionMenu' ||
-        modal.id === 'food.aiEdit' ||
-        modal.id === 'food.nutritionEdit') &&
-      !foodEntry
-    ) {
-      closeAppModal(modal.id);
-    }
-  }, [closeAppModal, foodEntry, modal]);
+    if (modal && orphaned) closeAppModal(modal.id);
+  }, [closeAppModal, modal, orphaned]);
 
   if (!modal) return null;
 
+  // Settings owns its own slice of the stack and nests its own sheets.
   if (modal.id.startsWith('settings.')) {
-    return (
-      <SettingsSheet
-        visible
-        domain={domain}
-      />
-    );
+    return <SettingsSheet visible domain={domain} />;
   }
 
-  if (modal.id === 'food.savedMealPicker') {
-    return (
-      <SavedMealsSheet
-        visible
-        onClose={() => closeAppModal('food.savedMealPicker')}
-        onSelect={onSelectSavedMeals}
-      />
-    );
-  }
+  /**
+   * One sheet per stack entry, each rendered *inside* the one below it. That is
+   * the fridge behaviour: tapping a row does not swap sheets, it slides a new
+   * one over a parent that stays put — and RN only stacks Modals nested in each
+   * other's view tree (see `SheetFrame`'s `nested`).
+   *
+   * `null` means "this entry draws no sheet of its own" — an anchored menu, an
+   * inline composer — and whatever is above it belongs to the sheet below.
+   */
+  const renderModal = (item: AppModal, nested: ReactNode): ReactNode | null => {
+    switch (item.id) {
+      case 'food.savedMealPicker':
+        return (
+          <SavedMealsSheet
+            visible
+            onClose={() => closeAppModal('food.savedMealPicker')}
+            onSelect={onSelectSavedMeals}
+          />
+        );
 
-  if (modal.id === 'workout.savedExercisePicker') {
-    return (
-      <SavedExercisesSheet
-        visible
-        onClose={() => closeAppModal('workout.savedExercisePicker')}
-        onSelect={onSelectSavedExercises}
-      />
-    );
-  }
+      case 'workout.savedExercisePicker':
+        return (
+          <SavedExercisesSheet
+            visible
+            onClose={() => closeAppModal('workout.savedExercisePicker')}
+            onSelect={onSelectSavedExercises}
+          />
+        );
 
-  if (modal.id === 'food.nutritionEdit') {
-    if (!foodEntry || !foodData) return null;
-    return (
-      <FoodNutritionEditSheet
-        visible
-        text={foodEntry.text}
-        data={foodData}
-        media={foodEntry.media}
-        onClose={() => closeAppModal('food.nutritionEdit')}
-        onSave={(text, data) => onSaveNutrition(foodEntry, text, data)}
-      />
-    );
-  }
+      case 'food.entryDetail': {
+        const entry = entryOf(item);
+        return (
+          <FoodEntryDetailSheet
+            visible={entry !== null}
+            onClose={() => closeAppModal()}
+            entry={entry}
+            onDelete={onDeleteFoodEntry}
+            onSaveMeal={onSaveMeal}
+            onSaveNutrition={onSaveNutrition}
+            onAiEdit={onAiEdit}
+            reasoningLoading={entry?.id === reasoningLoadingId}
+            initialMealSaved={selectedFoodMealSaved}
+            nested={nested}
+          />
+        );
+      }
 
-  if (
-    modal.id === 'food.entryDetail' ||
-    modal.id === 'food.actionMenu' ||
-    modal.id === 'food.aiEdit'
-  ) {
-    return (
-      <FoodEntryDetailSheet
-        visible={foodEntry !== null}
-        onClose={() => closeAppModal()}
-        entry={foodEntry}
-        onDelete={onDeleteFoodEntry}
-        onSaveMeal={onSaveMeal}
-        onSaveNutrition={onSaveNutrition}
-        onAiEdit={onAiEdit}
-        reasoningLoading={foodEntry?.id === reasoningLoadingId}
-        initialMealSaved={selectedFoodMealSaved}
-      />
-    );
-  }
+      // The action menu and the AI composer are drawn inside the detail sheet.
+      case 'food.actionMenu':
+      case 'food.aiEdit':
+        return null;
 
-  if (modal.id === 'food.mediaCapture') {
-    return (
-      <FoodMediaCaptureSheet
-        visible
-        mode={modal.mode}
-        onClose={() => closeAppModal('food.mediaCapture')}
-        onDismiss={onFoodCaptureDismiss}
-        onPhoto={onPhoto}
-        onBarcode={onBarcode}
-        drafts={mediaDrafts}
-      />
-    );
-  }
+      case 'food.nutritionEdit': {
+        const entry = entryOf(item);
+        const data = dataOf(entry);
+        if (!entry || !data) return null;
+        return (
+          <FoodNutritionEditSheet
+            visible
+            text={entry.text}
+            data={data}
+            media={entry.media}
+            onClose={() => closeAppModal('food.nutritionEdit')}
+            onSave={(text, next) => onSaveNutrition(entry, text, next)}
+          />
+        );
+      }
 
-  if (modal.id === 'food.barcodeNutritionEdit') {
-    return (
-      <FoodNutritionEditSheet
-        visible
-        text={modal.draft.text}
-        data={modal.draft.data}
-        saveUnchanged
-        onClose={() => closeAppModal('food.barcodeNutritionEdit')}
-        onSave={onSaveBarcodeFood}
-      />
-    );
-  }
+      case 'food.mediaCapture':
+        return (
+          <FoodMediaCaptureSheet
+            visible
+            mode={item.mode}
+            onClose={() => closeAppModal('food.mediaCapture')}
+            onDismiss={onFoodCaptureDismiss}
+            onPhoto={onPhoto}
+            onBarcode={onBarcode}
+            drafts={mediaDrafts}
+            nested={nested}
+          />
+        );
 
-  return null;
+      case 'food.barcodeNutritionEdit':
+        return (
+          <FoodNutritionEditSheet
+            visible
+            text={item.draft.text}
+            data={item.draft.data}
+            saveUnchanged
+            onClose={() => closeAppModal('food.barcodeNutritionEdit')}
+            onSave={onSaveBarcodeFood}
+          />
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <>
+      {stack
+        .filter((item) => item.domain === domain)
+        .reduceRight<ReactNode>((nested, item) => renderModal(item, nested) ?? nested, null)}
+    </>
+  );
 }

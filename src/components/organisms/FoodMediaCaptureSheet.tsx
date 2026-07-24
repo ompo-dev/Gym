@@ -1,7 +1,7 @@
 import { CameraView, scanFromURLAsync, useCameraPermissions, type BarcodeScanningResult, } from 'expo-camera';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,6 +50,7 @@ export function FoodMediaCaptureSheet({
   onPhoto,
   onBarcode,
   drafts,
+  nested,
 }: {
   visible: boolean;
   mode: FoodMediaAction | null;
@@ -60,6 +61,8 @@ export function FoodMediaCaptureSheet({
   onBarcode: (code: string, imageUri?: string) => void;
   /** What is already attached — the strip beside the shutter reads this. */
   drafts: { uri?: string }[];
+  /** Sheet stacked on top of this one — see `SheetFrame`'s `nested`. */
+  nested?: ReactNode;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -330,6 +333,7 @@ export function FoodMediaCaptureSheet({
           ) : null}
         </View>
       </View>
+      {nested}
     </Modal>
   );
 }
