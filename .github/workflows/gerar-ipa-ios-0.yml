@@ -1,4 +1,4 @@
-name: Gerar IPA para iPhone
+name: Gerar IPA para iPhone 0
 
 on:
   workflow_dispatch:
@@ -47,10 +47,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-pods-
 
       - name: Instalar dependências
-        # SDK 57 tree resolves only with legacy peer deps (e.g. the
-        # @react-native/jest-preset peer on react-native); the lockfile was
-        # generated the same way, so `npm ci` must match or it ERESOLVE-fails.
-        run: npm ci --legacy-peer-deps
+        run: npm ci
 
       - name: Verificar configuração do Expo
         run: |
