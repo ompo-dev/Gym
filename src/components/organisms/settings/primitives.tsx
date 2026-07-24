@@ -13,16 +13,16 @@ import {
   swiftTint,
 } from "@/components/onboarding/onboardingNative";
 import { Metrics, Radii, Spacing } from "@/constants/theme";
-
-// A UISwitch is a fixed 51x31; reserve that so the native toggle doesn't collapse
-// before SwiftUI lays it out.
-const NATIVE_TOGGLE_HOST = { width: 51, height: 31 } as const;
 import type { AppModalAnchor } from "@/core/appModals";
 import { useColors } from "@/hooks/use-colors";
 import { t } from "@/i18n";
 
 import { SheetFrame } from "../SheetFrame";
 import { settingsStyles } from "./styles";
+
+// A UISwitch is a fixed 51x31; reserve that so the native toggle doesn't collapse
+// before SwiftUI lays it out.
+const NATIVE_TOGGLE_HOST = { width: 51, height: 31 } as const;
 
 // Tints pulled from the reference screenshots (no theme token for these).
 export const TINT = {
