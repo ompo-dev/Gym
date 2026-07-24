@@ -2,8 +2,9 @@
 module.exports = {
   type: 'widget',
   name: 'GymWidget',
-  // Widgets + AppShortcutsProvider use iOS 17 SwiftUI APIs (containerBackground).
-  deploymentTarget: '17.0',
+  // OpenURLIntent (App Intent that opens the deep link) requires iOS 18; the
+  // widgets/containerBackground work fine there too.
+  deploymentTarget: '18.0',
   // Shared with the main app so the widget can read today's snapshot the RN app
   // writes via @bacons/apple-targets ExtensionStorage. Must match app.json.
   entitlements: {
