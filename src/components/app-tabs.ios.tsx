@@ -1,7 +1,11 @@
-import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
 import { t } from '@/i18n';
 import { useAppStore } from '@/store/useAppStore';
+
+// SDK 57 moved these under NativeTabs.Trigger (they were top-level exports on
+// SDK 54). Aliasing keeps the JSX below unchanged.
+const { Label, Icon } = NativeTabs.Trigger;
 
 // iOS keeps the real native tab bar (SF Symbols + Liquid Glass on iOS 26).
 // Android/web resolve `app-tabs.tsx`, a custom glass bar that mirrors this look.

@@ -1,6 +1,6 @@
 import type { ReactNode, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, useColorScheme, View } from "react-native";
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -16,8 +16,22 @@ import {
 } from "@/components/onboarding/onboardingControls";
 import {
   formatDate,
+  formatISODate,
+  isoToDate,
   type PickerKind,
 } from "@/components/onboarding/onboardingUtils";
+import {
+  IOS_NATIVE_ENABLED,
+  SwiftButton,
+  SwiftDatePicker,
+  SwiftForm,
+  SwiftHost,
+  SwiftPicker,
+  SwiftSection,
+  SwiftText,
+  swiftPickerStyle,
+  swiftTag,
+} from "@/components/onboarding/onboardingNative";
 import { Spacing } from "@/constants/theme";
 import { canOpenAppModal, type AppModalAnchor } from "@/core/appModals";
 import {
@@ -61,6 +75,7 @@ export function HealthProfileSheet({
   nested?: ReactNode;
 }) {
   const colors = useColors();
+  const scheme = useColorScheme() === "dark" ? "dark" : "light";
   const lang = getLang();
   const activeModal = useAppModalStore((s) => s.stack.at(-1));
   const openAppModal = useAppModalStore((s) => s.openAppModal);
@@ -153,6 +168,102 @@ export function HealthProfileSheet({
     setDraft((current) => ({ ...current, activity }));
     setProfileOptionMenu(null);
   };
+  if (IOS_NATIVE_ENABLED) {
+    // Native SwiftUI Form. Birth date / gender / activity are fully inline
+    // native; height & weight keep the range-wheel overlay (itself a native
+    // SwiftUI BottomSheet on iOS) opened from a Form button.
+    return (
+      <PageSheet
+        visible={visible}
+        title="Perfil de saúde"
+        onClose={onClose}
+        onDismiss={onDismiss}
+        onSave={save}
+        nested={nested}
+        scroll={false}
+        overlay={
+          <PickerSheet
+            lang={lang}
+            text={copy[lang]}
+            picker={profilePicker}
+            profile={draft}
+            presentation="overlay"
+            onClose={() => closeAppModal("settings.healthProfilePicker")}
+            onPick={(kind, value) => {
+              if (kind === "height" && typeof value === "number") {
+                setDraft((current) => ({ ...current, heightCm: value }));
+              }
+              if (kind === "weight" && typeof value === "number") {
+                setDraft((current) => ({ ...current, weightKg: value }));
+              }
+              closeAppModal("settings.healthProfilePicker");
+            }}
+          />
+        }
+      >
+        <SwiftHost style={styles.nativeFormHost} colorScheme={scheme}>
+          <SwiftForm>
+            <SwiftSection title="Informações básicas">
+              <SwiftDatePicker
+                title="Data de nascimento"
+                selection={isoToDate(draft.birthDate)}
+                displayedComponents={["date"]}
+                range={{ end: new Date() }}
+                onDateChange={(date: Date) =>
+                  setDraft((current) => ({ ...current, birthDate: formatISODate(date) }))
+                }
+              />
+              <SwiftPicker
+                label="Gênero"
+                selection={draft.gender}
+                onSelectionChange={(value: string) =>
+                  selectGender(value as OnboardingProfile["gender"])
+                }
+                modifiers={[swiftPickerStyle("menu")]}
+              >
+                {genderMenuOptions.map((option) => (
+                  <SwiftText key={option.value} modifiers={[swiftTag(option.value)]}>
+                    {option.label}
+                  </SwiftText>
+                ))}
+              </SwiftPicker>
+              <SwiftButton
+                label={`Altura — ${draft.heightCm} cm`}
+                onPress={() => openProfilePicker("height")}
+              />
+              <SwiftButton
+                label={`Peso atual — ${formatWeight(draft.weightKg)}`}
+                onPress={() => openProfilePicker("weight")}
+              />
+            </SwiftSection>
+
+            <SwiftSection title="Atividade">
+              <SwiftPicker
+                label="Nível de atividade"
+                selection={draft.activity}
+                onSelectionChange={(value: string) =>
+                  selectActivity(value as OnboardingProfile["activity"])
+                }
+                modifiers={[swiftPickerStyle("menu")]}
+              >
+                {activityMenuOptions.map((option) => (
+                  <SwiftText key={option.value} modifiers={[swiftTag(option.value)]}>
+                    {option.label}
+                  </SwiftText>
+                ))}
+              </SwiftPicker>
+            </SwiftSection>
+
+            <SwiftSection title="Gasto diário estimado">
+              <SwiftText>{`Seu TDEE: ${formatThousands(summary.tdee)} cal/dia`}</SwiftText>
+              <SwiftText>{`Taxa metabólica basal: ${formatThousands(summary.bmr)} cal`}</SwiftText>
+            </SwiftSection>
+          </SwiftForm>
+        </SwiftHost>
+      </PageSheet>
+    );
+  }
+
   return (
     <PageSheet
       visible={visible}
@@ -298,6 +409,9 @@ export function HealthProfileSheet({
 }
 
 const styles = StyleSheet.create({
+  nativeFormHost: {
+    flex: 1,
+  },
   healthTdeeBottom: {
     flexDirection: "row",
     alignItems: "flex-end",

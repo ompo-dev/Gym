@@ -137,26 +137,33 @@ export function SheetFrame({
         // folded into the content padding, so the last card clears the home
         // indicator without a dead bar below it.
         <View style={[styles.fill, { backgroundColor: colors.background }]}>
-          <ScrollView
-            style={styles.fill}
-            contentContainerStyle={[
-              styles.contentFull,
-              {
-                paddingTop: headerHeight + Spacing.four,
-                paddingBottom: Spacing.four + insets.bottom + scrollBottomInset,
-              },
-            ]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            automaticallyAdjustKeyboardInsets={false}
-            scrollEventThrottle={16}
-            onScroll={({ nativeEvent }) => {
-              setScrolled(nativeEvent.contentOffset.y > 4);
-            }}
-          >
-            {children}
-          </ScrollView>
+          {scroll ? (
+            <ScrollView
+              style={styles.fill}
+              contentContainerStyle={[
+                styles.contentFull,
+                {
+                  paddingTop: headerHeight + Spacing.four,
+                  paddingBottom: Spacing.four + insets.bottom + scrollBottomInset,
+                },
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              automaticallyAdjustKeyboardInsets={false}
+              scrollEventThrottle={16}
+              onScroll={({ nativeEvent }) => {
+                setScrolled(nativeEvent.contentOffset.y > 4);
+              }}
+            >
+              {children}
+            </ScrollView>
+          ) : (
+            // Native content (a SwiftUI Form) scrolls itself and needs bounded
+            // height, so fill instead of nesting it in a ScrollView. It clears
+            // the floating glass header via paddingTop.
+            <View style={[styles.fill, { paddingTop: headerHeight }]}>{children}</View>
+          )}
 
           <View
             style={styles.headerBar}

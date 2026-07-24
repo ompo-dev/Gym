@@ -1,4 +1,4 @@
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import type { ComponentProps } from 'react';
 import { Tabs } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,11 @@ import { Radii, Spacing } from '@/constants/theme';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 import { useAppStore } from '@/store/useAppStore';
+
+// expo-router 57 vendors React Navigation and no longer ships
+// @react-navigation/bottom-tabs as a resolvable package, so derive the tab bar
+// props straight from the Tabs component instead of importing the type.
+type BottomTabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0];
 
 // The lucide equivalents of the SF Symbols the native bar uses (fork.knife /
 // dumbbell), so both platforms read as the same tabs.

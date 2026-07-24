@@ -1,9 +1,15 @@
 import Slider from "@react-native-community/slider";
 import { useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, useColorScheme, View } from "react-native";
 import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppText } from "@/components/atoms/AppText";
+import {
+  IOS_NATIVE_ENABLED,
+  SwiftHost,
+  SwiftSlider,
+  swiftTint,
+} from "@/components/onboarding/onboardingNative";
 import {
   BIAS_DOT_COLORS,
   biasMeta,
@@ -32,6 +38,7 @@ export function EstimationBiasSheet({
   onClose: () => void;
 }) {
   const colors = useColors();
+  const scheme = useColorScheme() === "dark" ? "dark" : "light";
   const lang = getLang();
   const profile =
     useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
@@ -76,19 +83,34 @@ export function EstimationBiasSheet({
       </View>
 
       <Section label={t("settings.bias.adjust")}>
-        <Slider
-          style={styles.biasSlider}
-          minimumValue={0}
-          maximumValue={4}
-          step={1}
-          value={bias}
-          onValueChange={(next) =>
-            changeBias(Math.round(next) as OnboardingBias)
-          }
-          minimumTrackTintColor={colors.textSecondary}
-          maximumTrackTintColor={colors.backgroundSelected}
-          thumbTintColor={colors.text}
-        />
+        {IOS_NATIVE_ENABLED ? (
+          <SwiftHost colorScheme={scheme} style={styles.biasSlider}>
+            <SwiftSlider
+              value={bias}
+              min={0}
+              max={4}
+              step={1}
+              onValueChange={(next: number) =>
+                changeBias(Math.round(next) as OnboardingBias)
+              }
+              modifiers={[swiftTint?.(colors.text)].filter(Boolean)}
+            />
+          </SwiftHost>
+        ) : (
+          <Slider
+            style={styles.biasSlider}
+            minimumValue={0}
+            maximumValue={4}
+            step={1}
+            value={bias}
+            onValueChange={(next) =>
+              changeBias(Math.round(next) as OnboardingBias)
+            }
+            minimumTrackTintColor={colors.textSecondary}
+            maximumTrackTintColor={colors.backgroundSelected}
+            thumbTintColor={colors.text}
+          />
+        )}
         <View style={styles.biasLabels}>
           {BIAS_VALUES.map((item) => (
             <LoggedPressable

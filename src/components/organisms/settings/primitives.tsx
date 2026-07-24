@@ -1,11 +1,22 @@
 import type { ReactNode, RefObject } from "react";
-import { StyleSheet, Switch, useWindowDimensions, View } from "react-native";
+import { StyleSheet, Switch, useColorScheme, useWindowDimensions, View } from "react-native";
 import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon, type AppIconName } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
 import { GlassSurface } from "@/components/atoms/GlassSurface";
+import {
+  IOS_NATIVE_ENABLED,
+  SwiftHost,
+  SwiftToggle,
+  swiftLabelsHidden,
+  swiftTint,
+} from "@/components/onboarding/onboardingNative";
 import { Metrics, Radii, Spacing } from "@/constants/theme";
+
+// A UISwitch is a fixed 51x31; reserve that so the native toggle doesn't collapse
+// before SwiftUI lays it out.
+const NATIVE_TOGGLE_HOST = { width: 51, height: 31 } as const;
 import type { AppModalAnchor } from "@/core/appModals";
 import { useColors } from "@/hooks/use-colors";
 import { t } from "@/i18n";
@@ -188,6 +199,21 @@ export function Toggle({
   label?: string;
 }) {
   const colors = useColors();
+  const scheme = useColorScheme() === "dark" ? "dark" : "light";
+
+  if (IOS_NATIVE_ENABLED) {
+    return (
+      <SwiftHost colorScheme={scheme} style={NATIVE_TOGGLE_HOST}>
+        <SwiftToggle
+          isOn={value}
+          onIsOnChange={onValueChange}
+          label={label ?? ""}
+          modifiers={[swiftLabelsHidden?.(), swiftTint?.(colors.success)].filter(Boolean)}
+        />
+      </SwiftHost>
+    );
+  }
+
   return (
     <Switch
       value={value}
@@ -249,6 +275,7 @@ export function PageSheet({
   nested,
   contentBottomInset,
   keyboardAwareScroll,
+  scroll,
 }: {
   visible: boolean;
   title: string;
@@ -261,6 +288,8 @@ export function PageSheet({
   nested?: ReactNode;
   contentBottomInset?: number;
   keyboardAwareScroll?: boolean;
+  /** false when the content is a native SwiftUI Form that scrolls itself. */
+  scroll?: boolean;
 }) {
   return (
     <SheetFrame
@@ -272,6 +301,7 @@ export function PageSheet({
       hideDefaultClose={Boolean(onSave)}
       keyboardAwareScroll={keyboardAwareScroll}
       contentBottomInset={contentBottomInset}
+      scroll={scroll}
       overlay={overlay}
       nested={nested}
       headerLeading={
@@ -369,7 +399,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   optionMenuOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 20,
     elevation: 20,
   },

@@ -1,82 +1,39 @@
-import { requireOptionalNativeModule } from "expo-modules-core";
-import { Platform } from "react-native";
+// Android / web fallback: there is no ExpoUI native module here, so every SwiftUI
+// export is undefined and IOS_NATIVE_ENABLED is false. iOS resolves
+// `onboardingNative.ios.ts`, which imports the real @expo/ui/swift-ui directly.
+// Consumers branch on IOS_NATIVE_ENABLED and never touch these on this platform.
 
-// ponytail: kill switch para isolar o SIGABRT no boot. Deixe false ate confirmar
-// que o ExpoUI nao e a causa; volte para true (ou remova a flag) depois.
-const ENABLE_EXPO_UI = false;
+export const SwiftBottomSheet: any = undefined;
+export const SwiftButton: any = undefined;
+export const SwiftDatePicker: any = undefined;
+export const SwiftDivider: any = undefined;
+export const SwiftForm: any = undefined;
+export const SwiftGroup: any = undefined;
+export const SwiftHost: any = undefined;
+export const SwiftMenu: any = undefined;
+export const SwiftPicker: any = undefined;
+export const SwiftSection: any = undefined;
+export const SwiftSlider: any = undefined;
+export const SwiftText: any = undefined;
+export const SwiftToggle: any = undefined;
+export const SwiftVStack: any = undefined;
 
-type SwiftUiBundle = {
-  BottomSheet: any;
-  Button: any;
-  DatePicker: any;
-  Divider: any;
-  Group: any;
-  Host: any;
-  Menu: any;
-  Picker: any;
-  Slider: any;
-  Text: any;
-  Toggle: any;
-  VStack: any;
-  modifiers: Record<string, any>;
-};
+export const swiftButtonStyle: any = undefined;
+export const swiftControlSize: any = undefined;
+export const swiftFont: any = undefined;
+export const swiftForegroundStyle: any = undefined;
+export const swiftFrame: any = undefined;
+export const swiftLabelStyle: any = undefined;
+export const swiftLabelsHidden: any = undefined;
+export const swiftMenuActionDismissBehavior: any = undefined;
+export const swiftPadding: any = undefined;
+export const swiftPickerStyle: any = undefined;
+export const presentationDetents: any = undefined;
+export const presentationDragIndicator: any = undefined;
+export const swiftTag: any = undefined;
+export const swiftTint: any = undefined;
+export const swiftToggleStyle: any = undefined;
 
-let swiftUiBundleCache: SwiftUiBundle | null | undefined;
-
-function loadSwiftUiBundle(): SwiftUiBundle | null {
-  if (swiftUiBundleCache !== undefined) {
-    return swiftUiBundleCache;
-  }
-
-  if (!ENABLE_EXPO_UI || Platform.OS !== "ios" || !requireOptionalNativeModule("ExpoUI")) {
-    swiftUiBundleCache = null;
-    return swiftUiBundleCache;
-  }
-
-  try {
-    // Expo Go does not ship ExpoUI, so this must stay lazy.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const swiftUi = require("@expo/ui/swift-ui");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const modifiers = require("@expo/ui/swift-ui/modifiers");
-
-    swiftUiBundleCache = {
-      ...swiftUi,
-      modifiers,
-    };
-  } catch {
-    swiftUiBundleCache = null;
-  }
-
-  return swiftUiBundleCache ?? null;
-}
-
-const swiftUiBundle = loadSwiftUiBundle();
-export const SwiftBottomSheet = swiftUiBundle?.BottomSheet as any;
-export const SwiftButton = swiftUiBundle?.Button as any;
-export const SwiftDivider = swiftUiBundle?.Divider as any;
-export const SwiftGroup = swiftUiBundle?.Group as any;
-export const SwiftHost = swiftUiBundle?.Host as any;
-export const SwiftMenu = swiftUiBundle?.Menu as any;
-export const SwiftPicker = swiftUiBundle?.Picker as any;
-export const SwiftText = swiftUiBundle?.Text as any;
-export const SwiftToggle = swiftUiBundle?.Toggle as any;
-export const SwiftVStack = swiftUiBundle?.VStack as any;
-export const swiftButtonStyle = swiftUiBundle?.modifiers.buttonStyle as any;
-export const swiftControlSize = swiftUiBundle?.modifiers.controlSize as any;
-export const swiftFont = swiftUiBundle?.modifiers.font as any;
-export const swiftForegroundStyle = swiftUiBundle?.modifiers.foregroundStyle as any;
-export const swiftFrame = swiftUiBundle?.modifiers.frame as any;
-export const swiftLabelStyle = swiftUiBundle?.modifiers.labelStyle as any;
-export const swiftLabelsHidden = swiftUiBundle?.modifiers.labelsHidden as any;
-export const swiftMenuActionDismissBehavior = swiftUiBundle?.modifiers
-  .menuActionDismissBehavior as any;
-export const swiftPadding = swiftUiBundle?.modifiers.padding as any;
-export const swiftPickerStyle = swiftUiBundle?.modifiers.pickerStyle as any;
-export const presentationDetents = swiftUiBundle?.modifiers.presentationDetents as any;
-export const presentationDragIndicator = swiftUiBundle?.modifiers
-  .presentationDragIndicator as any;
-export const swiftTag = swiftUiBundle?.modifiers.tag as any;
-export const swiftTint = swiftUiBundle?.modifiers.tint as any;
-export const swiftToggleStyle = swiftUiBundle?.modifiers.toggleStyle as any;
-export const IOS_NATIVE_ENABLED = Platform.OS === "ios" && !!swiftUiBundle;
+// Typed boolean (not the literal `false`) so consumers' `if (IOS_NATIVE_ENABLED)`
+// native branches stay reachable for the type-checker.
+export const IOS_NATIVE_ENABLED: boolean = false;

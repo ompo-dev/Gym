@@ -1,5 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Switch, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
+
+import { Toggle } from './settings/primitives';
 import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
@@ -436,11 +438,10 @@ function FoodNutritionEditContent({
       <GlassSurface glass="regular" style={styles.toggleCard}>
         <View style={styles.toggleRow}>
           <AppText variant="body">{t('details.autoCalculateTotal')}</AppText>
-          <Switch
+          <Toggle
             value={autoCalculateTotal}
             onValueChange={setAutoCalculateTotal}
-            accessibilityLabel={t('details.autoCalculateTotal')}
-            trackColor={{ true: colors.success, false: colors.backgroundSelected }}
+            label={t('details.autoCalculateTotal')}
           />
         </View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -451,11 +452,10 @@ function FoodNutritionEditContent({
               {t('details.autoAdjustItemCaloriesHint')}
             </AppText>
           </View>
-          <Switch
+          <Toggle
             value={autoAdjustCalories}
             onValueChange={setAutoAdjustCalories}
-            accessibilityLabel={t('details.autoAdjustItemCalories')}
-            trackColor={{ true: colors.success, false: colors.backgroundSelected }}
+            label={t('details.autoAdjustItemCalories')}
           />
         </View>
       </GlassSurface>

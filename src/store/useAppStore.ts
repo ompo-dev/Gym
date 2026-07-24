@@ -68,7 +68,8 @@ function isLang(value: string | null): value is Lang {
 function applyTheme(theme: ThemeMode): void {
   // react-native-web does not implement setColorScheme; there the OS preference
   // is the only source and forcing it is a no-op rather than a crash.
-  Appearance.setColorScheme?.(theme === 'system' ? null : theme);
+  // RN 0.86 replaced the old `null` reset with the `'unspecified'` sentinel.
+  Appearance.setColorScheme?.(theme === 'system' ? 'unspecified' : theme);
 }
 
 /**

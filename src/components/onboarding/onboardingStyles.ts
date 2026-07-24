@@ -992,7 +992,11 @@ export function createOnboardingStyles(colors: OnboardingColors) {
     padding: 14,
   },
   nativeSheetHost: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   sheet: {
     borderRadius: 30,
