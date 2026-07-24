@@ -14,6 +14,7 @@ export {
   Image as SwiftImage,
   Menu as SwiftMenu,
   Picker as SwiftPicker,
+  RNHostView as SwiftRNHostView,
   Section as SwiftSection,
   Slider as SwiftSlider,
   Text as SwiftText,

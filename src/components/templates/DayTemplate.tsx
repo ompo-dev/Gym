@@ -12,6 +12,7 @@ import { DayHeader } from '@/components/organisms/DayHeader';
 import { FoodGoalsSheet } from '@/components/organisms/FoodGoalsSheet';
 import { FoodMediaActionMenu } from '@/components/organisms/FoodMediaActionMenu';
 import { NativeMenuButton } from '@/components/molecules/NativeMenuButton';
+import { StatsDockMenu } from '@/components/molecules/StatsDockMenu';
 import { IOS_NATIVE_ENABLED, SwiftButton } from '@/components/onboarding/onboardingNative';
 import { buildBarcodeText, type FoodMediaDraft } from '@/components/organisms/FoodMediaDraftTray';
 import { NotesList } from '@/components/organisms/NotesList';
@@ -1032,6 +1033,20 @@ export function DayTemplate<TData, TTotals>({
                   ) : null}
                 </View>
               </>
+            ) : IOS_NATIVE_ENABLED && (isFood ? !!foodTotals : true) ? (
+              // Stats dock rebased on the native menu: tapping the bar opens a
+              // native menu whose content is the goals/progress block (hosted
+              // RN). Nicer native open/close than the toggled floating panel.
+              <StatsDockMenu
+                trigger={<TotalsDock items={totalItems} />}
+                content={
+                  isFood && foodTotals ? (
+                    <FoodGoalsSheet totals={foodTotals} visible date={date} />
+                  ) : (
+                    <WorkoutProgressSheet date={date} entries={entries} visible />
+                  )
+                }
+              />
             ) : (
               <TotalsDock
                 items={totalItems}
