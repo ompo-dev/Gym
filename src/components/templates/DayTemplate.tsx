@@ -47,7 +47,9 @@ import { useAppStore } from '@/store/useAppStore';
 const UNDO_MS = 4_000;
 // Space reserved below the footer for the floating tab bar. Tune this if the
 // macro dock sits too far from / too close to the Dieta/Treino pill.
-const TAB_BAR_CLEARANCE = 40;
+// Gap between the stats dock and the floating diet/workout tab bar. Halved from
+// 40 → the dock sat too high; this pulls it down closer to the tabs.
+const TAB_BAR_CLEARANCE = 20;
 const REFRESH_REASONING_INSTRUCTION =
   'Rewrite only description, meal.reasoning and meal.confidence for this final meal. Preserve meal.items exactly.';
 
