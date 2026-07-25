@@ -273,8 +273,10 @@ jobs:
 
           echo "apps.json:"; cat apps.json
 
-          # Rename the IPA to a stable asset name so the downloadURL is constant.
-          cp "$IPA" Gym-unsigned.ipa
+          # Stable asset name so the downloadURL is constant. The scheme is
+          # already "Gym", so usually $IPA IS Gym-unsigned.ipa — copying a file
+          # onto itself errors under `set -e`, so only copy when they differ.
+          if [ "$IPA" != "Gym-unsigned.ipa" ]; then cp "$IPA" Gym-unsigned.ipa; fi
 
           TAG="v${VERSION}-${{ github.run_number }}"
           gh release create "$TAG" \
