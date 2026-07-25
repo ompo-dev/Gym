@@ -242,6 +242,10 @@ jobs:
           SIZE="$SIZE" VERSION="$VERSION" BUILD="$BUILD" DATE="$DATE" BASE="$BASE" node -e '
           const { SIZE, VERSION, BUILD, DATE, BASE } = process.env;
           const icon = BASE + "/icon.png";
+          const screenshots = [
+            BASE + "/screenshots/splash-icon.png",
+            BASE + "/screenshots/dark-icon.png",
+          ];
           const src = {
             name: "Gym — ompo.dev",
             subtitle: "Dieta e treino local-first, com IA.",
@@ -254,6 +258,12 @@ jobs:
               subtitle: "Dieta e treino em notas.",
               localizedDescription: "Registre dieta e treino escrevendo em notas a IA estrutura calorias, macros, séries e cargas. Local-first: os dados ficam no aparelho.",
               iconURL: icon,
+              screenshots,
+              permissions: [
+                "Camera",
+                "Photo Library",
+                "Microphone"
+              ],
               category: "lifestyle",
               tintColor: "#F2A24B",
               versions: [{
@@ -275,11 +285,13 @@ jobs:
 
           # Stable asset names so the download URL is constant.
           if [ "$IPA" != "Gym-unsigned.ipa" ]; then cp "$IPA" Gym-unsigned.ipa; fi
-          cp assets/images/icon.png icon.png
+          cp assets/images/gym/ios-light.png icon.png
+          cp assets/images/splash-icon.png splash-icon.png
+          cp assets/images/gym/ios-dark.png dark-icon.png
 
           TAG="v${VERSION}-${{ github.run_number }}"
           gh release create "$TAG" \
-            Gym-unsigned.ipa apps.json icon.png \
+            Gym-unsigned.ipa apps.json icon.png splash-icon.png dark-icon.png \
             --title "Gym ${VERSION} (build ${{ github.run_number }})" \
             --notes "Build não-assinado (sideload). Fonte AltStore: apps.json neste release." \
             --latest
