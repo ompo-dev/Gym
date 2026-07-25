@@ -10,11 +10,15 @@
     "ios": {
       "bundleIdentifier": "com.ompinho.gymnotes",
       "icon": "./assets/gym.icon",
-      "appleTeamId": "0000000000"
+      "appleTeamId": "0000000000",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.ompinho.gymnotes"]
+      }
     },
     "android": {
       "package": "com.ompinho.gymnotes",
       "softwareKeyboardLayoutMode": "pan",
+      "icon": "./assets/images/gym/dark-icon.png",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

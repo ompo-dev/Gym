@@ -1,77 +1,120 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  View,
+} from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
-import { LoggedPressable } from '@/components/atoms/Logged';
-import { AppIcon } from '@/components/atoms/AppIcon';
-import { GlassSurface } from '@/components/atoms/GlassSurface';
-import { UndoToast } from '@/components/molecules/UndoToast';
-import { AppModalHost } from '@/components/organisms/AppModalHost';
-import { DayHeader } from '@/components/organisms/DayHeader';
-import { FoodGoalsSheet } from '@/components/organisms/FoodGoalsSheet';
-import { FoodMediaActionMenu } from '@/components/organisms/FoodMediaActionMenu';
-import { NativeMenuButton } from '@/components/molecules/NativeMenuButton';
-import { IOS_NATIVE_ENABLED, SwiftButton } from '@/components/onboarding/onboardingNative';
-import { buildBarcodeText, type FoodMediaDraft } from '@/components/organisms/FoodMediaDraftTray';
-import { NotesList } from '@/components/organisms/NotesList';
-import { SaveRoutineSheet } from '@/components/organisms/SaveRoutineSheet';
-import { TotalsDock } from '@/components/organisms/TotalsDock';
-import { WorkoutProgressSheet } from '@/components/organisms/WorkoutProgressSheet';
-import { Metrics, Radii, Spacing } from '@/constants/theme';
-import { APP_MODAL_TRANSITION_MS, canOpenAppModal } from '@/core/appModals';
-import { ENRICH_ERROR } from '@/core/command/CommandBus';
-import type { Command } from '@/core/command/Command';
-import { enrich } from '@/core/enrich/client';
-import type { EnrichMediaDescription, EnrichMediaInput } from '@/core/enrich/types';
-import { lookupOpenFoodFactsProduct } from '@/core/food/openFoodFacts';
-import { buildOnboardingPromptContext } from '@/core/onboarding';
-import type { Entry, EntryMediaAttachment, FoodMediaAction } from '@/core/types';
-import { newId } from '@/core/utils';
-import { EntryRepository } from '@/data/EntryRepository';
-import { SavedMealRepository, type SavedMeal } from '@/data/SavedMealRepository';
-import { SavedRoutineRepository, type Weekday } from '@/data/SavedRoutineRepository';
-import { SavedExerciseRepository, type SavedExercise } from '@/data/SavedExerciseRepository';
-import { routineItemsFor, weekdayOf } from '@/domains/routines';
-import { mergeDuplicateFoodItems, mergeFoodEdit, type FoodTotals } from '@/domains/food';
-import { foodEditSchema, foodSchema, type FoodData, type FoodItem, type WorkoutData } from '@/domains/schemas';
-import type { DomainConfig } from '@/domains/types';
-import { uniqueWorkoutExerciseNames } from '@/domains/workout';
-import { useColors } from '@/hooks/use-colors';
-import { useDay } from '@/hooks/useDay';
-import { useTotals } from '@/hooks/useTotals';
-import { getLang, t } from '@/i18n';
-import { useAppModalStore } from '@/store/useAppModalStore';
-import { useAppStore } from '@/store/useAppStore';
+import { AppIcon } from "@/components/atoms/AppIcon";
+import { GlassSurface } from "@/components/atoms/GlassSurface";
+import { LoggedPressable } from "@/components/atoms/Logged";
+import { NativeMenuButton } from "@/components/molecules/NativeMenuButton";
+import { UndoToast } from "@/components/molecules/UndoToast";
+import {
+  IOS_NATIVE_ENABLED,
+  SwiftButton,
+} from "@/components/onboarding/onboardingNative";
+import { AppModalHost } from "@/components/organisms/AppModalHost";
+import { DayHeader } from "@/components/organisms/DayHeader";
+import { FoodGoalsSheet } from "@/components/organisms/FoodGoalsSheet";
+import { FoodMediaActionMenu } from "@/components/organisms/FoodMediaActionMenu";
+import {
+  buildBarcodeText,
+  type FoodMediaDraft,
+} from "@/components/organisms/FoodMediaDraftTray";
+import { NotesList } from "@/components/organisms/NotesList";
+import { SaveRoutineSheet } from "@/components/organisms/SaveRoutineSheet";
+import { TotalsDock } from "@/components/organisms/TotalsDock";
+import { WorkoutProgressSheet } from "@/components/organisms/WorkoutProgressSheet";
+import { Metrics, Radii, Spacing } from "@/constants/theme";
+import { APP_MODAL_TRANSITION_MS, canOpenAppModal } from "@/core/appModals";
+import type { Command } from "@/core/command/Command";
+import { ENRICH_ERROR } from "@/core/command/CommandBus";
+import { enrich } from "@/core/enrich/client";
+import type {
+  EnrichMediaDescription,
+  EnrichMediaInput,
+} from "@/core/enrich/types";
+import { lookupOpenFoodFactsProduct } from "@/core/food/openFoodFacts";
+import { buildOnboardingPromptContext } from "@/core/onboarding";
+import type {
+  Entry,
+  EntryMediaAttachment,
+  FoodMediaAction,
+} from "@/core/types";
+import { newId } from "@/core/utils";
+import { EntryRepository } from "@/data/EntryRepository";
+import {
+  SavedExerciseRepository,
+  type SavedExercise,
+} from "@/data/SavedExerciseRepository";
+import {
+  SavedMealRepository,
+  type SavedMeal,
+} from "@/data/SavedMealRepository";
+import {
+  SavedRoutineRepository,
+  type Weekday,
+} from "@/data/SavedRoutineRepository";
+import {
+  mergeDuplicateFoodItems,
+  mergeFoodEdit,
+  type FoodTotals,
+} from "@/domains/food";
+import { routineItemsFor, weekdayOf } from "@/domains/routines";
+import {
+  foodEditSchema,
+  foodSchema,
+  type FoodData,
+  type FoodItem,
+  type WorkoutData,
+} from "@/domains/schemas";
+import type { DomainConfig } from "@/domains/types";
+import { uniqueWorkoutExerciseNames } from "@/domains/workout";
+import { useColors } from "@/hooks/use-colors";
+import { useDay } from "@/hooks/useDay";
+import { useTotals } from "@/hooks/useTotals";
+import { getLang, t } from "@/i18n";
+import { useAppModalStore } from "@/store/useAppModalStore";
+import { useAppStore } from "@/store/useAppStore";
 
 const UNDO_MS = 4_000;
-// Space reserved below the footer for the floating tab bar. Tune this if the
-// macro dock sits too far from / too close to the Dieta/Treino pill.
-// Gap between the stats dock and the floating diet/workout tab bar. Halved from
-// 40 → the dock sat too high; this pulls it down closer to the tabs.
-const TAB_BAR_CLEARANCE = 20;
+// Space reserved below the footer for the floating tab bar.
+// Android uses a custom floating glass pill (~60 px tall). iOS gets its height
+// from the native tab bar + safe area, so the clearance is just the gap above it.
+const TAB_BAR_CLEARANCE = Platform.OS === "android" ? 90 : 20;
 const REFRESH_REASONING_INSTRUCTION =
-  'Rewrite only description, meal.reasoning and meal.confidence for this final meal. Preserve meal.items exactly.';
+  "Rewrite only description, meal.reasoning and meal.confidence for this final meal. Preserve meal.items exactly.";
 
 function buildFoodMediaText(drafts: FoodMediaDraft[]): string {
   const lines = drafts
     .map((draft, index) => {
       const description = draft.description.trim();
-      return description ? `Image ${index + 1} mediaId=${draft.id}: ${description}` : '';
+      return description
+        ? `Image ${index + 1} mediaId=${draft.id}: ${description}`
+        : "";
     })
     .filter(Boolean);
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function fallbackFoodMediaText(drafts: FoodMediaDraft[]): string {
   const text = drafts
     .map((draft) => draft.description.trim() || draft.data?.items[0]?.label)
     .filter(Boolean)
-    .join(', ');
-  return text || (drafts.length > 0 ? t('media.photosAdded') : '');
+    .join(", ");
+  return text || (drafts.length > 0 ? t("media.photosAdded") : "");
 }
 
-function mediaForEntry(drafts: FoodMediaDraft[]): EntryMediaAttachment[] | undefined {
+function mediaForEntry(
+  drafts: FoodMediaDraft[],
+): EntryMediaAttachment[] | undefined {
   const media = drafts.map(({ id, kind, uri, description }) => ({
     id,
     kind,
@@ -83,7 +126,7 @@ function mediaForEntry(drafts: FoodMediaDraft[]): EntryMediaAttachment[] | undef
 
 function mediaForAi(drafts: FoodMediaDraft[]): EnrichMediaInput[] | undefined {
   const media = drafts.flatMap((draft): EnrichMediaInput[] => {
-    if (!draft.base64 || draft.kind === 'barcode') return [];
+    if (!draft.base64 || draft.kind === "barcode") return [];
     return [
       {
         id: draft.id,
@@ -104,7 +147,9 @@ function withGeneratedDescriptions(
   if (!media?.length || !descriptions?.length) return media;
   return media.map((item) => {
     if (item.description.trim()) return item;
-    const generated = descriptions.find((description) => description.id === item.id)?.description.trim();
+    const generated = descriptions
+      .find((description) => description.id === item.id)
+      ?.description.trim();
     return generated ? { ...item, description: generated } : item;
   });
 }
@@ -127,7 +172,10 @@ function attachMediaToItems(
       return rest.reduce<FoodItem>(
         (sum, item) => ({
           ...sum,
-          label: sum.label === item.label ? sum.label : `${sum.label}, ${item.label}`,
+          label:
+            sum.label === item.label
+              ? sum.label
+              : `${sum.label}, ${item.label}`,
           calories: sum.calories + item.calories,
           protein: sum.protein + item.protein,
           carbs: sum.carbs + item.carbs,
@@ -150,7 +198,7 @@ function attachMediaToItems(
     }
 
     return {
-      label: attachment.description.trim() || t('media.photosAdded'),
+      label: attachment.description.trim() || t("media.photosAdded"),
       mediaId: attachment.id,
       calories: 0,
       protein: 0,
@@ -175,7 +223,7 @@ function ensureMediaItems(
   const missing = media
     .filter((attachment) => !existing.has(attachment.id))
     .map((attachment) => ({
-      label: attachment.description.trim() || t('media.photosAdded'),
+      label: attachment.description.trim() || t("media.photosAdded"),
       mediaId: attachment.id,
       calories: 0,
       protein: 0,
@@ -215,9 +263,9 @@ function barcodeFoodData(code: string): FoodData {
   return {
     items: [
       {
-        label: `${t('media.barcode')} ${code}`,
+        label: `${t("media.barcode")} ${code}`,
         quantity: 1,
-        unit: 'unidade',
+        unit: "unidade",
         calories: 0,
         protein: 0,
         carbs: 0,
@@ -228,7 +276,7 @@ function barcodeFoodData(code: string): FoodData {
         sodiumMg: 0,
       },
     ],
-    reasoning: t('media.barcodeReasoning'),
+    reasoning: t("media.barcodeReasoning"),
     confidence: 100,
   };
 }
@@ -259,66 +307,90 @@ export function DayTemplate<TData, TTotals>({
   const [undoVisible, setUndoVisible] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [selectedFoodMealSaved, setSelectedFoodMealSaved] = useState(false);
-  const [foodReasoningLoadingId, setFoodReasoningLoadingId] = useState<string | null>(null);
+  const [foodReasoningLoadingId, setFoodReasoningLoadingId] = useState<
+    string | null
+  >(null);
   const [foodMediaMenuVisible, setFoodMediaMenuVisible] = useState(false);
   const [foodMediaDrafts, setFoodMediaDrafts] = useState<FoodMediaDraft[]>([]);
-  const [savedExerciseEntryIds, setSavedExerciseEntryIds] = useState<Set<string>>(new Set());
+  const [savedExerciseEntryIds, setSavedExerciseEntryIds] = useState<
+    Set<string>
+  >(new Set());
   const [daySaved, setDaySaved] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const undoCommand = useRef<Promise<Command> | null>(null);
   const barcodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingBarcodeDraft = useRef<{ text: string; data: FoodData; imageUri?: string } | null>(null);
+  const pendingBarcodeDraft = useRef<{
+    text: string;
+    data: FoodData;
+    imageUri?: string;
+  } | null>(null);
   const barcodeCaptureDismissed = useRef(false);
   const barcodeLookupRun = useRef(0);
   const foodReasoningRun = useRef(0);
-  const isFood = config.id === 'food';
+  const isFood = config.id === "food";
   const modalStack = useAppModalStore((state) => state.stack);
   const replaceAppModal = useAppModalStore((state) => state.replaceAppModal);
   const closeAppModal = useAppModalStore((state) => state.closeAppModal);
   const activeModal = modalStack.at(-1);
-  const activeDomainModal = activeModal?.domain === config.id ? activeModal : null;
-  const foodGoalsVisible = activeDomainModal?.id === 'food.goals';
-  const workoutProgressVisible = activeDomainModal?.id === 'workout.progress';
+  const activeDomainModal =
+    activeModal?.domain === config.id ? activeModal : null;
+  const foodGoalsVisible = activeDomainModal?.id === "food.goals";
+  const workoutProgressVisible = activeDomainModal?.id === "workout.progress";
   const foodDetailModal = [...modalStack]
     .reverse()
     .find(
       (item) =>
-        item.domain === 'food' &&
-        (item.id === 'food.entryDetail' ||
-          item.id === 'food.actionMenu' ||
-          item.id === 'food.aiEdit' ||
-          item.id === 'food.nutritionEdit'),
+        item.domain === "food" &&
+        (item.id === "food.entryDetail" ||
+          item.id === "food.actionMenu" ||
+          item.id === "food.aiEdit" ||
+          item.id === "food.nutritionEdit"),
     );
   const selectedFoodEntryId =
-    foodDetailModal && 'entryId' in foodDetailModal ? foodDetailModal.entryId : null;
+    foodDetailModal && "entryId" in foodDetailModal
+      ? foodDetailModal.entryId
+      : null;
   const selectedFoodEntry =
     isFood && selectedFoodEntryId
-      ? entries.find((entry) => entry.id === selectedFoodEntryId) ?? null
+      ? (entries.find((entry) => entry.id === selectedFoodEntryId) ?? null)
       : null;
   const barcodeDraft =
-    activeDomainModal?.id === 'food.barcodeNutritionEdit' ? activeDomainModal.draft : null;
-  const selectedFoodEntryText = selectedFoodEntry?.text ?? '';
+    activeDomainModal?.id === "food.barcodeNutritionEdit"
+      ? activeDomainModal.draft
+      : null;
+  const selectedFoodEntryText = selectedFoodEntry?.text ?? "";
   const selectedFoodEntryData = selectedFoodEntry?.data;
   const selectedFoodEntryMedia = selectedFoodEntry?.media;
 
   const openSettings = useCallback(() => {
-    if (!canOpenAppModal('day.root', 'settings.root')) return;
-    replaceAppModal({ id: 'settings.root', domain: config.id });
+    if (!canOpenAppModal("day.root", "settings.root")) return;
+    replaceAppModal({ id: "settings.root", domain: config.id });
   }, [config.id, replaceAppModal]);
 
-  const openFoodEntryDetails = useCallback((entry: Entry) => {
-    if (!canOpenAppModal('day.root', 'food.entryDetail')) return;
-    replaceAppModal({ id: 'food.entryDetail', domain: 'food', entryId: entry.id });
-  }, [replaceAppModal]);
+  const openFoodEntryDetails = useCallback(
+    (entry: Entry) => {
+      if (!canOpenAppModal("day.root", "food.entryDetail")) return;
+      replaceAppModal({
+        id: "food.entryDetail",
+        domain: "food",
+        entryId: entry.id,
+      });
+    },
+    [replaceAppModal],
+  );
 
   const openPantry = useCallback(() => {
-    if (!canOpenAppModal('day.root', 'settings.pantry')) return;
-    replaceAppModal({ id: 'settings.pantry', domain: 'food' });
+    if (!canOpenAppModal("day.root", "settings.pantry")) return;
+    replaceAppModal({ id: "settings.pantry", domain: "food" });
   }, [replaceAppModal]);
 
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    const show = Keyboard.addListener("keyboardDidShow", () =>
+      setKeyboardVisible(true),
+    );
+    const hide = Keyboard.addListener("keyboardDidHide", () =>
+      setKeyboardVisible(false),
+    );
     return () => {
       show.remove();
       hide.remove();
@@ -328,8 +400,8 @@ export function DayTemplate<TData, TTotals>({
 
   useEffect(() => {
     if (keyboardVisible) {
-      closeAppModal('food.goals');
-      closeAppModal('workout.progress');
+      closeAppModal("food.goals");
+      closeAppModal("workout.progress");
     } else {
       setFoodMediaMenuVisible(false);
     }
@@ -342,7 +414,12 @@ export function DayTemplate<TData, TTotals>({
   }, []);
 
   useEffect(() => {
-    if (!isFood || !selectedFoodEntryId || !selectedFoodEntryData || !('items' in selectedFoodEntryData)) {
+    if (
+      !isFood ||
+      !selectedFoodEntryId ||
+      !selectedFoodEntryData ||
+      !("items" in selectedFoodEntryData)
+    ) {
       setSelectedFoodMealSaved(false);
       return;
     }
@@ -363,7 +440,13 @@ export function DayTemplate<TData, TTotals>({
     return () => {
       active = false;
     };
-  }, [isFood, selectedFoodEntryData, selectedFoodEntryId, selectedFoodEntryMedia, selectedFoodEntryText]);
+  }, [
+    isFood,
+    selectedFoodEntryData,
+    selectedFoodEntryId,
+    selectedFoodEntryMedia,
+    selectedFoodEntryText,
+  ]);
 
   useEffect(() => {
     if (isFood) return;
@@ -371,7 +454,11 @@ export function DayTemplate<TData, TTotals>({
     void SavedExerciseRepository.all().then((workouts) => {
       if (!active) return;
       setSavedExerciseEntryIds(
-        new Set(workouts.flatMap((workout) => (workout.sourceEntryId ? [workout.sourceEntryId] : []))),
+        new Set(
+          workouts.flatMap((workout) =>
+            workout.sourceEntryId ? [workout.sourceEntryId] : [],
+          ),
+        ),
       );
     });
     return () => {
@@ -398,7 +485,13 @@ export function DayTemplate<TData, TTotals>({
 
   const handleSaveWorkoutExercise = useCallback(
     async (entry: Entry, saved: boolean) => {
-      if (isFood || entry.status !== 'done' || !entry.data || !('sets' in entry.data)) return false;
+      if (
+        isFood ||
+        entry.status !== "done" ||
+        !entry.data ||
+        !("sets" in entry.data)
+      )
+        return false;
       if (!saved) {
         await SavedExerciseRepository.deleteBySourceEntryId(entry.id);
         setSavedExerciseEntryIds((current) => {
@@ -414,7 +507,12 @@ export function DayTemplate<TData, TTotals>({
       );
       const exercise = exercises[0];
       if (!exercise) return false;
-      const workout = await SavedExerciseRepository.save('exercise', exercise, [exercise], entry.id);
+      const workout = await SavedExerciseRepository.save(
+        "exercise",
+        exercise,
+        [exercise],
+        entry.id,
+      );
       if (!workout) return false;
       setSavedExerciseEntryIds((current) => new Set(current).add(entry.id));
       return true;
@@ -450,7 +548,9 @@ export function DayTemplate<TData, TTotals>({
       const barcodeText = buildBarcodeText(drafts);
       const entryText = noteText || fallbackFoodMediaText(drafts);
       const entryMedia = mediaForEntry(drafts);
-      const foodPhotoMedia = entryMedia?.filter((item) => item.kind !== 'barcode');
+      const foodPhotoMedia = entryMedia?.filter(
+        (item) => item.kind !== "barcode",
+      );
       const aiMedia = mediaForAi(drafts);
       if (!entryText && barcodeData.length === 0) return;
       setFoodMediaDrafts([]);
@@ -464,16 +564,16 @@ export function DayTemplate<TData, TTotals>({
         const entry: Entry = {
           id: newId(),
           date,
-          domain: 'food',
-          text: entryText || t('media.barcode'),
+          domain: "food",
+          text: entryText || t("media.barcode"),
           media: entryMedia,
-          status: 'thinking',
+          status: "thinking",
           data: null,
           error: null,
           createdAt: Date.now(),
         };
         await EntryRepository.insert(entry);
-        useAppStore.getState().upsertEntry('food', entry);
+        useAppStore.getState().upsertEntry("food", entry);
 
         let parsedFood: FoodData | null = null;
         let describedMedia = entryMedia;
@@ -483,26 +583,34 @@ export function DayTemplate<TData, TTotals>({
           try {
             const locale = getLang();
             const response = await enrich({
-              domain: 'food',
+              domain: "food",
               // The same router a typed note goes through (`CommandBus.ts:248`).
               // Without it this path defaulted to `parse` — a plain meal parser
               // — so attaching ANY photo or barcode silently disabled the
               // recipe and purchase branches: "receita com isso" beside a photo
               // was logged as a meal that was never eaten.
-              intent: 'foodAuto',
+              intent: "foodAuto",
               locale,
-              text: [noteText, mediaText, barcodeText].filter(Boolean).join('\n') || entryText,
+              text:
+                [noteText, mediaText, barcodeText].filter(Boolean).join("\n") ||
+                entryText,
               media: aiMedia,
               userContext: buildOnboardingPromptContext(
                 useAppStore.getState().onboardingProfile,
                 locale,
               ),
             });
-            const parsed = response.ok ? foodSchema.safeParse(response.data) : null;
-            parsedFood = parsed?.success && parsed.data.items.length ? parsed.data : null;
+            const parsed = response.ok
+              ? foodSchema.safeParse(response.data)
+              : null;
+            parsedFood =
+              parsed?.success && parsed.data.items.length ? parsed.data : null;
             enrichFailed = !response.ok || !parsed?.success;
             describedMedia = response.ok
-              ? withGeneratedDescriptions(entryMedia, response.mediaDescriptions)
+              ? withGeneratedDescriptions(
+                  entryMedia,
+                  response.mediaDescriptions,
+                )
               : entryMedia;
           } catch {
             parsedFood = null;
@@ -520,24 +628,29 @@ export function DayTemplate<TData, TTotals>({
         if (enrichFailed && barcodeData.length === 0) {
           const failure = {
             media: describedMedia,
-            status: 'error' as const,
+            status: "error" as const,
             error: ENRICH_ERROR.failed,
           };
           await EntryRepository.update(entry.id, failure);
-          useAppStore.getState().upsertEntry('food', { ...entry, ...failure });
+          useAppStore.getState().upsertEntry("food", { ...entry, ...failure });
           return;
         }
 
-        const describedFoodPhotoMedia = describedMedia?.filter((item) => item.kind !== 'barcode');
+        const describedFoodPhotoMedia = describedMedia?.filter(
+          (item) => item.kind !== "barcode",
+        );
         const parsedItems = parsedFood?.items ?? [];
         const noteFallbackItems =
-          noteText && !hasTextFoodItem(parsedItems) ? fallbackFoodItemsFromText(noteText) : [];
+          noteText && !hasTextFoodItem(parsedItems)
+            ? fallbackFoodItemsFromText(noteText)
+            : [];
         const confidenceValues = [parsedFood?.confidence].filter(
-          (value): value is number => typeof value === 'number',
+          (value): value is number => typeof value === "number",
         );
         const confidence = confidenceValues.length
           ? Math.round(
-              confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length,
+              confidenceValues.reduce((sum, value) => sum + value, 0) /
+                confidenceValues.length,
             )
           : parsedFood
             ? 100
@@ -559,83 +672,108 @@ export function DayTemplate<TData, TTotals>({
           items: [...(parsedFood?.recipe ? [] : barcodeItems), ...foodItems],
           reasoning:
             parsedFood?.reasoning ||
-            (barcodeData.length ? t('media.barcodeReasoning') : t('details.reasoningFallback')),
+            (barcodeData.length
+              ? t("media.barcodeReasoning")
+              : t("details.reasoningFallback")),
           confidence,
         });
-        const done: Entry = { ...entry, media: describedMedia, status: 'done', data, error: null };
+        const done: Entry = {
+          ...entry,
+          media: describedMedia,
+          status: "done",
+          data,
+          error: null,
+        };
         await EntryRepository.update(entry.id, {
           media: describedMedia,
-          status: 'done',
+          status: "done",
           data,
           error: null,
         });
-        useAppStore.getState().upsertEntry('food', done);
+        useAppStore.getState().upsertEntry("food", done);
       })();
     },
     [addEntry, date, foodMediaDrafts, isFood],
   );
 
-  const handleSelectFoodMedia = useCallback((action: FoodMediaAction) => {
-    if (!canOpenAppModal('day.root', 'food.mediaCapture')) return;
-    setFoodMediaMenuVisible(false);
-    replaceAppModal({ id: 'food.mediaCapture', domain: 'food', mode: action });
-  }, [replaceAppModal]);
+  const handleSelectFoodMedia = useCallback(
+    (action: FoodMediaAction) => {
+      if (!canOpenAppModal("day.root", "food.mediaCapture")) return;
+      setFoodMediaMenuVisible(false);
+      replaceAppModal({
+        id: "food.mediaCapture",
+        domain: "food",
+        mode: action,
+      });
+    },
+    [replaceAppModal],
+  );
 
-  const handlePhotoCaptured = useCallback((photo: {
-    kind: 'foodPhoto' | 'menuPhoto';
-    uri: string;
-    base64?: string;
-    mimeType?: string;
-  }) => {
-    setFoodMediaDrafts((current) => [
-      ...current,
-      {
-        id: newId(),
-        kind: photo.kind,
-        uri: photo.uri,
-        base64: photo.base64,
-        mimeType: photo.mimeType,
-        description: '',
-      },
-    ]);
-  }, []);
+  const handlePhotoCaptured = useCallback(
+    (photo: {
+      kind: "foodPhoto" | "menuPhoto";
+      uri: string;
+      base64?: string;
+      mimeType?: string;
+    }) => {
+      setFoodMediaDrafts((current) => [
+        ...current,
+        {
+          id: newId(),
+          kind: photo.kind,
+          uri: photo.uri,
+          base64: photo.base64,
+          mimeType: photo.mimeType,
+          description: "",
+        },
+      ]);
+    },
+    [],
+  );
 
   const openPendingBarcodeDraft = useCallback(() => {
     const draft = pendingBarcodeDraft.current;
     if (!draft || !barcodeCaptureDismissed.current) return;
-    if (!canOpenAppModal('food.mediaCapture', 'food.barcodeNutritionEdit')) return;
+    if (!canOpenAppModal("food.mediaCapture", "food.barcodeNutritionEdit"))
+      return;
     if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
     pendingBarcodeDraft.current = null;
-    replaceAppModal({ id: 'food.barcodeNutritionEdit', domain: 'food', draft });
+    replaceAppModal({ id: "food.barcodeNutritionEdit", domain: "food", draft });
     barcodeTimer.current = null;
   }, [replaceAppModal]);
 
-  const handleBarcodeScanned = useCallback((code: string, imageUri?: string) => {
-    if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
-    const run = barcodeLookupRun.current + 1;
-    barcodeLookupRun.current = run;
-    barcodeCaptureDismissed.current = false;
-    pendingBarcodeDraft.current = null;
-    closeAppModal('food.mediaCapture');
-    barcodeTimer.current = setTimeout(() => {
-      barcodeCaptureDismissed.current = true;
-      openPendingBarcodeDraft();
-    }, APP_MODAL_TRANSITION_MS);
-    void (async () => {
-      const product = await lookupOpenFoodFactsProduct(code);
-      if (barcodeLookupRun.current !== run) return;
-      // The product shot from Open Food Facts is the better picture — a clean
-      // front-of-pack image instead of a phone frame of a barcode — so the
-      // frame we grabbed is the fallback, not the winner. It used to overwrite
-      // the product photo unconditionally, which is why every scanned item
-      // showed a picture of its own barcode.
-      pendingBarcodeDraft.current = {
-        ...(product ?? { text: `${t('media.barcode')} ${code}`, data: barcodeFoodData(code) }),
-        imageUri: product?.imageUri ?? imageUri,
-      };
-      openPendingBarcodeDraft();
-    })();
-  }, [closeAppModal, openPendingBarcodeDraft]);
+  const handleBarcodeScanned = useCallback(
+    (code: string, imageUri?: string) => {
+      if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
+      const run = barcodeLookupRun.current + 1;
+      barcodeLookupRun.current = run;
+      barcodeCaptureDismissed.current = false;
+      pendingBarcodeDraft.current = null;
+      closeAppModal("food.mediaCapture");
+      barcodeTimer.current = setTimeout(() => {
+        barcodeCaptureDismissed.current = true;
+        openPendingBarcodeDraft();
+      }, APP_MODAL_TRANSITION_MS);
+      void (async () => {
+        const product = await lookupOpenFoodFactsProduct(code);
+        if (barcodeLookupRun.current !== run) return;
+        // The product shot from Open Food Facts is the better picture — a clean
+        // front-of-pack image instead of a phone frame of a barcode — so the
+        // frame we grabbed is the fallback, not the winner. It used to overwrite
+        // the product photo unconditionally, which is why every scanned item
+        // showed a picture of its own barcode.
+        pendingBarcodeDraft.current = {
+          ...(product ?? {
+            text: `${t("media.barcode")} ${code}`,
+            data: barcodeFoodData(code),
+          }),
+          imageUri: product?.imageUri ?? imageUri,
+        };
+        openPendingBarcodeDraft();
+      })();
+    },
+    [closeAppModal, openPendingBarcodeDraft],
+  );
 
   const handleFoodCaptureDismiss = useCallback(() => {
     barcodeCaptureDismissed.current = true;
@@ -647,20 +785,33 @@ export function DayTemplate<TData, TTotals>({
       const id = newId();
       const parsedData = foodSchema.parse({
         ...data,
-        items: data.items.map((item) => ({ ...item, mediaId: item.mediaId ?? id })),
-        reasoning: data.reasoning ?? t('media.barcodeReasoning'),
+        items: data.items.map((item) => ({
+          ...item,
+          mediaId: item.mediaId ?? id,
+        })),
+        reasoning: data.reasoning ?? t("media.barcodeReasoning"),
         confidence: data.confidence ?? 100,
       });
       setFoodMediaDrafts((current) => [
         ...current,
-        { id, kind: 'barcode', uri: barcodeDraft?.imageUri, description: text, data: parsedData },
+        {
+          id,
+          kind: "barcode",
+          uri: barcodeDraft?.imageUri,
+          description: text,
+          data: parsedData,
+        },
       ]);
       // Back to the scanner, the way the photo modes never leave it. Scanning a
       // shop's worth of items meant reopening the camera from the menu every
       // time, and the thumbnail strip beside the shutter — which is fed by
       // exactly these drafts — could never show a single one, because the
       // camera was always gone by the time the draft existed.
-      replaceAppModal({ id: 'food.mediaCapture', domain: 'food', mode: 'barcode' });
+      replaceAppModal({
+        id: "food.mediaCapture",
+        domain: "food",
+        mode: "barcode",
+      });
     },
     [barcodeDraft?.imageUri, replaceAppModal],
   );
@@ -668,7 +819,7 @@ export function DayTemplate<TData, TTotals>({
   const handleDeleteFoodEntry = useCallback(
     (entry: Entry) => {
       closeAppModal();
-      closeAppModal('food.entryDetail');
+      closeAppModal("food.entryDetail");
       handleDelete(entry);
     },
     [closeAppModal, handleDelete],
@@ -676,9 +827,17 @@ export function DayTemplate<TData, TTotals>({
 
   const handleSaveFoodNutrition = useCallback(
     async (entry: Entry, text: string, data: FoodData) => {
-      const updated: Entry = { ...entry, text, data, status: 'done', error: null };
+      const updated: Entry = {
+        ...entry,
+        text,
+        data,
+        status: "done",
+        error: null,
+      };
       const needsReasoning = !data.reasoning;
-      const reasoningRun = needsReasoning ? foodReasoningRun.current + 1 : foodReasoningRun.current;
+      const reasoningRun = needsReasoning
+        ? foodReasoningRun.current + 1
+        : foodReasoningRun.current;
 
       if (needsReasoning) {
         foodReasoningRun.current = reasoningRun;
@@ -688,32 +847,51 @@ export function DayTemplate<TData, TTotals>({
       await EntryRepository.update(entry.id, {
         text,
         data,
-        status: 'done',
+        status: "done",
         error: null,
       });
-      useAppStore.getState().upsertEntry('food', updated);
+      useAppStore.getState().upsertEntry("food", updated);
 
       if (!needsReasoning) return;
 
       void (async () => {
-        const saveAiRefresh = async (reasoning: string, confidence?: number, description?: string) => {
+        const saveAiRefresh = async (
+          reasoning: string,
+          confidence?: number,
+          description?: string,
+        ) => {
           if (foodReasoningRun.current !== reasoningRun) return;
 
-          const latest = useAppStore.getState().food.entries.find((item) => item.id === entry.id);
+          const latest = useAppStore
+            .getState()
+            .food.entries.find((item) => item.id === entry.id);
           const latestData =
-            latest?.data && 'items' in latest.data ? foodSchema.parse(latest.data) : data;
-          const refreshedData = foodSchema.parse({ ...latestData, reasoning, confidence });
+            latest?.data && "items" in latest.data
+              ? foodSchema.parse(latest.data)
+              : data;
+          const refreshedData = foodSchema.parse({
+            ...latestData,
+            reasoning,
+            confidence,
+          });
           const refreshedText = description?.trim() || latest?.text || text;
-          const refreshed: Entry = { ...(latest ?? updated), text: refreshedText, data: refreshedData };
-          await EntryRepository.update(entry.id, { text: refreshedText, data: refreshedData });
-          useAppStore.getState().upsertEntry('food', refreshed);
+          const refreshed: Entry = {
+            ...(latest ?? updated),
+            text: refreshedText,
+            data: refreshedData,
+          };
+          await EntryRepository.update(entry.id, {
+            text: refreshedText,
+            data: refreshedData,
+          });
+          useAppStore.getState().upsertEntry("food", refreshed);
         };
 
         try {
           const locale = getLang();
           const response = await enrich({
-            domain: 'food',
-            intent: 'foodEdit',
+            domain: "food",
+            intent: "foodEdit",
             currentFood: data,
             locale,
             userContext: buildOnboardingPromptContext(
@@ -726,7 +904,7 @@ export function DayTemplate<TData, TTotals>({
 
           const parsed = foodEditSchema.safeParse(response.data);
           if (!parsed.success || !parsed.data.meal.reasoning) {
-            throw new Error('Invalid AI reasoning response');
+            throw new Error("Invalid AI reasoning response");
           }
 
           await saveAiRefresh(
@@ -735,11 +913,13 @@ export function DayTemplate<TData, TTotals>({
             parsed.data.description,
           );
         } catch (error) {
-          console.warn('Failed to refresh food reasoning', error);
-          await saveAiRefresh(t('details.reasoningFallback'));
+          console.warn("Failed to refresh food reasoning", error);
+          await saveAiRefresh(t("details.reasoningFallback"));
         } finally {
           if (foodReasoningRun.current === reasoningRun) {
-            setFoodReasoningLoadingId((current) => (current === entry.id ? null : current));
+            setFoodReasoningLoadingId((current) =>
+              current === entry.id ? null : current,
+            );
           }
         }
       })();
@@ -747,17 +927,25 @@ export function DayTemplate<TData, TTotals>({
     [],
   );
 
-  const handleSaveMeal = useCallback(async (entry: Entry) => {
-    if (!entry.data || !('items' in entry.data)) return;
-    await SavedMealRepository.save(entry.text, entry.data as FoodData, entry.media, entry.id);
-    if (selectedFoodEntryId === entry.id) setSelectedFoodMealSaved(true);
-  }, [selectedFoodEntryId]);
+  const handleSaveMeal = useCallback(
+    async (entry: Entry) => {
+      if (!entry.data || !("items" in entry.data)) return;
+      await SavedMealRepository.save(
+        entry.text,
+        entry.data as FoodData,
+        entry.media,
+        entry.id,
+      );
+      if (selectedFoodEntryId === entry.id) setSelectedFoodMealSaved(true);
+    },
+    [selectedFoodEntryId],
+  );
 
   const openSavedMealPicker = useCallback(() => {
-    if (!canOpenAppModal('day.root', 'food.savedMealPicker')) return;
+    if (!canOpenAppModal("day.root", "food.savedMealPicker")) return;
     Keyboard.dismiss();
     setFoodMediaMenuVisible(false);
-    replaceAppModal({ id: 'food.savedMealPicker', domain: 'food' });
+    replaceAppModal({ id: "food.savedMealPicker", domain: "food" });
   }, [replaceAppModal]);
 
   const routineItems = useMemo(
@@ -766,15 +954,21 @@ export function DayTemplate<TData, TTotals>({
   );
 
   const openSaveRoutine = useCallback(() => {
-    if (!canOpenAppModal('day.root', 'day.saveRoutine')) return;
+    if (!canOpenAppModal("day.root", "day.saveRoutine")) return;
     Keyboard.dismiss();
-    replaceAppModal({ id: 'day.saveRoutine', domain: config.id });
+    replaceAppModal({ id: "day.saveRoutine", domain: config.id });
   }, [config.id, replaceAppModal]);
 
   const handleSaveRoutine = useCallback(
     (name: string, weekday: Weekday | null) => {
-      closeAppModal('day.saveRoutine');
-      void SavedRoutineRepository.save(config.id, name, routineItems, weekday, date);
+      closeAppModal("day.saveRoutine");
+      void SavedRoutineRepository.save(
+        config.id,
+        name,
+        routineItems,
+        weekday,
+        date,
+      );
       setDaySaved(true);
     },
     [closeAppModal, config.id, date, routineItems],
@@ -788,46 +982,56 @@ export function DayTemplate<TData, TTotals>({
   }, [date, routineItems]);
 
   const openSavedExercisePicker = useCallback(() => {
-    if (!canOpenAppModal('day.root', 'workout.savedExercisePicker')) return;
+    if (!canOpenAppModal("day.root", "workout.savedExercisePicker")) return;
     Keyboard.dismiss();
-    replaceAppModal({ id: 'workout.savedExercisePicker', domain: 'workout' });
+    replaceAppModal({ id: "workout.savedExercisePicker", domain: "workout" });
   }, [replaceAppModal]);
 
-  const handleSelectSavedMeals = useCallback((meals: SavedMeal[]) => {
-    closeAppModal('food.savedMealPicker');
-    const now = Date.now();
-    const entries = meals.map((meal, index): Entry => ({
-      id: newId(),
-      date,
-      domain: 'food',
-      text: meal.name,
-      media: meal.media,
-      status: 'done',
-      data: meal.data,
-      error: null,
-      createdAt: now + index,
-    }));
-    void (async () => {
-      await EntryRepository.insertMany(entries);
-      entries.forEach((entry) => useAppStore.getState().upsertEntry('food', entry));
-    })();
-  }, [closeAppModal, date]);
+  const handleSelectSavedMeals = useCallback(
+    (meals: SavedMeal[]) => {
+      closeAppModal("food.savedMealPicker");
+      const now = Date.now();
+      const entries = meals.map(
+        (meal, index): Entry => ({
+          id: newId(),
+          date,
+          domain: "food",
+          text: meal.name,
+          media: meal.media,
+          status: "done",
+          data: meal.data,
+          error: null,
+          createdAt: now + index,
+        }),
+      );
+      void (async () => {
+        await EntryRepository.insertMany(entries);
+        entries.forEach((entry) =>
+          useAppStore.getState().upsertEntry("food", entry),
+        );
+      })();
+    },
+    [closeAppModal, date],
+  );
 
-  const handleSelectSavedExercises = useCallback((workouts: SavedExercise[]) => {
-    closeAppModal('workout.savedExercisePicker');
-    workouts.forEach((workout) => {
-      workout.exercises.forEach((exercise) => addEntry(exercise));
-    });
-  }, [addEntry, closeAppModal]);
+  const handleSelectSavedExercises = useCallback(
+    (workouts: SavedExercise[]) => {
+      closeAppModal("workout.savedExercisePicker");
+      workouts.forEach((workout) => {
+        workout.exercises.forEach((exercise) => addEntry(exercise));
+      });
+    },
+    [addEntry, closeAppModal],
+  );
 
   const handleFoodAiEdit = useCallback(
     async (entry: Entry, instruction: string) => {
-      if (!entry.data || !('items' in entry.data)) return;
+      if (!entry.data || !("items" in entry.data)) return;
       const locale = getLang();
       const currentFood = foodSchema.parse(entry.data);
       const response = await enrich({
-        domain: 'food',
-        intent: 'foodEdit',
+        domain: "food",
+        intent: "foodEdit",
         currentFood,
         locale,
         userContext: buildOnboardingPromptContext(
@@ -838,7 +1042,7 @@ export function DayTemplate<TData, TTotals>({
       });
       if (!response.ok) throw new Error(response.error);
       const parsed = foodEditSchema.safeParse(response.data);
-      if (!parsed.success) throw new Error('Invalid AI edit response');
+      if (!parsed.success) throw new Error("Invalid AI edit response");
       await handleSaveFoodNutrition(
         entry,
         parsed.data.description ?? entry.text,
@@ -850,32 +1054,36 @@ export function DayTemplate<TData, TTotals>({
 
   const totalItems = config.describeTotals(totals);
   const foodTotals = isFood ? (totals as FoodTotals) : null;
-  const footerPaddingBottom = keyboardVisible ? Spacing.two : insets.bottom + TAB_BAR_CLEARANCE;
+  const footerPaddingBottom = keyboardVisible
+    ? Spacing.two
+    : insets.bottom + TAB_BAR_CLEARANCE;
   const toggleFoodGoals = () => {
-    if (!canOpenAppModal('day.root', 'food.goals')) return;
-    if (foodGoalsVisible) closeAppModal('food.goals');
-    else replaceAppModal({ id: 'food.goals', domain: 'food' });
+    if (!canOpenAppModal("day.root", "food.goals")) return;
+    if (foodGoalsVisible) closeAppModal("food.goals");
+    else replaceAppModal({ id: "food.goals", domain: "food" });
   };
   const toggleWorkoutProgress = () => {
-    if (!canOpenAppModal('day.root', 'workout.progress')) return;
-    if (workoutProgressVisible) closeAppModal('workout.progress');
-    else replaceAppModal({ id: 'workout.progress', domain: 'workout' });
+    if (!canOpenAppModal("day.root", "workout.progress")) return;
+    if (workoutProgressVisible) closeAppModal("workout.progress");
+    else replaceAppModal({ id: "workout.progress", domain: "workout" });
   };
   const dismissStatsPanelResponder = useCallback(() => {
     if (!foodGoalsVisible && !workoutProgressVisible) return false;
-    closeAppModal('food.goals');
-    closeAppModal('workout.progress');
+    closeAppModal("food.goals");
+    closeAppModal("workout.progress");
     return true;
   }, [closeAppModal, foodGoalsVisible, workoutProgressVisible]);
 
   return (
     <KeyboardAvoidingView
       style={[styles.root, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
         <View
           style={styles.paddedHeader}
-          onStartShouldSetResponderCapture={dismissStatsPanelResponder}>
+          onStartShouldSetResponderCapture={dismissStatsPanelResponder}
+        >
           <DayHeader
             onSaveDay={openSaveRoutine}
             canSaveDay={routineItems.length > 0}
@@ -891,7 +1099,8 @@ export function DayTemplate<TData, TTotals>({
 
         <View
           style={styles.paddedBody}
-          onStartShouldSetResponderCapture={dismissStatsPanelResponder}>
+          onStartShouldSetResponderCapture={dismissStatsPanelResponder}
+        >
           <NotesList
             entries={entries}
             config={config}
@@ -900,11 +1109,15 @@ export function DayTemplate<TData, TTotals>({
             mediaDrafts={isFood ? foodMediaDrafts : undefined}
             onChangeMediaDescription={(id, description) =>
               setFoodMediaDrafts((current) =>
-                current.map((draft) => (draft.id === id ? { ...draft, description } : draft)),
+                current.map((draft) =>
+                  draft.id === id ? { ...draft, description } : draft,
+                ),
               )
             }
             onRemoveMediaDraft={(id) =>
-              setFoodMediaDrafts((current) => current.filter((draft) => draft.id !== id))
+              setFoodMediaDrafts((current) =>
+                current.filter((draft) => draft.id !== id),
+              )
             }
             onAdd={handleAddEntry}
             onEdit={editEntry}
@@ -918,7 +1131,9 @@ export function DayTemplate<TData, TTotals>({
         </View>
 
         <View style={[styles.footer, { paddingBottom: footerPaddingBottom }]}>
-          {undoVisible ? <UndoToast label={t('undo.deleted')} onUndo={handleUndo} /> : null}
+          {undoVisible ? (
+            <UndoToast label={t("undo.deleted")} onUndo={handleUndo} />
+          ) : null}
 
           <View style={styles.footerStack}>
             {/* Floating, not stacked. In the flow every one of these panels is a
@@ -928,7 +1143,11 @@ export function DayTemplate<TData, TTotals>({
                 list, which is what dismisses them. */}
             <View style={styles.floatingPanels} pointerEvents="box-none">
               {foodTotals ? (
-                <FoodGoalsSheet totals={foodTotals} visible={foodGoalsVisible} date={date} />
+                <FoodGoalsSheet
+                  totals={foodTotals}
+                  visible={foodGoalsVisible}
+                  date={date}
+                />
               ) : null}
               {!isFood ? (
                 <WorkoutProgressSheet
@@ -952,10 +1171,14 @@ export function DayTemplate<TData, TTotals>({
                     <TotalsDock
                       items={
                         isFood
-                          ? totalItems.filter((item) => item.key === 'cal' || item.key === 'h')
+                          ? totalItems.filter(
+                              (item) => item.key === "cal" || item.key === "h",
+                            )
                           : totalItems.filter(
                               (item) =>
-                                item.key === 'sets' || item.key === 'vol' || item.key === 'dist',
+                                item.key === "sets" ||
+                                item.key === "vol" ||
+                                item.key === "dist",
                             )
                       }
                       compact
@@ -968,31 +1191,43 @@ export function DayTemplate<TData, TTotals>({
                         <NativeMenuButton
                           systemImage="camera"
                           tint={colors.carbs}
-                          label={t('media.addAttachment')}>
+                          label={t("media.addAttachment")}
+                        >
                           <SwiftButton
-                            label={t('media.foodPhoto')}
+                            label={t("media.foodPhoto")}
                             systemImage="camera"
-                            onPress={() => handleSelectFoodMedia('foodPhoto')}
+                            onPress={() => handleSelectFoodMedia("foodPhoto")}
                           />
                           <SwiftButton
-                            label={t('media.menuPhoto')}
+                            label={t("media.menuPhoto")}
                             systemImage="menucard"
-                            onPress={() => handleSelectFoodMedia('menuPhoto')}
+                            onPress={() => handleSelectFoodMedia("menuPhoto")}
                           />
                           <SwiftButton
-                            label={t('media.barcode')}
+                            label={t("media.barcode")}
                             systemImage="barcode.viewfinder"
-                            onPress={() => handleSelectFoodMedia('barcode')}
+                            onPress={() => handleSelectFoodMedia("barcode")}
                           />
                         </NativeMenuButton>
                       ) : (
                         <LoggedPressable
-                          onPress={() => setFoodMediaMenuVisible((current) => !current)}
+                          onPress={() =>
+                            setFoodMediaMenuVisible((current) => !current)
+                          }
                           hitSlop={10}
                           accessibilityRole="button"
-                          accessibilityLabel={t('media.addAttachment')}>
-                          <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
-                            <AppIcon name="camera" color={colors.carbs} size={20} />
+                          accessibilityLabel={t("media.addAttachment")}
+                        >
+                          <GlassSurface
+                            glass="regular"
+                            isInteractive
+                            style={styles.keyboardButton}
+                          >
+                            <AppIcon
+                              name="camera"
+                              color={colors.carbs}
+                              size={20}
+                            />
                           </GlassSurface>
                         </LoggedPressable>
                       )}
@@ -1001,9 +1236,18 @@ export function DayTemplate<TData, TTotals>({
                         onPress={openSavedMealPicker}
                         hitSlop={10}
                         accessibilityRole="button"
-                        accessibilityLabel={t('media.addSavedMeal')}>
-                        <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
-                          <AppIcon name="plus" color={colors.accent} size={20} />
+                        accessibilityLabel={t("media.addSavedMeal")}
+                      >
+                        <GlassSurface
+                          glass="regular"
+                          isInteractive
+                          style={styles.keyboardButton}
+                        >
+                          <AppIcon
+                            name="plus"
+                            color={colors.accent}
+                            size={20}
+                          />
                         </GlassSurface>
                       </LoggedPressable>
                     </>
@@ -1012,21 +1256,35 @@ export function DayTemplate<TData, TTotals>({
                       onPress={openSavedExercisePicker}
                       hitSlop={10}
                       accessibilityRole="button"
-                      accessibilityLabel={t('media.addSavedWorkout')}>
-                      <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
+                      accessibilityLabel={t("media.addSavedWorkout")}
+                    >
+                      <GlassSurface
+                        glass="regular"
+                        isInteractive
+                        style={styles.keyboardButton}
+                      >
                         <AppIcon name="plus" color={colors.accent} size={20} />
                       </GlassSurface>
                     </LoggedPressable>
                   )}
 
-                  {Platform.OS === 'ios' ? (
+                  {Platform.OS === "ios" ? (
                     <LoggedPressable
                       onPress={Keyboard.dismiss}
                       hitSlop={10}
                       accessibilityRole="button"
-                      accessibilityLabel="Dismiss keyboard">
-                      <GlassSurface glass="regular" isInteractive style={styles.keyboardButton}>
-                        <AppIcon name="keyboard" color={colors.textSecondary} size={18} />
+                      accessibilityLabel="Dismiss keyboard"
+                    >
+                      <GlassSurface
+                        glass="regular"
+                        isInteractive
+                        style={styles.keyboardButton}
+                      >
+                        <AppIcon
+                          name="keyboard"
+                          color={colors.textSecondary}
+                          size={18}
+                        />
                       </GlassSurface>
                     </LoggedPressable>
                   ) : null}
@@ -1061,18 +1319,18 @@ export function DayTemplate<TData, TTotals>({
       />
 
       <SaveRoutineSheet
-        visible={activeDomainModal?.id === 'day.saveRoutine'}
+        visible={activeDomainModal?.id === "day.saveRoutine"}
         domain={config.id}
         itemCount={routineItems.length}
         summary={routineItems
-          .map((item) => (typeof item === 'string' ? item : item.text))
+          .map((item) => (typeof item === "string" ? item : item.text))
           .filter(Boolean)
-          .join('  ·  ')}
+          .join("  ·  ")}
         // The weekday reads better as a routine name than the date does: these
         // get reused, so "Segunda" beats "19 de jul".
-        defaultName={t(`weekday.long.${weekdayOf(date)}` as 'weekday.long.0')}
+        defaultName={t(`weekday.long.${weekdayOf(date)}` as "weekday.long.0")}
         defaultWeekday={weekdayOf(date)}
-        onClose={() => closeAppModal('day.saveRoutine')}
+        onClose={() => closeAppModal("day.saveRoutine")}
         onSave={handleSaveRoutine}
       />
     </KeyboardAvoidingView>
@@ -1103,17 +1361,17 @@ const styles = StyleSheet.create({
   },
   /** Sits on top of the footer instead of above it, so opening one moves nothing. */
   floatingPanels: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
-    bottom: '100%',
+    bottom: "100%",
     gap: Spacing.two,
     paddingBottom: Spacing.two,
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   keyboardBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: Spacing.two,
   },
   keyboardDock: {
@@ -1123,8 +1381,8 @@ const styles = StyleSheet.create({
     width: Metrics.iconButton,
     height: Metrics.iconButton,
     borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
 });
