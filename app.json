@@ -4,7 +4,7 @@
     "slug": "gymnotes",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/ios-light.png",
+    "icon": "./assets/gym.icon",
     "scheme": "gym",
     "userInterfaceStyle": "automatic",
     "ios": {
