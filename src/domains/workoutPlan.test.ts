@@ -39,6 +39,17 @@ test('cardio survives the round trip too', () => {
   expect(parseWorkoutText(text).sets[0].distanceMeters).toBe(5000);
 });
 
+test('cardio with both distance and duration keeps both metrics', () => {
+  const text = plannedExerciseToText({
+    exercise: 'Corrida',
+    sets: [{ distanceMeters: 5000, durationSeconds: 1800 }],
+  });
+  expect(text).toBe('Corrida\n5km 30min');
+  const parsed = parseWorkoutText(text);
+  expect(parsed.sets[0].distanceMeters).toBe(5000);
+  expect(parsed.sets[0].durationSeconds).toBe(1800);
+});
+
 test('a plan lands on real dates, not seven copies of today', () => {
   const notes = planToNotes(plan, '2026-07-21');
   expect(notes).toHaveLength(3);

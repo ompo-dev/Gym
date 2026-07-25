@@ -10,7 +10,10 @@
     "ios": {
       "bundleIdentifier": "com.ompinho.gymnotes",
       "icon": "./assets/images/icon.png",
-      "appleTeamId": "0000000000"
+      "appleTeamId": "0000000000",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.ompinho.gymnotes"]
+      }
     },
     "android": {
       "package": "com.ompinho.gymnotes",

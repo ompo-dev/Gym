@@ -48,7 +48,7 @@ struct SnapshotProvider: TimelineProvider {
   }
   func getTimeline(in context: Context, completion: @escaping (Timeline<SnapshotEntry>) -> Void) {
     let entry = SnapshotEntry(date: Date(), snapshot: DaySnapshot.load())
-    completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(1800))))
+    completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(300))))
   }
 }
 

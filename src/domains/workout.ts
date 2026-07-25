@@ -323,6 +323,8 @@ function parseSetMultiplier(line: string, unitHint: 'kg' | 'lb'): WorkoutSet[] |
   const hasWeight = match[4] !== undefined;
   // A bare "N x R" with no trailing weight is a normal reps×weight one-set line.
   if ((separator === 'x' || separator === '×') && !hasWeight) return null;
+  // "30x8 50kg" → 30 is a weight, not 30 sets. Nobody does >10 sets of one exercise.
+  if ((separator === 'x' || separator === '×') && count > 10) return null;
 
   const set: WorkoutSet = { reps };
   if (hasWeight) {

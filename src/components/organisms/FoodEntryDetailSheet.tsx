@@ -208,9 +208,8 @@ export function FoodEntryDetailSheet({
       setExpanded({});
       return;
     }
-    // Open every item when the sheet opens — the user wants the breakdown
-    // visible up front, not one tap away per item.
-    setExpanded(Object.fromEntries(data.items.map((_, index) => [index, true])));
+    // Items start collapsed — tap to expand individual items.
+    setExpanded({});
   }, [entry, data]);
 
   useEffect(() => {

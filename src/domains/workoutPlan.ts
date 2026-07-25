@@ -43,11 +43,12 @@ export type PlannedExercise = z.infer<typeof plannedExerciseSchema>;
  */
 export function plannedExerciseToText(exercise: PlannedExercise): string {
   const lines = exercise.sets.map((set) => {
-    if (set.distanceMeters) return `${set.distanceMeters / 1000}km`;
-    if (set.durationSeconds) return `${Math.round(set.durationSeconds / 60)}min`;
-    if (set.weight !== undefined && set.reps !== undefined) return `${set.weight}x${set.reps}`;
-    if (set.reps !== undefined) return `${set.reps} reps`;
-    return '';
+    const parts: string[] = [];
+    if (set.distanceMeters) parts.push(`${set.distanceMeters / 1000}km`);
+    if (set.durationSeconds) parts.push(`${Math.round(set.durationSeconds / 60)}min`);
+    if (set.weight !== undefined && set.reps !== undefined) parts.push(`${set.weight}x${set.reps}`);
+    else if (set.reps !== undefined) parts.push(`${set.reps} reps`);
+    return parts.join(' ');
   });
   return [exercise.exercise, ...lines.filter(Boolean)].join('\n');
 }
