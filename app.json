@@ -4,12 +4,12 @@
     "slug": "gymnotes",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/gym.icon",
+    "icon": "./assets/images/icon.png",
     "scheme": "gym",
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.ompinho.gymnotes",
-      "icon": "./assets/gym.icon",
+      "icon": "./assets/images/icon.png",
       "appleTeamId": "0000000000"
     },
     "android": {
