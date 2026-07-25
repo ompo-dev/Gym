@@ -78,10 +78,9 @@ jobs:
           fs.writeFileSync("app.json", JSON.stringify(j, null, 2));
           '
 
-      - name: Gerar projeto nativo iOS
+      - name: Gerar projeto nativo iOS e Android
         run: |
           npx expo prebuild \
-            --platform ios \
             --clean \
             --no-install
 
@@ -89,6 +88,25 @@ jobs:
         run: |
           cd ios
           pod install
+
+      - name: Compilar aplicativo para Android
+        timeout-minutes: 50
+        shell: bash
+        run: |
+          set -e
+          cd android
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease
+
+          APK="$PWD/app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$APK" ]; then
+            echo "APK não encontrado em $APK"
+            find app/build/outputs/apk/release -type f | sort
+            exit 1
+          fi
+
+          echo "APK criado: $APK"
+          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
 
       - name: Identificar workspace e scheme
         id: ios-project
@@ -243,8 +261,8 @@ jobs:
           const { SIZE, VERSION, BUILD, DATE, BASE } = process.env;
           const icon = BASE + "/icon.png";
           const screenshots = [
-            BASE + "/screenshots/splash-icon.png",
-            BASE + "/screenshots/dark-icon.png",
+            BASE + "/splash-icon.png",
+            BASE + "/dark-icon.png",
           ];
           const src = {
             name: "Gym — ompo.dev",
@@ -289,9 +307,17 @@ jobs:
           cp assets/images/splash-icon.png splash-icon.png
           cp assets/images/gym/ios-dark.png dark-icon.png
 
+          APK="$(find android/app/build/outputs/apk/release -type f -name 'app-release*.apk' | head -1)"
+          if [ -z "$APK" ]; then
+            echo "APK não encontrado. Verificando pasta de saída..."
+            find android/app/build/outputs/apk/release -type f | sort
+            exit 1
+          fi
+          cp "$APK" Gym-android.apk
+
           TAG="v${VERSION}-${{ github.run_number }}"
           gh release create "$TAG" \
-            Gym-unsigned.ipa apps.json icon.png splash-icon.png dark-icon.png \
+            Gym-unsigned.ipa Gym-android.apk apps.json icon.png splash-icon.png dark-icon.png \
             --title "Gym ${VERSION} (build ${{ github.run_number }})" \
             --notes "Build não-assinado (sideload). Fonte AltStore: apps.json neste release." \
             --latest
@@ -302,6 +328,15 @@ jobs:
         with:
           name: Gym-iOS-unsigned
           path: "*-unsigned.ipa"
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enviar APK para download
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gym-Android-release
+          path: Gym-android.apk
           if-no-files-found: error
           retention-days: 7
 
