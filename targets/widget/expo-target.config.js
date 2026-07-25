@@ -5,9 +5,10 @@ module.exports = {
   // OpenURLIntent (App Intent that opens the deep link) requires iOS 18; the
   // widgets/containerBackground work fine there too.
   deploymentTarget: '18.0',
-  // Shared with the main app so the widget can read today's snapshot the RN app
-  // writes via @bacons/apple-targets ExtensionStorage. Must match app.json.
-  entitlements: {
-    'com.apple.security.application-groups': ['group.com.ompinho.gymnotes'],
-  },
+  // ponytail: App Group TEMPORARIAMENTE removido (teste b) — pra ver se o widget
+  // aparece sem entitlement especial (sideloadly/conta grátis). Se aparecer (com
+  // zeros), o App Group era o bloqueio. REVERTER junto com o bloco em app.json:
+  // entitlements: {
+  //   'com.apple.security.application-groups': ['group.com.ompinho.gymnotes'],
+  // },
 };

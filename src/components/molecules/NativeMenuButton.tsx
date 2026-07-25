@@ -6,11 +6,11 @@ import {
   SwiftMenu,
   swiftButtonBorderShape,
   swiftButtonStyle,
-  swiftFrame,
+  swiftControlSize,
   swiftLabelStyle,
   swiftTint,
 } from '@/components/onboarding/onboardingNative';
-import { Metrics, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 
 interface NativeMenuButtonProps {
   /** SF Symbol shown on the button itself (e.g. "ellipsis", "camera"). */
@@ -27,9 +27,11 @@ interface NativeMenuButtonProps {
 
 /**
  * Circular glass SwiftUI menu button — the sheet's native close-button shape.
- * `buttonBorderShape('circle')` is what keeps a wide symbol like `ellipsis`
- * from making the glass a flattened capsule. iOS-only: render it behind an
- * `IOS_NATIVE_ENABLED` guard, the caller keeps its own RN fallback.
+ * `buttonBorderShape('circle')` keeps a wide symbol like `ellipsis` from making
+ * a flattened capsule; `controlSize('large')` sizes it like a native icon
+ * button (a bare frame was ignored by the glass shape and rendered tiny). The
+ * Host matches contents so it wraps that natural size. iOS-only: render behind
+ * an `IOS_NATIVE_ENABLED` guard, the caller keeps its own RN fallback.
  */
 export function NativeMenuButton({
   systemImage,
@@ -39,16 +41,18 @@ export function NativeMenuButton({
   children,
 }: NativeMenuButtonProps) {
   return (
-    <SwiftHost style={marginRight ? styles.hostMargin : styles.host}>
+    <SwiftHost
+      matchContents={{ horizontal: true, vertical: true }}
+      style={marginRight ? styles.margin : undefined}>
       <SwiftMenu
         label={label}
         systemImage={systemImage}
         modifiers={[
           swiftButtonStyle?.('glass'),
           swiftButtonBorderShape?.('circle'),
+          swiftControlSize?.('large'),
           swiftLabelStyle?.('iconOnly'),
           tint ? swiftTint?.(tint) : undefined,
-          swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
         ].filter(Boolean)}>
         {children}
       </SwiftMenu>
@@ -57,13 +61,7 @@ export function NativeMenuButton({
 }
 
 const styles = StyleSheet.create({
-  host: {
-    width: Metrics.iconButton,
-    height: Metrics.iconButton,
-  },
-  hostMargin: {
-    width: Metrics.iconButton,
-    height: Metrics.iconButton,
+  margin: {
     marginRight: Spacing.two,
   },
 });

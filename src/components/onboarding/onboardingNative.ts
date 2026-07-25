@@ -14,7 +14,6 @@ export const SwiftHStack: any = undefined;
 export const SwiftImage: any = undefined;
 export const SwiftMenu: any = undefined;
 export const SwiftPicker: any = undefined;
-export const SwiftRNHostView: any = undefined;
 export const SwiftSection: any = undefined;
 export const SwiftSlider: any = undefined;
 export const SwiftText: any = undefined;
