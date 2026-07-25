@@ -8,6 +8,11 @@ jobs:
     runs-on: macos-26-intel
     timeout-minutes: 60
 
+    # Needed so GITHUB_TOKEN can publish the Release that hosts the IPA + the
+    # AltStore source (apps.json).
+    permissions:
+      contents: write
+
     env:
       CI: "1"
       EXPO_NO_TELEMETRY: "1"
@@ -56,6 +61,22 @@ jobs:
         run: |
           npx expo config --type public
           npx expo-doctor || true
+
+      - name: Definir buildNumber = run_number
+        # Each run bumps CFBundleVersion so AltStore sees every build as a new
+        # version (and it matches the buildVersion written into apps.json).
+        # Patches the checked-out app.json only — never committed.
+        shell: bash
+        env:
+          RUN: ${{ github.run_number }}
+        run: |
+          node -e '
+          const fs = require("fs");
+          const j = JSON.parse(fs.readFileSync("app.json", "utf8"));
+          j.expo.ios = j.expo.ios || {};
+          j.expo.ios.buildNumber = String(process.env.RUN);
+          fs.writeFileSync("app.json", JSON.stringify(j, null, 2));
+          '
 
       - name: Gerar projeto nativo iOS
         run: |
@@ -199,6 +220,68 @@ jobs:
 
           echo "IPA criado:"
           ls -lh "${APP_NAME}-unsigned.ipa"
+
+      - name: Publicar release + fonte AltStore
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -e
+          IPA="$(ls *-unsigned.ipa | head -1)"
+          SIZE="$(stat -f%z "$IPA")"
+          VERSION="$(node -p "require('./app.json').expo.version")"
+          BUILD="$(node -p "String(require('./app.json').expo.ios?.buildNumber ?? 1)")"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          REPO="${{ github.repository }}"
+          BASE="https://github.com/${REPO}/releases/latest/download"
+
+          # Self-updating AltStore source: size/version/date come from THIS build,
+          # so the size never goes stale. Assets resolve via the "latest" release.
+          # Built with node (guaranteed present) rather than jq.
+          SIZE="$SIZE" VERSION="$VERSION" BUILD="$BUILD" DATE="$DATE" BASE="$BASE" node -e '
+          const { SIZE, VERSION, BUILD, DATE, BASE } = process.env;
+          const icon = BASE + "/icon.png";
+          const src = {
+            name: "Gym — ompo.dev",
+            subtitle: "Dieta e treino local-first, com IA.",
+            iconURL: icon,
+            tintColor: "#F2A24B",
+            apps: [{
+              name: "Gym",
+              bundleIdentifier: "com.ompinho.gymnotes",
+              developerName: "ompo.dev",
+              subtitle: "Dieta e treino em notas.",
+              localizedDescription: "Registre dieta e treino escrevendo em notas — a IA estrutura calorias, macros, séries e cargas. Local-first: os dados ficam no aparelho.",
+              iconURL: icon,
+              category: "lifestyle",
+              tintColor: "#F2A24B",
+              versions: [{
+                version: VERSION,
+                buildVersion: BUILD,
+                date: DATE,
+                localizedDescription: "Build automático mais recente.",
+                downloadURL: BASE + "/Gym-unsigned.ipa",
+                size: Number(SIZE),
+                minOSVersion: "15.1",
+              }],
+            }],
+            news: [],
+          };
+          require("fs").writeFileSync("apps.json", JSON.stringify(src, null, 2));
+          '
+
+          echo "apps.json:"; cat apps.json
+
+          # Rename the IPA to a stable asset name so the downloadURL is constant.
+          cp "$IPA" Gym-unsigned.ipa
+
+          TAG="v${VERSION}-${{ github.run_number }}"
+          gh release create "$TAG" \
+            Gym-unsigned.ipa apps.json assets/images/icon.png \
+            --title "Gym ${VERSION} (build ${{ github.run_number }})" \
+            --notes "Build não-assinado (sideload). Fonte AltStore: apps.json neste release." \
+            --latest
 
       - name: Enviar IPA para download
         if: success()
