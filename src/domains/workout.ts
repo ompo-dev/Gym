@@ -25,12 +25,24 @@ export const WORKOUT_METRIC_COLORS = {
 const SET_VALUE_RE = /(\d+(?:[.,]\d+)?)\s*(kg|kgs?|lb|lbs?)?/gi;
 const REPS_RE = /(\d+(?:[.,]\d+)?)\s*(?:reps?|repeti[cç](?:oes|ões|ao|ão))\b/i;
 const DISTANCE_RE =
-  /(\d+(?:[.,]\d+)?)\s*(km|kms|quil[oô]metros?|kilometers?|kilometres?|m|metros?|meters?|metres?)\b/gi;
+  /(\d+(?:[.,]\d+)?)\s*(kms?|k|quil[oô]metros?|kil[oô]metros?|kilometers?|kilometres?|m|metros?|meters?|metres?)\b/gi;
+// Only trailing minutes ADJACENT to the hour ("1h30") or carrying a min unit
+// ("1h 30min") count — a bare space-separated number ("1h 10km") is the next
+// token's distance, not minutes, and must not be eaten as time.
 const HOUR_MIN_RE =
-  /\b(\d+(?:[.,]\d+)?)\s*(?:h|hr|hrs|hora|horas)\s*(?:(\d+(?:[.,]\d+)?)\s*(?:min|mins|minuto|minutos)?)?/i;
+  /\b(\d+(?:[.,]\d+)?)\s*(?:h|hr|hrs|hora|horas)(?:(\d+(?:[.,]\d+)?)|\s*(\d+(?:[.,]\d+)?)\s*(?:min|mins|minuto|minutos))?/i;
+// A distance written in kilometres ("5km", "5k", "5 quilômetros"). Used to
+// decide whether a bare "Nm" is metres or minutes.
+const KM_UNIT_RE =
+  /\d[\d.,]*\s*(?:kms?|k|quil[oô]metros?|kil[oô]metros?|kilometers?|kilometres?)\b/i;
 const TIME_VALUE_RE =
   /(\d+(?:[.,]\d+)?)\s*(h|hr|hrs|hora|horas|min|mins|minuto|minutos|s|sec|secs|seg|segundo|segundos)\b/gi;
 const TIME_COLON_RE = /\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/;
+// "3 de 20 50kg" / "3x10 80kg" = N sets of R reps [@ W]. Group: count, separator,
+// reps, optional weight, optional unit. "de"/"por" always means "N sets of";
+// "x" only when a separate weight number follows (else it's a one-set reps×weight).
+const SET_MULTIPLIER_RE =
+  /\b(\d+)\s*(x|×|de|por)\s*(\d+(?:[.,]\d+)?)(?:\s+(\d+(?:[.,]\d+)?)\s*(kg|kgs?|lb|lbs?)?)?/i;
 const CARDIO_EXERCISE_RE =
   /\b(?:cardio|corrida|correr|run|running|esteira|treadmill|caminhada|walk|walking|bike|bicicleta|ciclismo|cycling|spinning|eliptico|eliptical|remo|rowing|natacao|nadar|swim|swimming|escada|stair|hiit)\b/i;
 
@@ -127,6 +139,11 @@ export function normalizeWorkoutExercise(text: string, locale?: string): string 
 
 function stripWorkoutMetrics(line: string): string {
   return line
+    // "3 de 20", "3x10" — a set count joined to reps by a connector. Stripped
+    // as a unit so the connector ("de"/"por") never leaks into the exercise
+    // name; a lone "de" between words (e.g. "elevação de panturrilha") is safe
+    // because this only matches digit-connector-digit.
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:x|×|de|por)\s*\d+(?:[.,]\d+)?\b/gi, ' ')
     .replace(DISTANCE_RE, ' ')
     .replace(HOUR_MIN_RE, ' ')
     .replace(TIME_VALUE_RE, ' ')
@@ -159,13 +176,21 @@ export function getWorkoutExerciseLine(text: string): string | null {
 }
 
 function parseDistanceMeters(line: string): number | undefined {
+  const lower = line.toLowerCase();
+  const hasKm = KM_UNIT_RE.test(lower);
   let meters = 0;
-  for (const match of line.toLowerCase().matchAll(DISTANCE_RE)) {
+  for (const match of lower.matchAll(DISTANCE_RE)) {
     const amount = toNumber(match[1]);
     const unit = match[2];
-    meters += unit.startsWith('km') || unit.startsWith('quilo') || unit.startsWith('kilo')
-      ? amount * 1000
-      : amount;
+    if (unit.startsWith('km') || unit === 'k' || unit.startsWith('quil') || unit.startsWith('kil')) {
+      meters += amount * 1000;
+      continue;
+    }
+    // Bare "Nm" is metres — unless a km distance is already there and N is
+    // small, in which case it's minutes ("5km 30m" = 5 km in 30 min). Handled
+    // as duration by parseDurationSeconds; skip it here.
+    if (unit === 'm' && hasKm && amount < 100) continue;
+    meters += amount;
   }
   return meters > 0 ? meters : undefined;
 }
@@ -175,7 +200,8 @@ function parseDurationSeconds(line: string): number | undefined {
   const hourMinute = lower.match(HOUR_MIN_RE);
   if (hourMinute) {
     const hours = toNumber(hourMinute[1]);
-    const minutes = hourMinute[2] ? toNumber(hourMinute[2]) : 0;
+    const minsToken = hourMinute[2] ?? hourMinute[3];
+    const minutes = minsToken ? toNumber(minsToken) : 0;
     return Math.round(hours * 3600 + minutes * 60);
   }
 
@@ -194,6 +220,18 @@ function parseDurationSeconds(line: string): number | undefined {
     if (unit.startsWith('h') || unit.startsWith('hora')) seconds += amount * 3600;
     else if (unit.startsWith('s') || unit.startsWith('seg')) seconds += amount;
     else seconds += amount * 60;
+  }
+  // "30'" prime = minutes.
+  for (const match of lower.matchAll(/(\d+(?:[.,]\d+)?)\s*['′]/g)) {
+    seconds += toNumber(match[1]) * 60;
+  }
+  // "5km 30m": a small bare "Nm" beside a km distance is minutes, not metres
+  // (parseDistanceMeters skips it for the same reason).
+  if (KM_UNIT_RE.test(lower)) {
+    for (const match of lower.matchAll(/(\d+(?:[.,]\d+)?)\s*m\b/gi)) {
+      const amount = toNumber(match[1]);
+      if (amount < 100) seconds += amount * 60;
+    }
   }
   return seconds > 0 ? Math.round(seconds) : undefined;
 }
@@ -263,14 +301,56 @@ export function parseWorkoutSetLine(line: string, unitHint: 'kg' | 'lb' = 'kg'):
   return Object.keys(set).length ? set : null;
 }
 
+/**
+ * "3 de 20 50kg" / "supino 3x10 80kg" → N identical sets of R reps [@ W].
+ * Returns null when the line is not a set multiplier, so the caller falls back
+ * to the normal one-set parse. "x" only multiplies when a separate weight
+ * number follows it — "8x100" stays one set (8 reps × 100), "3x10 80kg" is 3.
+ */
+function parseSetMultiplier(line: string, unitHint: 'kg' | 'lb'): WorkoutSet[] | null {
+  // Cardio lines (distance/duration) are never a set multiplier.
+  if (parseDistanceMeters(line) !== undefined || parseDurationSeconds(line) !== undefined) {
+    return null;
+  }
+  const match = line.toLowerCase().match(SET_MULTIPLIER_RE);
+  if (!match) return null;
+
+  const count = Math.round(toNumber(match[1]));
+  if (count < 1 || count > 20) return null;
+
+  const separator = match[2];
+  const reps = Math.round(toNumber(match[3]));
+  const hasWeight = match[4] !== undefined;
+  // A bare "N x R" with no trailing weight is a normal reps×weight one-set line.
+  if ((separator === 'x' || separator === '×') && !hasWeight) return null;
+
+  const set: WorkoutSet = { reps };
+  if (hasWeight) {
+    set.weight = toNumber(match[4]);
+    set.unit = normalizeUnit(match[5]) ?? unitHint;
+  }
+  return Array.from({ length: count }, () => ({ ...set }));
+}
+
 export function parseWorkoutSetLines(lines: string[]): (WorkoutSet | null)[] {
   let lastUnit: 'kg' | 'lb' = 'kg';
+  const out: (WorkoutSet | null)[] = [];
 
-  return lines.map((line) => {
+  for (const line of lines) {
+    const multiplier = parseSetMultiplier(line, lastUnit);
+    if (multiplier) {
+      for (const set of multiplier) {
+        if (set.unit) lastUnit = set.unit;
+        out.push(set);
+      }
+      continue;
+    }
     const parsed = parseWorkoutSetLine(line, lastUnit);
     if (parsed?.unit) lastUnit = parsed.unit;
-    return parsed;
-  });
+    out.push(parsed);
+  }
+
+  return out;
 }
 
 interface ParseWorkoutTextOptions {

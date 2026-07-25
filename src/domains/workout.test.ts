@@ -61,6 +61,24 @@ test('parseWorkoutSetLine accepts cardio distance and duration', () => {
   });
 });
 
+test('parseWorkoutSetLine captures BOTH cardio metrics across shorthand forms', () => {
+  // "5k" shorthand for 5km — used to drop the distance entirely.
+  expect(parseWorkoutSetLine('5k 30min')).toEqual({ distanceMeters: 5000, durationSeconds: 1800 });
+  // "30m" beside a km distance is 30 minutes, not 30 metres.
+  expect(parseWorkoutSetLine('5km 30m')).toEqual({ distanceMeters: 5000, durationSeconds: 1800 });
+  // ...but a lone "500 m" is still metres (guarded by the km-present check).
+  expect(parseWorkoutSetLine('500 m')).toEqual({ distanceMeters: 500 });
+  // Explicit metres survive even with a duration present.
+  expect(parseWorkoutSetLine('5000m 30min')).toEqual({
+    distanceMeters: 5000,
+    durationSeconds: 1800,
+  });
+  // The hour must not eat the next token's distance digit ("1h 10km" ≠ 1h10min).
+  expect(parseWorkoutSetLine('1h 10km')).toEqual({ distanceMeters: 10000, durationSeconds: 3600 });
+  // "30'" prime = minutes.
+  expect(parseWorkoutSetLine("5km 30'")).toEqual({ distanceMeters: 5000, durationSeconds: 1800 });
+});
+
 test('parseWorkoutSetLine accepts reps without load', () => {
   expect(parseWorkoutSetLine('20 reps')).toEqual({ reps: 20 });
   expect(parseWorkoutSetLine('15 repeticoes')).toEqual({ reps: 15 });
@@ -125,6 +143,30 @@ test('parseWorkoutText treats mixed cardio plus reps as cardio when no load exis
     kind: 'cardio',
     sets: [{ distanceMeters: 5000, durationSeconds: 1800, reps: 20 }],
   });
+});
+
+test('parseWorkoutText expands "N de R Wkg" into N identical sets', () => {
+  expect(parseWorkoutText('leg press 3 de 20 50kg')).toEqual({
+    exercise: 'leg press',
+    synergists: [],
+    stabilizers: [],
+    kind: 'strength',
+    sets: [
+      { reps: 20, weight: 50, unit: 'kg' },
+      { reps: 20, weight: 50, unit: 'kg' },
+      { reps: 20, weight: 50, unit: 'kg' },
+    ],
+  });
+});
+
+test('parseWorkoutText expands "N x R Wkg" but keeps "N x R" as one set', () => {
+  expect(parseWorkoutText('supino 3x10 80kg').sets).toEqual([
+    { reps: 10, weight: 80, unit: 'kg' },
+    { reps: 10, weight: 80, unit: 'kg' },
+    { reps: 10, weight: 80, unit: 'kg' },
+  ]);
+  // No trailing weight → "8x100" is 8 reps × 100, a single set, not 8 sets.
+  expect(parseWorkoutText('bench\n8x100').sets).toEqual([{ weight: 100, unit: 'kg', reps: 8 }]);
 });
 
 test('formatWorkoutSetVolume shows the set volume in kg', () => {

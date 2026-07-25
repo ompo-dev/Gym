@@ -171,6 +171,8 @@ export const recipePrompt = [
   'ONLY / apenas / somente / just / nothing else — a hard constraint. Use pantry items and basic seasonings alone. Return NO ingredient that is not in the pantry, even a cheap or obvious one. If no dish is possible, return the closest one that is and say so in "reasoning" rather than adding what is missing.',
   'WITH / using / com / aproveitando — a preference. Build around the pantry items but adding other ingredients is fine.',
   'When the pantry is not mentioned at all, treat it as a mild preference: prefer what is there, and keep the shopping list short.',
+  'Build ONE coherent, real dish a person would actually cook. NEVER force every pantry item into the recipe just because it is available — use only the items that genuinely go together, and leave the rest out.',
+  'NEVER list plain water as an ingredient to buy or as its own item: assume tap water is free and always on hand. Account for it only in each item\'s waterMl.',
   'NEVER set pantryItemId or estimatedCostCents - the app fills those in from the pantry.',
   'Each step is one action, in order, short enough to follow while cooking.',
   'Match the effort to the stated cooking skill: fewer steps and simpler technique for a beginner.',

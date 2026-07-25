@@ -271,6 +271,12 @@ export function NotesList<TData, TTotals>({
   const handleLayout = (event: LayoutChangeEvent) => {
     const height = event.nativeEvent.layout.height;
     setViewportHeight((current) => (current === height ? current : height));
+    // Only re-centre while something is actually being edited. iOS refires
+    // layout when the app returns from background; without this guard it yanks
+    // the scroll to a stale `focusedLine`, which read as the list "jumping"
+    // every time you left and came back to the app.
+    const isEditing = keyboardTop.current !== null || newInputFocused.current;
+    if (!isEditing) return;
     measureViewport(() => {
       if (focusedLine.current?.index === entriesLength.current) {
         centerNewInput(false);

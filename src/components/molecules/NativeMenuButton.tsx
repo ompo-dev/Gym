@@ -7,10 +7,11 @@ import {
   swiftButtonBorderShape,
   swiftButtonStyle,
   swiftControlSize,
+  swiftFrame,
   swiftLabelStyle,
   swiftTint,
 } from '@/components/onboarding/onboardingNative';
-import { Spacing } from '@/constants/theme';
+import { Metrics, Spacing } from '@/constants/theme';
 
 interface NativeMenuButtonProps {
   /** SF Symbol shown on the button itself (e.g. "ellipsis", "camera"). */
@@ -26,12 +27,12 @@ interface NativeMenuButtonProps {
 }
 
 /**
- * Circular glass SwiftUI menu button — the sheet's native close-button shape.
- * `buttonBorderShape('circle')` keeps a wide symbol like `ellipsis` from making
- * a flattened capsule; `controlSize('large')` sizes it like a native icon
- * button (a bare frame was ignored by the glass shape and rendered tiny). The
- * Host matches contents so it wraps that natural size. iOS-only: render behind
- * an `IOS_NATIVE_ENABLED` guard, the caller keeps its own RN fallback.
+ * Circular glass SwiftUI menu button, sized to match the sheet's RN close
+ * button (a `Metrics.iconButton` glass circle). The size recipe, tuned on
+ * device: `buttonBorderShape('circle')` makes it round despite a wide symbol;
+ * `controlSize('extraLarge')` grows the glass to fill the box; `frame` pins it
+ * to exactly `iconButton` so it matches the X beside it. iOS-only: render
+ * behind an `IOS_NATIVE_ENABLED` guard, the caller keeps its own RN fallback.
  */
 export function NativeMenuButton({
   systemImage,
@@ -41,18 +42,17 @@ export function NativeMenuButton({
   children,
 }: NativeMenuButtonProps) {
   return (
-    <SwiftHost
-      matchContents={{ horizontal: true, vertical: true }}
-      style={marginRight ? styles.margin : undefined}>
+    <SwiftHost style={marginRight ? styles.hostMargin : styles.host}>
       <SwiftMenu
         label={label}
         systemImage={systemImage}
         modifiers={[
           swiftButtonStyle?.('glass'),
           swiftButtonBorderShape?.('circle'),
-          swiftControlSize?.('large'),
+          swiftControlSize?.('extraLarge'),
           swiftLabelStyle?.('iconOnly'),
           tint ? swiftTint?.(tint) : undefined,
+          swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
         ].filter(Boolean)}>
         {children}
       </SwiftMenu>
@@ -61,7 +61,13 @@ export function NativeMenuButton({
 }
 
 const styles = StyleSheet.create({
-  margin: {
+  host: {
+    width: Metrics.iconButton,
+    height: Metrics.iconButton,
+  },
+  hostMargin: {
+    width: Metrics.iconButton,
+    height: Metrics.iconButton,
     marginRight: Spacing.two,
   },
 });
