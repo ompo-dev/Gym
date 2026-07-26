@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import {
   SwiftHost,
@@ -42,21 +42,23 @@ export function NativeMenuButton({
   children,
 }: NativeMenuButtonProps) {
   return (
-    <SwiftHost style={marginRight ? styles.hostMargin : styles.host}>
-      <SwiftMenu
-        label={label}
-        systemImage={systemImage}
-        modifiers={[
-          swiftButtonStyle?.('glass'),
-          swiftButtonBorderShape?.('circle'),
-          swiftControlSize?.('extraLarge'),
-          swiftLabelStyle?.('iconOnly'),
-          tint ? swiftTint?.(tint) : undefined,
-          swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
-        ].filter(Boolean)}>
-        {children}
-      </SwiftMenu>
-    </SwiftHost>
+    <View style={marginRight ? styles.hostMargin : styles.host}>
+      <SwiftHost style={styles.frame}>
+        <SwiftMenu
+          label={label}
+          systemImage={systemImage}
+          modifiers={[
+            swiftButtonStyle?.('glass'),
+            swiftButtonBorderShape?.('circle'),
+            swiftControlSize?.('extraLarge'),
+            swiftLabelStyle?.('iconOnly'),
+            tint ? swiftTint?.(tint) : undefined,
+            swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
+          ].filter(Boolean)}>
+          {children}
+        </SwiftMenu>
+      </SwiftHost>
+    </View>
   );
 }
 
@@ -69,5 +71,11 @@ const styles = StyleSheet.create({
     width: Metrics.iconButton,
     height: Metrics.iconButton,
     marginRight: Spacing.two,
+  },
+  frame: {
+    width: Metrics.iconButton,
+    height: Metrics.iconButton,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

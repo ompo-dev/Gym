@@ -43,6 +43,8 @@ const TIME_COLON_RE = /\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/;
 // "x" only when a separate weight number follows (else it's a one-set reps×weight).
 const SET_MULTIPLIER_RE =
   /\b(\d+)\s*(x|×|de|por)\s*(\d+(?:[.,]\d+)?)(?:\s+(\d+(?:[.,]\d+)?)\s*(kg|kgs?|lb|lbs?)?)?/i;
+const LEADING_WEIGHT_SET_MULTIPLIER_RE =
+  /\b(\d+(?:[.,]\d+)?)\s*(kg|kgs?|lb|lbs?)\s+(\d+)\s*(x|\u00d7|de|por)\s*(\d+(?:[.,]\d+)?)/i;
 const CARDIO_EXERCISE_RE =
   /\b(?:cardio|corrida|correr|run|running|esteira|treadmill|caminhada|walk|walking|bike|bicicleta|ciclismo|cycling|spinning|eliptico|eliptical|remo|rowing|natacao|nadar|swim|swimming|escada|stair|hiit)\b/i;
 
@@ -312,7 +314,21 @@ function parseSetMultiplier(line: string, unitHint: 'kg' | 'lb'): WorkoutSet[] |
   if (parseDistanceMeters(line) !== undefined || parseDurationSeconds(line) !== undefined) {
     return null;
   }
-  const match = line.toLowerCase().match(SET_MULTIPLIER_RE);
+  const lower = line.toLowerCase();
+  const leadingWeightMatch = lower.match(LEADING_WEIGHT_SET_MULTIPLIER_RE);
+  if (leadingWeightMatch) {
+    const count = Math.round(toNumber(leadingWeightMatch[3]));
+    if (count < 1 || count > 20) return null;
+
+    const set: WorkoutSet = {
+      weight: toNumber(leadingWeightMatch[1]),
+      unit: normalizeUnit(leadingWeightMatch[2]) ?? unitHint,
+      reps: Math.round(toNumber(leadingWeightMatch[5])),
+    };
+    return Array.from({ length: count }, () => ({ ...set }));
+  }
+
+  const match = lower.match(SET_MULTIPLIER_RE);
   if (!match) return null;
 
   const count = Math.round(toNumber(match[1]));

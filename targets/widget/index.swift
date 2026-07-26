@@ -9,6 +9,24 @@ private let scheme = "gym"
 
 private func num(_ value: Any?) -> Double { (value as? NSNumber)?.doubleValue ?? 0 }
 
+private func snapshotObject(_ defaults: UserDefaults?, _ key: String) -> [String: Any]? {
+  if let dict = defaults?.dictionary(forKey: key) {
+    return dict
+  }
+  if let data = defaults?.data(forKey: key),
+     let object = try? JSONSerialization.jsonObject(with: data),
+     let dict = object as? [String: Any] {
+    return dict
+  }
+  if let string = defaults?.string(forKey: key),
+     let data = string.data(using: .utf8),
+     let object = try? JSONSerialization.jsonObject(with: data),
+     let dict = object as? [String: Any] {
+    return dict
+  }
+  return nil
+}
+
 // MARK: - Shared snapshot
 
 struct DaySnapshot {
@@ -21,13 +39,13 @@ struct DaySnapshot {
   static func load() -> DaySnapshot {
     var s = DaySnapshot()
     let defaults = UserDefaults(suiteName: appGroup)
-    if let f = defaults?.dictionary(forKey: "food") {
+    if let f = snapshotObject(defaults, "food") {
       s.calories = num(f["calories"]); s.caloriesGoal = num(f["caloriesGoal"])
       s.protein = num(f["protein"]); s.proteinGoal = num(f["proteinGoal"])
       s.carbs = num(f["carbs"]); s.carbsGoal = num(f["carbsGoal"])
       s.fat = num(f["fat"]); s.fatGoal = num(f["fatGoal"])
     }
-    if let w = defaults?.dictionary(forKey: "workout") {
+    if let w = snapshotObject(defaults, "workout") {
       s.sets = num(w["sets"]); s.volumeKg = num(w["volumeKg"])
     }
     return s

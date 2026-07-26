@@ -159,6 +159,20 @@ test('parseWorkoutText expands "N de R Wkg" into N identical sets', () => {
   });
 });
 
+test('parseWorkoutText expands "Wkg N de R" into N identical loaded sets', () => {
+  expect(parseWorkoutText('supino reto 50kg 3 de 8')).toEqual({
+    exercise: 'supino reto',
+    synergists: [],
+    stabilizers: [],
+    kind: 'strength',
+    sets: [
+      { reps: 8, weight: 50, unit: 'kg' },
+      { reps: 8, weight: 50, unit: 'kg' },
+      { reps: 8, weight: 50, unit: 'kg' },
+    ],
+  });
+});
+
 test('parseWorkoutText expands "N x R Wkg" but keeps "N x R" as one set', () => {
   expect(parseWorkoutText('supino 3x10 80kg').sets).toEqual([
     { reps: 10, weight: 80, unit: 'kg' },

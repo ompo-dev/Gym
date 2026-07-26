@@ -58,12 +58,26 @@ function splitLines(text: string): string[] {
 }
 
 function formattedExercise(entry: Entry, rawExercise: string): string {
-  const data =
-    entry.status === 'done' && entry.data && 'sets' in entry.data
-      ? (entry.data as WorkoutData)
-      : null;
+  const data = resolvedWorkoutData(entry);
 
   return data?.exercise ?? (normalizeWorkoutExercise(rawExercise) || rawExercise);
+}
+
+function resolvedWorkoutData(entry: Entry): WorkoutData | null {
+  return entry.status === 'done' && entry.data && 'sets' in entry.data
+    ? (entry.data as WorkoutData)
+    : null;
+}
+
+export function workoutLinesFromEntry(entry: Entry): string[] {
+  const rawLines = splitLines(entry.text);
+  const data = resolvedWorkoutData(entry);
+  if (!data) return rawLines;
+
+  const rawExercise = rawLines[0] ?? '';
+  const exercise = data.exercise ?? (normalizeWorkoutExercise(rawExercise) || rawExercise);
+  const setLines = data.sets.map(formatWorkoutSetSummary).filter(Boolean);
+  return setLines.length ? [exercise, ...setLines] : [exercise];
 }
 
 export function getAnimatedMarkerIndex({
@@ -240,7 +254,7 @@ export function WorkoutOutliner({
   onExerciseAutoFocused,
 }: WorkoutOutlinerProps) {
   const colors = useColors();
-  const [lines, setLines] = useState<string[]>(() => splitLines(entry.text));
+  const [lines, setLines] = useState<string[]>(() => workoutLinesFromEntry(entry));
   const [focused, setFocused] = useState<number | null>(null);
   const [pendingFocus, setPendingFocus] = useState<number | null>(null);
   const [activeLine, setActiveLine] = useState(0);
@@ -283,11 +297,20 @@ export function WorkoutOutliner({
     if (pendingCommit.current !== null && entry.text === pendingCommit.current) {
       pendingCommit.current = null;
     }
+    const nextLines = workoutLinesFromEntry(entry);
     if (entry.text !== syncedText.current && focusedRef.current === null) {
       syncedText.current = entry.text;
-      setLines(splitLines(entry.text));
+      setLines(nextLines);
+      return;
     }
-  }, [entry.text]);
+    if (
+      focusedRef.current === null &&
+      pendingCommit.current === null &&
+      serializeWorkoutLines(nextLines) !== serializeWorkoutLines(linesRef.current)
+    ) {
+      setLines(nextLines);
+    }
+  }, [entry]);
 
   useEffect(() => {
     setExerciseSaved(initialExerciseSaved);
@@ -295,7 +318,7 @@ export function WorkoutOutliner({
 
   useEffect(() => {
     const isRecent = Date.now() - entry.createdAt < RECENT_MS;
-    if (isRecent && splitLines(entry.text).length === 1) {
+    if (isRecent && workoutLinesFromEntry(entry).length === 1) {
       setLines((current) => (current.length === 1 ? [...current, ''] : current));
       queueFocus(1);
     }
