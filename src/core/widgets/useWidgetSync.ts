@@ -44,9 +44,12 @@ export function useWidgetSync(ready: boolean): void {
             protein: acc.protein + t.protein,
             carbs: acc.carbs + t.carbs,
             fat: acc.fat + t.fat,
+            sugarG: acc.sugarG + t.sugarG,
+            fiberG: acc.fiberG + t.fiberG,
+            sodiumMg: acc.sodiumMg + t.sodiumMg,
           };
         },
-        { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        { calories: 0, protein: 0, carbs: 0, fat: 0, sugarG: 0, fiberG: 0, sodiumMg: 0 },
       );
       const goals = foodGoalsFromProfile(profile, trainingAdjustment(workoutEntries, profile));
       writeFoodWidget({
@@ -58,6 +61,12 @@ export function useWidgetSync(ready: boolean): void {
         carbsGoal: Math.round(goals.carbs),
         fat: Math.round(food.fat),
         fatGoal: Math.round(goals.fat),
+        sugarG: Math.round(food.sugarG),
+        sugarGoal: Math.round(goals.sugarG),
+        fiberG: Math.round(food.fiberG),
+        fiberGoal: Math.round(goals.fiberG),
+        sodiumMg: Math.round(food.sodiumMg),
+        sodiumGoal: Math.round(goals.sodiumMg),
       });
 
       const workout = workoutEntries.reduce(
@@ -67,11 +76,20 @@ export function useWidgetSync(ready: boolean): void {
           return {
             sets: acc.sets + data.sets.length,
             volumeKg: acc.volumeKg + data.sets.reduce((s, set) => s + getWorkoutSetVolume(set), 0),
+            durationSeconds:
+              acc.durationSeconds + data.sets.reduce((s, set) => s + (set.durationSeconds ?? 0), 0),
+            distanceMeters:
+              acc.distanceMeters + data.sets.reduce((s, set) => s + (set.distanceMeters ?? 0), 0),
           };
         },
-        { sets: 0, volumeKg: 0 },
+        { sets: 0, volumeKg: 0, durationSeconds: 0, distanceMeters: 0 },
       );
-      writeWorkoutWidget({ sets: workout.sets, volumeKg: Math.round(workout.volumeKg) });
+      writeWorkoutWidget({
+        sets: workout.sets,
+        volumeKg: Math.round(workout.volumeKg),
+        durationSeconds: workout.durationSeconds,
+        distanceMeters: Math.round(workout.distanceMeters),
+      });
     });
 
     return () => {

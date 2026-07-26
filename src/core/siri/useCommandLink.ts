@@ -1,13 +1,18 @@
+import { ExtensionStorage } from '@bacons/apple-targets';
 import { useURL } from 'expo-linking';
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 
 import { bus } from '@/core/command/bus';
 import { todayISO } from '@/core/date';
 import { log } from '@/core/log';
+import { APP_GROUP } from '@/core/widgets/widgetSync';
 import { useAppStore } from '@/store/useAppStore';
 
-import { parseCommandLink, type CommandLink } from './commandLink';
+import { parseCommandLink, parseCommandPayload, type CommandLink } from './commandLink';
+
+const pendingStorage = Platform.OS === 'ios' ? new ExtensionStorage(APP_GROUP) : null;
 
 /**
  * Focus the target day and log the dictated note through the ordinary enrich
@@ -36,6 +41,19 @@ export function runCommandLink(cmd: CommandLink): void {
 export function useCommandLink(ready: boolean): void {
   const url = useURL();
   const handled = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!ready || !pendingStorage) return;
+    try {
+      const payload = pendingStorage.get('pendingCommand');
+      if (typeof payload !== 'string') return;
+      pendingStorage.remove('pendingCommand');
+      const cmd = parseCommandPayload(payload);
+      if (cmd) runCommandLink(cmd);
+    } catch {
+      // Expo Go / native storage failure: URL links still work below.
+    }
+  }, [ready]);
 
   useEffect(() => {
     if (!ready || !url || handled.current === url) return;

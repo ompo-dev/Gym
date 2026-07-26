@@ -55,3 +55,13 @@ export function parseCommandLink(url: string): CommandLink | null {
   if (!parsed.success) return null;
   return { text: parsed.data.text, domain: parsed.data.domain, date: parsed.data.date };
 }
+
+export function parseCommandPayload(payload: string): CommandLink | null {
+  try {
+    const parsed = commandSchema.safeParse(JSON.parse(payload));
+    if (!parsed.success) return null;
+    return { text: parsed.data.text, domain: parsed.data.domain, date: parsed.data.date };
+  } catch {
+    return null;
+  }
+}

@@ -19,8 +19,8 @@ export default function RootLayout() {
   const prefsLoaded = useAppStore((s) => s.prefsLoaded);
   const onboardingDone = useAppStore((s) => s.onboardingDone);
 
-  // Siri / Shortcuts deep links (`gym://add?...`). Only once the app is past
-  // onboarding, so a cold-start command has real tabs to land on.
+  // Siri / Shortcuts commands. Only once the app is past onboarding, so a
+  // cold-start command has real tabs to land on.
   useCommandLink(prefsLoaded && onboardingDone);
 
   // Mirror today's diet/workout totals into the App Group for the home/lock

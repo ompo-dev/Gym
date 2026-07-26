@@ -1,4 +1,4 @@
-import { parseCommandLink } from './commandLink';
+import { parseCommandLink, parseCommandPayload } from './commandLink';
 
 describe('parseCommandLink', () => {
   it('parses a food add link, defaulting the domain', () => {
@@ -45,5 +45,17 @@ describe('parseCommandLink', () => {
 
   it('ignores links from other schemes', () => {
     expect(parseCommandLink('https://example.com/add?text=x')).toBeNull();
+  });
+
+  it('parses a pending App Intent payload', () => {
+    expect(parseCommandPayload(JSON.stringify({ text: 'arroz', domain: 'food' }))).toEqual({
+      text: 'arroz',
+      domain: 'food',
+    });
+  });
+
+  it('rejects bad App Intent payloads', () => {
+    expect(parseCommandPayload('not-json')).toBeNull();
+    expect(parseCommandPayload(JSON.stringify({ text: '', domain: 'food' }))).toBeNull();
   });
 });

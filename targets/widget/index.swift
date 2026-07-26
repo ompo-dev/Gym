@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import WidgetKit
 
@@ -5,7 +6,6 @@ import WidgetKit
 // writes today's snapshot via @bacons/apple-targets ExtensionStorage
 // (src/core/widgets/*), which lands as a dictionary under these keys.
 private let appGroup = "group.com.ompinho.gymnotes"
-private let scheme = "gym"
 
 private func num(_ value: Any?) -> Double { (value as? NSNumber)?.doubleValue ?? 0 }
 
@@ -34,7 +34,11 @@ struct DaySnapshot {
   var protein = 0.0, proteinGoal = 0.0
   var carbs = 0.0, carbsGoal = 0.0
   var fat = 0.0, fatGoal = 0.0
+  var sugar = 0.0, sugarGoal = 0.0
+  var fiber = 0.0, fiberGoal = 0.0
+  var sodium = 0.0, sodiumGoal = 0.0
   var sets = 0.0, volumeKg = 0.0
+  var durationSeconds = 0.0, distanceMeters = 0.0
 
   static func load() -> DaySnapshot {
     var s = DaySnapshot()
@@ -44,9 +48,13 @@ struct DaySnapshot {
       s.protein = num(f["protein"]); s.proteinGoal = num(f["proteinGoal"])
       s.carbs = num(f["carbs"]); s.carbsGoal = num(f["carbsGoal"])
       s.fat = num(f["fat"]); s.fatGoal = num(f["fatGoal"])
+      s.sugar = num(f["sugarG"]); s.sugarGoal = num(f["sugarGoal"])
+      s.fiber = num(f["fiberG"]); s.fiberGoal = num(f["fiberGoal"])
+      s.sodium = num(f["sodiumMg"]); s.sodiumGoal = num(f["sodiumGoal"])
     }
     if let w = snapshotObject(defaults, "workout") {
       s.sets = num(w["sets"]); s.volumeKg = num(w["volumeKg"])
+      s.durationSeconds = num(w["durationSeconds"]); s.distanceMeters = num(w["distanceMeters"])
     }
     return s
   }
@@ -72,6 +80,22 @@ struct SnapshotProvider: TimelineProvider {
 
 private func ratio(_ value: Double, _ goal: Double) -> Double {
   goal > 0 ? min(value / goal, 1) : 0
+}
+
+private func durationText(_ seconds: Double) -> String {
+  let minutes = Int((seconds / 60).rounded())
+  if minutes < 60 { return "\(minutes) min" }
+  let hours = minutes / 60
+  let rest = minutes % 60
+  return rest > 0 ? "\(hours) h \(rest) min" : "\(hours) h"
+}
+
+private func distanceText(_ meters: Double) -> String {
+  if meters >= 1000 {
+    let km = meters / 1000
+    return km.rounded() == km ? "\(Int(km)) km" : String(format: "%.1f km", km)
+  }
+  return "\(Int(meters.rounded())) m"
 }
 
 // MARK: - Shared views
@@ -106,12 +130,24 @@ private func macroRow(_ s: DaySnapshot) -> some View {
   }
 }
 
+private func microLine(_ s: DaySnapshot) -> some View {
+  VStack(alignment: .leading, spacing: 1) {
+    Text("Acucar \(Int(s.sugar))/\(Int(s.sugarGoal)) g")
+    Text("Fibra \(Int(s.fiber))/\(Int(s.fiberGoal)) g")
+    Text("Sodio \(Int(s.sodium))/\(Int(s.sodiumGoal)) mg")
+  }
+  .font(.system(size: 9, weight: .semibold))
+  .foregroundStyle(.secondary)
+  .lineLimit(1)
+  .minimumScaleFactor(0.75)
+}
+
 // MARK: - Diet widget
 
 struct DietWidgetView: View {
   let s: DaySnapshot
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 5) {
         Image(systemName: "flame.fill").foregroundStyle(.orange)
         Text("\(Int(s.calories))").font(.title2.weight(.bold))
@@ -119,6 +155,7 @@ struct DietWidgetView: View {
       }
       ProgressView(value: ratio(s.calories, s.caloriesGoal)).tint(.orange)
       macroRow(s)
+      microLine(s)
     }
     .padding(6)
     .containerBackground(.fill.tertiary, for: .widget)
@@ -131,8 +168,36 @@ struct DietWidget: Widget {
       DietWidgetView(s: entry.snapshot)
     }
     .configurationDisplayName("Dieta de hoje")
-    .description("Calorias e macros de hoje.")
-    .supportedFamilies([.systemSmall, .systemMedium])
+    .description("Calorias, macros e micros de hoje.")
+    .supportedFamilies([.systemSmall])
+  }
+}
+
+// MARK: - Cardio widget
+
+struct CardioWidgetView: View {
+  let s: DaySnapshot
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Label("Cardio", systemImage: "figure.run")
+        .font(.caption.weight(.bold)).foregroundStyle(.secondary)
+      Text(durationText(s.durationSeconds)).font(.system(size: 28, weight: .bold))
+      Text(distanceText(s.distanceMeters)).font(.headline).foregroundStyle(.green)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    .padding(8)
+    .containerBackground(.fill.tertiary, for: .widget)
+  }
+}
+
+struct CardioWidget: Widget {
+  var body: some WidgetConfiguration {
+    StaticConfiguration(kind: "GymCardio", provider: SnapshotProvider()) { entry in
+      CardioWidgetView(s: entry.snapshot)
+    }
+    .configurationDisplayName("Cardio de hoje")
+    .description("Tempo e distancia de cardio hoje.")
+    .supportedFamilies([.systemSmall])
   }
 }
 
@@ -187,9 +252,14 @@ struct MacrosWidgetView: View {
         Text("\(Int(s.calories)) / \(Int(s.caloriesGoal)) cal").font(.headline)
         Text("P \(Int(s.protein))  C \(Int(s.carbs))  F \(Int(s.fat))")
           .font(.caption).foregroundStyle(.secondary)
+        Text("Ac \(Int(s.sugar))  Fib \(Int(s.fiber))  Na \(Int(s.sodium))")
+          .font(.caption2).foregroundStyle(.secondary)
       }
     default:
-      macroRow(s)
+      VStack(spacing: 5) {
+        macroRow(s)
+        microLine(s)
+      }
         .padding(6)
         .containerBackground(.fill.tertiary, for: .widget)
     }
@@ -207,57 +277,13 @@ struct MacrosWidget: Widget {
   }
 }
 
-// MARK: - Quick-add widget (deep link only)
-
-struct QuickAddEntry: TimelineEntry { let date: Date }
-
-struct QuickAddProvider: TimelineProvider {
-  func placeholder(in context: Context) -> QuickAddEntry { QuickAddEntry(date: Date()) }
-  func getSnapshot(in context: Context, completion: @escaping (QuickAddEntry) -> Void) {
-    completion(QuickAddEntry(date: Date()))
-  }
-  func getTimeline(in context: Context, completion: @escaping (Timeline<QuickAddEntry>) -> Void) {
-    completion(Timeline(entries: [QuickAddEntry(date: Date())], policy: .never))
-  }
-}
-
-struct QuickAddView: View {
-  private func link(_ title: String, _ symbol: String, _ domain: String, _ tint: Color) -> some View {
-    Link(destination: URL(string: "\(scheme)://add?domain=\(domain)")!) {
-      Label(title, systemImage: symbol)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(tint.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
-    }
-  }
-  var body: some View {
-    VStack(spacing: 10) {
-      link("Comida", "fork.knife", "food", .blue)
-      link("Treino", "dumbbell", "workout", .orange)
-    }
-    .font(.subheadline.weight(.semibold))
-    .containerBackground(.fill.tertiary, for: .widget)
-  }
-}
-
-struct QuickAddWidget: Widget {
-  var body: some WidgetConfiguration {
-    StaticConfiguration(kind: "GymQuickAdd", provider: QuickAddProvider()) { _ in
-      QuickAddView()
-    }
-    .configurationDisplayName("Adicionar no Gym")
-    .description("Registrar comida ou treino rápido.")
-    .supportedFamilies([.systemSmall, .systemMedium])
-  }
-}
-
 // MARK: - Bundle
 
 @main
 struct GymWidgetBundle: WidgetBundle {
   var body: some Widget {
-    QuickAddWidget()
     DietWidget()
+    CardioWidget()
     WorkoutWidget()
     MacrosWidget()
   }
