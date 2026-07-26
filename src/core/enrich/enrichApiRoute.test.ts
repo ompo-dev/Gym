@@ -1,4 +1,4 @@
-import { POST } from './enrich+api';
+import { POST } from '@/app/api/enrich+api';
 
 const originalFetch = global.fetch;
 const originalApiKey = process.env.DEEPSEEK_API_KEY;
