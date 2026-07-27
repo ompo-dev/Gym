@@ -10,20 +10,14 @@ private let appGroup = "group.com.ompinho.gymnotes"
 private func num(_ value: Any?) -> Double { (value as? NSNumber)?.doubleValue ?? 0 }
 
 private func snapshotObject(_ defaults: UserDefaults?, _ key: String) -> [String: Any]? {
-  if let dict = defaults?.dictionary(forKey: key) {
-    return dict
-  }
+  if let dict = defaults?.dictionary(forKey: key) { return dict }
   if let data = defaults?.data(forKey: key),
      let object = try? JSONSerialization.jsonObject(with: data),
-     let dict = object as? [String: Any] {
-    return dict
-  }
+     let dict = object as? [String: Any] { return dict }
   if let string = defaults?.string(forKey: key),
      let data = string.data(using: .utf8),
      let object = try? JSONSerialization.jsonObject(with: data),
-     let dict = object as? [String: Any] {
-    return dict
-  }
+     let dict = object as? [String: Any] { return dict }
   return nil
 }
 
@@ -78,6 +72,8 @@ struct SnapshotProvider: TimelineProvider {
   }
 }
 
+// MARK: - Helpers
+
 private func ratio(_ value: Double, _ goal: Double) -> Double {
   goal > 0 ? min(value / goal, 1) : 0
 }
@@ -123,7 +119,7 @@ struct MacroRing: View {
 }
 
 private func macroRow(_ s: DaySnapshot) -> some View {
-  HStack {
+  HStack(spacing: 12) {
     MacroRing(label: "P", value: s.protein, goal: s.proteinGoal, color: .green)
     MacroRing(label: "C", value: s.carbs, goal: s.carbsGoal, color: .purple)
     MacroRing(label: "F", value: s.fat, goal: s.fatGoal, color: .yellow)
@@ -142,7 +138,7 @@ private func microLine(_ s: DaySnapshot) -> some View {
   .minimumScaleFactor(0.75)
 }
 
-// MARK: - Diet widget
+// MARK: - Diet widget (home screen)
 
 struct DietWidgetView: View {
   let s: DaySnapshot
@@ -173,20 +169,38 @@ struct DietWidget: Widget {
   }
 }
 
-// MARK: - Cardio widget
+// MARK: - Cardio widget (home + lock screen)
 
 struct CardioWidgetView: View {
+  @Environment(\.widgetFamily) var family
   let s: DaySnapshot
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Label("Cardio", systemImage: "figure.run")
-        .font(.caption.weight(.bold)).foregroundStyle(.secondary)
-      Text(durationText(s.durationSeconds)).font(.system(size: 28, weight: .bold))
-      Text(distanceText(s.distanceMeters)).font(.headline).foregroundStyle(.green)
+    switch family {
+    case .accessoryCircular:
+      Gauge(value: ratio(s.durationSeconds, 3600)) {
+        Image(systemName: "figure.run")
+      } currentValueLabel: {
+        Text("\(Int(s.durationSeconds / 60))")
+      }
+      .gaugeStyle(.accessoryCircularCapacity)
+    case .accessoryRectangular:
+      HStack(spacing: 8) {
+        Text(durationText(s.durationSeconds)).font(.headline)
+        Text(distanceText(s.distanceMeters))
+          .font(.subheadline).foregroundStyle(.secondary)
+      }
+    default:
+      VStack(alignment: .leading, spacing: 6) {
+        Label("Cardio", systemImage: "figure.run")
+          .font(.caption.weight(.bold)).foregroundStyle(.secondary)
+        Text(durationText(s.durationSeconds)).font(.system(size: 28, weight: .bold))
+        Text(distanceText(s.distanceMeters)).font(.headline).foregroundStyle(.green)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+      .padding(8)
+      .containerBackground(.fill.tertiary, for: .widget)
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-    .padding(8)
-    .containerBackground(.fill.tertiary, for: .widget)
   }
 }
 
@@ -197,27 +211,41 @@ struct CardioWidget: Widget {
     }
     .configurationDisplayName("Cardio de hoje")
     .description("Tempo e distancia de cardio hoje.")
-    .supportedFamilies([.systemSmall])
+    .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular])
   }
 }
 
-// MARK: - Workout widget
+// MARK: - Workout widget (home + lock screen)
 
 struct WorkoutWidgetView: View {
+  @Environment(\.widgetFamily) var family
   let s: DaySnapshot
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Label("Treino", systemImage: "dumbbell.fill")
-        .font(.caption.weight(.bold)).foregroundStyle(.secondary)
-      HStack(alignment: .firstTextBaseline, spacing: 4) {
-        Text("\(Int(s.sets))").font(.system(size: 34, weight: .bold))
-        Text("séries").font(.caption).foregroundStyle(.secondary)
+    switch family {
+    case .accessoryCircular:
+      Text("\(Int(s.sets))").font(.title.bold())
+      + Text("sér").font(.caption2)
+    case .accessoryRectangular:
+      HStack(spacing: 8) {
+        Text("\(Int(s.sets)) séries").font(.headline)
+        Text("\(Int(s.volumeKg)) kg")
+          .font(.subheadline).foregroundStyle(.secondary)
       }
-      Text("\(Int(s.volumeKg)) kg").font(.headline).foregroundStyle(.blue)
+    default:
+      VStack(alignment: .leading, spacing: 6) {
+        Label("Treino", systemImage: "dumbbell.fill")
+          .font(.caption.weight(.bold)).foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+          Text("\(Int(s.sets))").font(.system(size: 34, weight: .bold))
+          Text("séries").font(.caption).foregroundStyle(.secondary)
+        }
+        Text("\(Int(s.volumeKg)) kg").font(.headline).foregroundStyle(.blue)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+      .padding(8)
+      .containerBackground(.fill.tertiary, for: .widget)
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-    .padding(8)
-    .containerBackground(.fill.tertiary, for: .widget)
   }
 }
 
@@ -228,11 +256,11 @@ struct WorkoutWidget: Widget {
     }
     .configurationDisplayName("Treino de hoje")
     .description("Séries e carga de hoje.")
-    .supportedFamilies([.systemSmall])
+    .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular])
   }
 }
 
-// MARK: - Macros widget (home + lock screen)
+// MARK: - Macros widget (home + lock screen, simplified lock screen)
 
 struct MacrosWidgetView: View {
   @Environment(\.widgetFamily) var family
@@ -249,11 +277,10 @@ struct MacrosWidgetView: View {
       .gaugeStyle(.accessoryCircularCapacity)
     case .accessoryRectangular:
       VStack(alignment: .leading, spacing: 2) {
-        Text("\(Int(s.calories)) / \(Int(s.caloriesGoal)) cal").font(.headline)
         Text("P \(Int(s.protein))  C \(Int(s.carbs))  F \(Int(s.fat))")
+          .font(.headline)
+        Text("\(Int(s.calories)) / \(Int(s.caloriesGoal)) cal")
           .font(.caption).foregroundStyle(.secondary)
-        Text("Ac \(Int(s.sugar))  Fib \(Int(s.fiber))  Na \(Int(s.sodium))")
-          .font(.caption2).foregroundStyle(.secondary)
       }
     default:
       VStack(spacing: 5) {
@@ -277,6 +304,52 @@ struct MacrosWidget: Widget {
   }
 }
 
+// MARK: - Calories widget (lock screen, single block)
+
+struct CaloriesWidgetView: View {
+  @Environment(\.widgetFamily) var family
+  let s: DaySnapshot
+
+  var body: some View {
+    switch family {
+    case .accessoryCircular:
+      Gauge(value: ratio(s.calories, s.caloriesGoal)) {
+        Image(systemName: "flame.fill")
+      } currentValueLabel: {
+        Text("\(Int(s.calories))")
+      }
+      .gaugeStyle(.accessoryCircularCapacity)
+    case .accessoryRectangular:
+      VStack(alignment: .leading, spacing: 2) {
+        Text("\(Int(s.calories)) cal").font(.headline)
+        Text("de \(Int(s.caloriesGoal)) cal")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+    default:
+      VStack(spacing: 4) {
+        Image(systemName: "flame.fill")
+          .font(.title).foregroundStyle(.orange)
+        Text("\(Int(s.calories))").font(.system(size: 34, weight: .bold))
+        Text("/ \(Int(s.caloriesGoal)) cal")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .containerBackground(.fill.tertiary, for: .widget)
+    }
+  }
+}
+
+struct CaloriesWidget: Widget {
+  var body: some WidgetConfiguration {
+    StaticConfiguration(kind: "GymCalories", provider: SnapshotProvider()) { entry in
+      CaloriesWidgetView(s: entry.snapshot)
+    }
+    .configurationDisplayName("Calorias")
+    .description("Calorias e meta do dia — home e tela de bloqueio.")
+    .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular])
+  }
+}
+
 // MARK: - Bundle
 
 @main
@@ -286,5 +359,6 @@ struct GymWidgetBundle: WidgetBundle {
     CardioWidget()
     WorkoutWidget()
     MacrosWidget()
+    CaloriesWidget()
   }
 }
