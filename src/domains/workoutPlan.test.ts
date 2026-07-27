@@ -1,6 +1,7 @@
 import { parseWorkoutText } from './workout';
 import {
   planLabel,
+  plannedExerciseToData,
   plannedExerciseToText,
   planToNotes,
   workoutPlanSchema,
@@ -14,7 +15,7 @@ const plan: WorkoutPlan = {
       title: 'Full body',
       exercises: [
         { exercise: 'Supino reto', sets: [{ weight: 80, reps: 8 }, { weight: 80, reps: 8 }] },
-        { exercise: 'Corrida', sets: [{ distanceMeters: 5000 }] },
+        { exercise: 'Corrida', sets: [{ distanceMeters: 5000, durationSeconds: 1800 }] },
       ],
     },
     { dayOffset: 2, exercises: [{ exercise: 'Agachamento', sets: [{ weight: 100, reps: 5 }] }] },
@@ -35,8 +36,32 @@ test('a planned exercise reads back through the ordinary parser', () => {
 
 test('cardio survives the round trip too', () => {
   const text = plannedExerciseToText(plan.days[0].exercises[1]);
-  expect(text).toBe('Corrida\n5km');
-  expect(parseWorkoutText(text).sets[0].distanceMeters).toBe(5000);
+  expect(text).toBe('Corrida\n5km 30min');
+  const parsed = parseWorkoutText(text);
+  expect(parsed.sets[0].distanceMeters).toBe(5000);
+  expect(parsed.sets[0].durationSeconds).toBe(1800);
+});
+
+test('a cardio set with only distance omits time', () => {
+  const text = plannedExerciseToText({
+    exercise: 'Caminhada',
+    sets: [{ distanceMeters: 3000 }],
+  });
+  expect(text).toBe('Caminhada\n3km');
+  const parsed = parseWorkoutText(text);
+  expect(parsed.sets[0].distanceMeters).toBe(3000);
+  expect(parsed.sets[0].durationSeconds).toBeUndefined();
+});
+
+test('a cardio set with only duration omits distance', () => {
+  const text = plannedExerciseToText({
+    exercise: 'Alongamento',
+    sets: [{ durationSeconds: 600 }],
+  });
+  expect(text).toBe('Alongamento\n10min');
+  const parsed = parseWorkoutText(text);
+  expect(parsed.sets[0].durationSeconds).toBe(600);
+  expect(parsed.sets[0].distanceMeters).toBeUndefined();
 });
 
 test('a plan lands on real dates, not seven copies of today', () => {
@@ -78,4 +103,71 @@ test('dayOffset defaults to today when the model omits it', () => {
     days: [{ exercises: [{ exercise: 'Supino', sets: [{ reps: 8 }] }] }],
   });
   expect(parsed.days[0].dayOffset).toBe(0);
+});
+
+// -- plannedExerciseToData -------------------------------------------------
+
+test('plannedExerciseToData preserves all cardio metrics directly', () => {
+  const data = plannedExerciseToData({
+    exercise: 'Corrida',
+    sets: [{ distanceMeters: 5000, durationSeconds: 1800 }],
+  });
+  expect(data.exercise).toBe('Corrida');
+  expect(data.kind).toBe('cardio');
+  expect(data.sets).toHaveLength(1);
+  expect(data.sets[0].distanceMeters).toBe(5000);
+  expect(data.sets[0].durationSeconds).toBe(1800);
+});
+
+test('plannedExerciseToData preserves all strength metrics directly', () => {
+  const data = plannedExerciseToData({
+    exercise: 'Supino reto',
+    sets: [
+      { weight: 80, reps: 8 },
+      { weight: 80, reps: 8 },
+    ],
+  });
+  expect(data.exercise).toBe('Supino reto');
+  expect(data.kind).toBe('strength');
+  expect(data.sets).toHaveLength(2);
+  expect(data.sets[0]).toMatchObject({ weight: 80, unit: 'kg', reps: 8 });
+});
+
+test('plannedExerciseToData classifies mixed sets as cardio', () => {
+  const data = plannedExerciseToData({
+    exercise: 'HIIT',
+    sets: [{ durationSeconds: 600 }],
+  });
+  expect(data.kind).toBe('cardio');
+});
+
+test('plannedExerciseToData sets unit to kg for weighted sets', () => {
+  const data = plannedExerciseToData({
+    exercise: 'Agachamento',
+    sets: [{ weight: 100, reps: 5 }],
+  });
+  expect(data.sets[0].unit).toBe('kg');
+});
+
+test('plan notes carry pre-parsed data to skip text round-trip', () => {
+  const notes = planToNotes(
+    {
+      days: [
+        {
+          dayOffset: 0,
+          exercises: [
+            { exercise: 'Corrida', sets: [{ distanceMeters: 5000, durationSeconds: 1800 }] },
+          ],
+        },
+      ],
+    },
+    '2026-07-21',
+  );
+  expect(notes).toHaveLength(1);
+  expect(notes[0].data.exercise).toBe('Corrida');
+  expect(notes[0].data.kind).toBe('cardio');
+  expect(notes[0].data.sets[0].distanceMeters).toBe(5000);
+  expect(notes[0].data.sets[0].durationSeconds).toBe(1800);
+  // Text still exists for display/editing
+  expect(notes[0].text).toBe('Corrida\n5km 30min');
 });

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 import { addDays } from '@/core/date';
+import type { WorkoutData, WorkoutSet } from '@/domains/schemas';
+import { inferWorkoutKind } from '@/domains/workout';
 
 /**
  * A generated workout plan, on its way to becoming ordinary notes.
@@ -43,11 +45,41 @@ export type PlannedExercise = z.infer<typeof plannedExerciseSchema>;
  */
 export function plannedExerciseToText(exercise: PlannedExercise): string {
   const lines = exercise.sets.map((set) => {
-    if (set.distanceMeters) return `${set.distanceMeters / 1000}km`;
-    if (set.durationSeconds) return `${Math.round(set.durationSeconds / 60)}min`;
-    if (set.weight !== undefined && set.reps !== undefined) return `${set.weight}x${set.reps}`;
-    if (set.reps !== undefined) return `${set.reps} reps`;
-    return '';
+    const parts: string[] = [];
+
+    // Distance
+    if (set.distanceMeters) {
+      parts.push(
+        set.distanceMeters >= 1000
+          ? `${set.distanceMeters / 1000}km`
+          : `${set.distanceMeters}m`,
+      );
+    }
+
+    // Duration: format so parseDurationSeconds() can read it back
+    if (set.durationSeconds) {
+      if (set.durationSeconds < 60) {
+        parts.push(`${set.durationSeconds}s`);
+      } else {
+        const mins = Math.round(set.durationSeconds / 60);
+        if (mins < 60) {
+          parts.push(`${mins}min`);
+        } else {
+          const h = Math.floor(set.durationSeconds / 3600);
+          const remainingMin = Math.round((set.durationSeconds % 3600) / 60);
+          parts.push(remainingMin > 0 ? `${h}h${remainingMin}min` : `${h}h`);
+        }
+      }
+    }
+
+    // Strength: weight × reps
+    if (set.weight !== undefined && set.reps !== undefined) {
+      parts.push(`${set.weight}x${set.reps}`);
+    } else if (set.reps !== undefined) {
+      parts.push(`${set.reps} reps`);
+    }
+
+    return parts.join(' ');
   });
   return [exercise.exercise, ...lines.filter(Boolean)].join('\n');
 }
@@ -56,6 +88,31 @@ export interface PlannedNote {
   text: string;
   domain: 'workout';
   date: string;
+  /** Pre-parsed data so the plan never re-parses its own text. */
+  data: WorkoutData;
+}
+
+/**
+ * Converts a planned exercise directly to {@link WorkoutData}, skipping the
+ * text round-trip through `parseWorkoutText`. The plan is the source of truth
+ * for its own numbers; serializing and re-parsing them can only lose precision.
+ */
+export function plannedExerciseToData(exercise: PlannedExercise): WorkoutData {
+  const sets: WorkoutSet[] = exercise.sets.map((set) => ({
+    ...(set.weight !== undefined ? { weight: set.weight } : {}),
+    unit: 'kg' as const,
+    ...(set.reps !== undefined ? { reps: set.reps } : {}),
+    ...(set.durationSeconds !== undefined ? { durationSeconds: set.durationSeconds } : {}),
+    ...(set.distanceMeters !== undefined ? { distanceMeters: set.distanceMeters } : {}),
+  }));
+
+  return {
+    exercise: exercise.exercise,
+    kind: inferWorkoutKind({ sets }, exercise.exercise),
+    sets,
+    synergists: [],
+    stabilizers: [],
+  };
 }
 
 /**
@@ -66,6 +123,7 @@ export function planToNotes(plan: WorkoutPlan, startDate: string): PlannedNote[]
   return plan.days.flatMap((day) =>
     day.exercises.map((exercise) => ({
       text: plannedExerciseToText(exercise),
+      data: plannedExerciseToData(exercise),
       domain: 'workout' as const,
       date: addDays(startDate, day.dayOffset),
     })),

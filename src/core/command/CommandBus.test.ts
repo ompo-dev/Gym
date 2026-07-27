@@ -258,6 +258,22 @@ test('workout entries use AI to classify cardio while keeping local cardio metri
   });
 });
 
+test('single-line cardio with distance and duration keeps both metrics', async () => {
+  const enrichFn = jest.fn(async () => ({
+    ok: true,
+    data: { exercise: 'Corrida', kind: 'cardio', sets: [] },
+  }));
+  const { bus, day } = harness(enrichFn);
+
+  await bus.addEntry('corrida 5km 30min', 'workout');
+  await flush();
+
+  const data = day.workout.entries[0].data as Record<string, unknown>;
+  expect(data.exercise).toBe('Corrida');
+  expect(data.kind).toBe('cardio');
+  expect(data.sets).toEqual([{ distanceMeters: 5000, durationSeconds: 1800 }]);
+});
+
 // ---- onboarding domain ------------------------------------------------------
 
 const ENRICH_DOWN = async (): Promise<EnrichResponse> => ({

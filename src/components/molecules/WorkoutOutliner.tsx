@@ -297,7 +297,21 @@ export function WorkoutOutliner({
     if (pendingCommit.current !== null && entry.text === pendingCommit.current) {
       pendingCommit.current = null;
     }
+
+    const wasPending =
+      previousStatus.current === 'thinking' || previousStatus.current === 'queued';
+    previousStatus.current = entry.status;
+
     const nextLines = workoutLinesFromEntry(entry);
+
+    // The entry just resolved (thinking/queued → done): sync lines regardless
+    // of text equality — the same text now has structured data behind it.
+    if (wasPending && entry.status === 'done') {
+      syncedText.current = entry.text;
+      setLines(nextLines);
+      return;
+    }
+
     if (entry.text !== syncedText.current && focusedRef.current === null) {
       syncedText.current = entry.text;
       setLines(nextLines);

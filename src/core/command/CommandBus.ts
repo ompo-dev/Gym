@@ -374,12 +374,14 @@ export class CommandBus {
             // Resolved on arrival: the model just told us the exercise and its
             // sets, so sending each generated note back for another round trip
             // would buy nothing and cost one request per exercise.
+            // Uses `note.data` directly — never re-parses text, so no metric is
+            // lost in a serialize → parse round-trip.
             const cmd = this.createAddEntry(
               note.text,
               note.domain,
               undefined,
               note.date,
-              parseWorkoutText(note.text, { locale }),
+              note.data,
             );
             return cmd ? [cmd] : [];
           });
