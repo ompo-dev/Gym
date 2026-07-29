@@ -605,23 +605,24 @@ export function NutritionGoalsSheet({
           {helpOpen ? (
             <View style={styles.microHelpBody}>
               <AppText variant="secondary" color={colors.textSecondary}>
-                Para homens adultos como você, metas diárias típicas são:
+                Calculadas a partir do seu gasto: açúcar até 10% das calorias,
+                fibras 14 g por 1.000 kcal e sódio na referência de adulto.
               </AppText>
               <View style={styles.microHelpMetrics}>
                 <SavedMealMetric
                   icon="squareStack"
                   color={colors.sugar}
-                  value="Açúcar < 36g"
+                  value={`Açúcar < ${summary.sugarG}g`}
                 />
                 <SavedMealMetric
                   icon="apple"
                   color={colors.fiber}
-                  value="Fibras 38g"
+                  value={`Fibras ${summary.fiberG}g`}
                 />
                 <SavedMealMetric
                   icon="asterisk"
                   color={colors.sodium}
-                  value="Sódio < 2,300mg"
+                  value={`Sódio < ${formatThousands(summary.sodiumMg)}mg`}
                 />
               </View>
             </View>

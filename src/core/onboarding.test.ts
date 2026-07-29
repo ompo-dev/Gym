@@ -24,6 +24,11 @@ test('buildOnboardingSummary returns stable macro targets', () => {
   expect(summary.protein).toBe(153);
   expect(summary.carbs).toBe(333);
   expect(summary.waterMl).toBe(3450);
+  // Micros track the person, not a flat default: fiber 14 g/1000 kcal, added
+  // sugar <= 10% of energy (÷4 kcal/g), sodium a flat adult reference cap.
+  expect(summary.fiberG).toBe(35); // round(14 * 2518 / 1000)
+  expect(summary.sugarG).toBe(63); // round(2518 * 0.1 / 4)
+  expect(summary.sodiumMg).toBe(2300);
 });
 
 test('buildOnboardingPromptContext includes local goals and restrictions', () => {
@@ -46,8 +51,9 @@ test('buildOnboardingPromptContext includes local goals and restrictions', () =>
   expect(context).toContain('baixo carboidrato');
   expect(context).toContain('userNotes=sem lactose');
   expect(context).toContain('trackMicronutrients=sugar, fiber');
-  expect(context).toContain('sugar <= 25g/day');
-  expect(context).toContain('fiber >= 25g/day');
+  // Derived from this profile's 2518 kcal, not the flat 25/25 default.
+  expect(context).toContain('sugar <= 63g/day');
+  expect(context).toContain('fiber >= 35g/day');
   expect(context).not.toContain('sodium <=');
 });
 

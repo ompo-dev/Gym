@@ -137,11 +137,23 @@ export function assumedDailyTrainingKcal(activity: OnboardingActivity): number {
   return assumedTrainingKcal[activity];
 }
 
+// sugar/fiber are now DERIVED per person in buildOnboardingSummary (they scale
+// with the energy target) — these two are only the schema fallback, never read
+// into a daily goal. sodium is a flat adult reference cap and IS read from here,
+// because guidelines set sodium by population/age, not by kcal or body size.
 export const defaultMicronutrientTargets: OnboardingMicronutrientTargets = {
   sugarG: 25,
   fiberG: 25,
   sodiumMg: 2300,
 };
+
+// Micronutrient targets follow population guidelines, not a body-size formula.
+// Fiber and added sugar scale with the person's energy target (so they move with
+// the same weight/height/age/gender/goal inputs Harris-Benedict already feeds
+// into `calories`); sodium does not — it stays a flat adult reference cap.
+const FIBER_G_PER_1000_KCAL = 14; // IOM / Dietary Guidelines adequate intake
+const ADDED_SUGAR_ENERGY_FRACTION = 0.1; // WHO free-sugars cap: < 10% of energy
+const KCAL_PER_G_SUGAR = 4;
 
 export function micronutrientsFromTrack(enabled: boolean): OnboardingMicronutrients {
   return {
@@ -252,6 +264,13 @@ export function buildOnboardingSummary(
   carbs = Math.max(70, carbs);
   const waterMl = Math.round(clamp(profile.weightKg * 35, 1800, 4500) / 50) * 50;
 
+  // Derived from the person's calorie target, exactly like carbs/protein/fat —
+  // fiber as a daily floor, added sugar as a daily cap. Sodium is not derived:
+  // it stays the flat adult reference cap held in the profile.
+  const fiberG = Math.round((calories / 1000) * FIBER_G_PER_1000_KCAL);
+  const sugarG = Math.round((calories * ADDED_SUGAR_ENERGY_FRACTION) / KCAL_PER_G_SUGAR);
+  const sodiumMg = profile.micronutrientTargets.sodiumMg;
+
   return {
     age,
     bmr,
@@ -261,9 +280,9 @@ export function buildOnboardingSummary(
     carbs,
     fat,
     waterMl,
-    sugarG: profile.micronutrientTargets.sugarG,
-    fiberG: profile.micronutrientTargets.fiberG,
-    sodiumMg: profile.micronutrientTargets.sodiumMg,
+    sugarG,
+    fiberG,
+    sodiumMg,
     deltaKg,
     targetDays,
   };

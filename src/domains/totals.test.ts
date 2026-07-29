@@ -63,7 +63,10 @@ test('food goals come from the onboarding profile', () => {
   expect(goals.calories).toBeGreaterThan(2400);
   expect(goals.protein).toBe(153);
   expect(goals.waterMl).toBe(3450);
-  expect(goals.sugarG).toBe(25);
+  // sugar/fiber are derived from this profile's calories (not a flat default);
+  // sodium stays the flat adult reference cap.
+  expect(goals.sugarG).toBe(Math.round((goals.calories * 0.1) / 4));
+  expect(goals.fiberG).toBe(Math.round((goals.calories / 1000) * 14));
   expect(goals.sodiumMg).toBe(2300);
 });
 
