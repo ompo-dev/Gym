@@ -65,6 +65,8 @@ import {
 } from "@/data/SavedMealRepository";
 import {
   SavedRoutineRepository,
+  type SavedFoodRoutine,
+  type SavedWorkoutRoutine,
   type Weekday,
 } from "@/data/SavedRoutineRepository";
 import {
@@ -72,7 +74,7 @@ import {
   mergeFoodEdit,
   type FoodTotals,
 } from "@/domains/food";
-import { routineItemsFor, weekdayOf } from "@/domains/routines";
+import { foodRoutineEntries, routineItemsFor, weekdayOf } from "@/domains/routines";
 import {
   foodEditSchema,
   foodSchema,
@@ -1055,6 +1057,35 @@ export function DayTemplate<TData, TTotals>({
     [addEntry, closeAppModal],
   );
 
+  // Applying a whole saved diet: its meals come back as resolved entries, the
+  // same batch-insert saved meals use. Applying a whole saved workout: its
+  // exercise names go through addEntry, exactly like a saved exercise, so each
+  // re-enriches (name + kind) and lands as an empty session to fill in.
+  const handleSelectFoodRoutines = useCallback(
+    (routines: SavedFoodRoutine[]) => {
+      closeAppModal("food.savedMealPicker");
+      const newEntries = foodRoutineEntries(routines, date, Date.now());
+      if (!newEntries.length) return;
+      void (async () => {
+        await EntryRepository.insertMany(newEntries);
+        newEntries.forEach((entry) =>
+          useAppStore.getState().upsertEntry("food", entry),
+        );
+      })();
+    },
+    [closeAppModal, date],
+  );
+
+  const handleSelectWorkoutRoutines = useCallback(
+    (routines: SavedWorkoutRoutine[]) => {
+      closeAppModal("workout.savedExercisePicker");
+      routines
+        .flatMap((routine) => routine.items)
+        .forEach((exercise) => addEntry(exercise));
+    },
+    [addEntry, closeAppModal],
+  );
+
   const handleFoodAiEdit = useCallback(
     async (entry: Entry, instruction: string) => {
       if (!entry.data || !("items" in entry.data)) return;
@@ -1335,6 +1366,8 @@ export function DayTemplate<TData, TTotals>({
         onSaveBarcodeFood={handleSaveBarcodeFood}
         onSelectSavedMeals={handleSelectSavedMeals}
         onSelectSavedExercises={handleSelectSavedExercises}
+        onSelectFoodRoutines={handleSelectFoodRoutines}
+        onSelectWorkoutRoutines={handleSelectWorkoutRoutines}
       />
 
       <SaveRoutineSheet

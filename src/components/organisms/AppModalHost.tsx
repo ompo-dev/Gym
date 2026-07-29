@@ -5,6 +5,10 @@ import type { AppModal } from '@/core/appModals';
 import type { FoodData } from '@/domains/schemas';
 import type { SavedMeal } from '@/data/SavedMealRepository';
 import type { SavedExercise } from '@/data/SavedExerciseRepository';
+import type {
+  SavedFoodRoutine,
+  SavedWorkoutRoutine,
+} from '@/data/SavedRoutineRepository';
 import { useAppModalStore } from '@/store/useAppModalStore';
 
 import { FoodEntryDetailSheet } from './FoodEntryDetailSheet';
@@ -40,6 +44,8 @@ interface AppModalHostProps {
   onSaveBarcodeFood: (text: string, data: FoodData) => Promise<void> | void;
   onSelectSavedMeals: (meals: SavedMeal[]) => void;
   onSelectSavedExercises: (workouts: SavedExercise[]) => void;
+  onSelectFoodRoutines: (routines: SavedFoodRoutine[]) => void;
+  onSelectWorkoutRoutines: (routines: SavedWorkoutRoutine[]) => void;
 }
 
 const FOOD_ENTRY_MODALS: readonly string[] = [
@@ -65,6 +71,8 @@ export function AppModalHost({
   onSaveBarcodeFood,
   onSelectSavedMeals,
   onSelectSavedExercises,
+  onSelectFoodRoutines,
+  onSelectWorkoutRoutines,
 }: AppModalHostProps) {
   const stack = useAppModalStore((state) => state.stack);
   const closeAppModal = useAppModalStore((state) => state.closeAppModal);
@@ -109,6 +117,7 @@ export function AppModalHost({
             visible
             onClose={() => closeAppModal('food.savedMealPicker')}
             onSelect={onSelectSavedMeals}
+            onSelectFoodRoutines={onSelectFoodRoutines}
           />
         );
 
@@ -118,6 +127,7 @@ export function AppModalHost({
             visible
             onClose={() => closeAppModal('workout.savedExercisePicker')}
             onSelect={onSelectSavedExercises}
+            onSelectWorkoutRoutines={onSelectWorkoutRoutines}
           />
         );
 

@@ -1,5 +1,10 @@
 import type { Entry } from '@/core/types';
-import type { SavedRoutine, Weekday } from '@/data/SavedRoutineRepository';
+import type {
+  SavedFoodRoutine,
+  SavedRoutine,
+  Weekday,
+} from '@/data/SavedRoutineRepository';
+import { newId } from '@/core/utils';
 
 import type { FoodData, RoutineFoodItem, WorkoutData } from './schemas';
 import { uniqueWorkoutExerciseNames } from './workout';
@@ -51,6 +56,31 @@ export function weekdayOf(date: string): Weekday {
   // Parsed as local midnight so the weekday matches the user's calendar day.
   const [year, month, day] = date.split('-').map(Number);
   return new Date(year, (month ?? 1) - 1, day ?? 1).getDay() as Weekday;
+}
+
+/**
+ * Reapply saved diets: every meal in every chosen routine becomes a resolved
+ * entry again, its saved nutrition intact — the same shape a saved meal takes.
+ * Media was dropped when the routine was saved, so these come back without
+ * photos; the numbers are the point.
+ */
+export function foodRoutineEntries(
+  routines: SavedFoodRoutine[],
+  date: string,
+  now: number,
+): Entry[] {
+  return routines
+    .flatMap((routine) => routine.items)
+    .map((item, index) => ({
+      id: newId(),
+      date,
+      domain: 'food' as const,
+      text: item.text,
+      status: 'done' as const,
+      data: item.data,
+      error: null,
+      createdAt: now + index,
+    }));
 }
 
 /** One-line preview for list rows: exercise names, or meal names. */

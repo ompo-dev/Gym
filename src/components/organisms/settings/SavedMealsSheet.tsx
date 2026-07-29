@@ -15,10 +15,17 @@ import { useRepositoryData } from "@/hooks/useRepositoryData";
 import { formatWaterMl, sumFoodData } from "@/domains/food";
 import { useColors } from "@/hooks/use-colors";
 import { t } from "@/i18n";
+import { NativeSegmented } from "@/components/molecules/NativeSegmented";
+import {
+  SavedRoutineRepository,
+  type SavedFoodRoutine,
+  type SavedRoutine,
+} from "@/data/SavedRoutineRepository";
 
 import { DraftStack } from "../FoodMediaDraftTray";
 import { SheetFrame } from "../SheetFrame";
 import { Chevron, Divider } from "./primitives";
+import { SavedRoutinesContent } from "./SavedRoutinesSheet";
 import { savedListStyles, settingsStyles } from "./styles";
 
 export function savedMealToEntry(meal: SavedMeal): Entry {
@@ -238,48 +245,82 @@ export function SavedMealsContent({
   );
 }
 
+type DietSavedTab = "meals" | "diets";
+
 export function SavedMealsSheet({
   visible,
   onClose,
   onSelect,
+  onSelectFoodRoutines,
 }: {
   visible: boolean;
   onClose: () => void;
   onSelect: (meals: SavedMeal[]) => void;
+  onSelectFoodRoutines: (routines: SavedFoodRoutine[]) => void;
 }) {
   const colors = useColors();
+  const [tab, setTab] = useState<DietSavedTab>("meals");
   const meals = useRepositoryData<SavedMeal[]>(
     () => SavedMealRepository.all(),
     [],
     [visible],
     visible,
   );
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const routines = useRepositoryData<SavedRoutine[]>(
+    () => SavedRoutineRepository.byDomain("food"),
+    [],
+    [visible],
+    visible,
+  );
+  const [selectedMealIds, setSelectedMealIds] = useState<string[]>([]);
+  const [selectedRoutineIds, setSelectedRoutineIds] = useState<string[]>([]);
 
-  // Selection is UI state, not repository data — clears when the picker closes.
+  // Selection and active tab are UI state — they reset when the picker closes.
   useEffect(() => {
-    if (!visible) setSelectedIds([]);
+    if (!visible) {
+      setSelectedMealIds([]);
+      setSelectedRoutineIds([]);
+      setTab("meals");
+    }
   }, [visible]);
 
   const toggleMeal = (meal: SavedMeal) => {
-    setSelectedIds((current) =>
+    setSelectedMealIds((current) =>
       current.includes(meal.id)
         ? current.filter((id) => id !== meal.id)
         : [...current, meal.id],
     );
   };
-
-  const confirmSelection = () => {
-    const selectedMeals = meals.filter((meal) => selectedIds.includes(meal.id));
-    if (selectedMeals.length === 0) return;
-    onSelect(selectedMeals);
+  const toggleRoutine = (routine: SavedRoutine) => {
+    setSelectedRoutineIds((current) =>
+      current.includes(routine.id)
+        ? current.filter((id) => id !== routine.id)
+        : [...current, routine.id],
+    );
   };
-  const hasSelection = selectedIds.length > 0;
+
+  // Applies the active tab's selection only — the segmented control decides
+  // whether you are picking loose meals or whole saved diets.
+  const confirmSelection = () => {
+    if (tab === "meals") {
+      const selected = meals.filter((meal) => selectedMealIds.includes(meal.id));
+      if (selected.length === 0) return;
+      onSelect(selected);
+      return;
+    }
+    const selected = routines.filter((routine) =>
+      selectedRoutineIds.includes(routine.id),
+    ) as SavedFoodRoutine[];
+    if (selected.length === 0) return;
+    onSelectFoodRoutines(selected);
+  };
+  const hasSelection =
+    tab === "meals" ? selectedMealIds.length > 0 : selectedRoutineIds.length > 0;
 
   return (
     <SheetFrame
       visible={visible}
-      title={t("settings.section.meals")}
+      title={t("saved.title")}
       onClose={onClose}
       centerTitle
       hideDefaultClose={hasSelection}
@@ -320,17 +361,41 @@ export function SavedMealsSheet({
       }
       size="full"
     >
-      <SavedMealsContent
-        meals={meals}
-        onSelect={toggleMeal}
-        selectable
-        selectedIds={selectedIds}
-      />
+      <View style={styles.savedTabs}>
+        <NativeSegmented
+          options={[
+            { value: "meals", label: t("saved.tab.meals") },
+            { value: "diets", label: t("saved.tab.diets") },
+          ]}
+          value={tab}
+          onChange={setTab}
+          accessibilityLabel={t("saved.title")}
+        />
+      </View>
+      {tab === "meals" ? (
+        <SavedMealsContent
+          meals={meals}
+          onSelect={toggleMeal}
+          selectable
+          selectedIds={selectedMealIds}
+        />
+      ) : (
+        <SavedRoutinesContent
+          routines={routines}
+          domain="food"
+          onSelect={toggleRoutine}
+          selectable
+          selectedIds={selectedRoutineIds}
+        />
+      )}
     </SheetFrame>
   );
 }
 
 const styles = StyleSheet.create({
+  savedTabs: {
+    marginBottom: Spacing.four,
+  },
   savedMealImages: {
     width: 44,
     height: 44,

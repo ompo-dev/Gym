@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
 import { GlassSurface } from "@/components/atoms/GlassSurface";
+import { NativeSegmented } from "@/components/molecules/NativeSegmented";
+import { Spacing } from "@/constants/theme";
 import {
   SavedExerciseRepository,
   type SavedExercise,
 } from "@/data/SavedExerciseRepository";
+import {
+  SavedRoutineRepository,
+  type SavedRoutine,
+  type SavedWorkoutRoutine,
+} from "@/data/SavedRoutineRepository";
 import { useRepositoryData } from "@/hooks/useRepositoryData";
 import { inferWorkoutKind, WORKOUT_METRIC_COLORS } from "@/domains/workout";
 import { useColors } from "@/hooks/use-colors";
@@ -16,6 +23,7 @@ import { t } from "@/i18n";
 
 import { SheetFrame } from "../SheetFrame";
 import { Chevron, Divider } from "./primitives";
+import { SavedRoutinesContent } from "./SavedRoutinesSheet";
 import { savedListStyles, settingsStyles } from "./styles";
 
 function SavedExerciseRow({
@@ -164,51 +172,86 @@ export function SavedExercisesContent({
   );
 }
 
+type WorkoutSavedTab = "workouts" | "exercises";
+
 export function SavedExercisesSheet({
   visible,
   onClose,
   onSelect,
+  onSelectWorkoutRoutines,
 }: {
   visible: boolean;
   onClose: () => void;
   onSelect: (workouts: SavedExercise[]) => void;
+  onSelectWorkoutRoutines: (routines: SavedWorkoutRoutine[]) => void;
 }) {
   const colors = useColors();
-  const workouts = useRepositoryData<SavedExercise[]>(
+  const [tab, setTab] = useState<WorkoutSavedTab>("workouts");
+  const exercises = useRepositoryData<SavedExercise[]>(
     () => SavedExerciseRepository.all(),
     [],
     [visible],
     visible,
   );
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const routines = useRepositoryData<SavedRoutine[]>(
+    () => SavedRoutineRepository.byDomain("workout"),
+    [],
+    [visible],
+    visible,
+  );
+  const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>([]);
+  const [selectedRoutineIds, setSelectedRoutineIds] = useState<string[]>([]);
 
-  // Selection is UI state, not repository data — it clears when the picker
-  // closes, independent of the load above.
+  // Selection and active tab are UI state — they reset when the picker closes.
   useEffect(() => {
-    if (!visible) setSelectedIds([]);
+    if (!visible) {
+      setSelectedExerciseIds([]);
+      setSelectedRoutineIds([]);
+      setTab("workouts");
+    }
   }, [visible]);
 
-  const toggleWorkout = (workout: SavedExercise) => {
-    setSelectedIds((current) =>
+  const toggleExercise = (workout: SavedExercise) => {
+    setSelectedExerciseIds((current) =>
       current.includes(workout.id)
         ? current.filter((id) => id !== workout.id)
         : [...current, workout.id],
     );
   };
-
-  const confirmSelection = () => {
-    const selectedWorkouts = workouts.filter((workout) =>
-      selectedIds.includes(workout.id),
+  const toggleRoutine = (routine: SavedRoutine) => {
+    setSelectedRoutineIds((current) =>
+      current.includes(routine.id)
+        ? current.filter((id) => id !== routine.id)
+        : [...current, routine.id],
     );
-    if (selectedWorkouts.length === 0) return;
-    onSelect(selectedWorkouts);
   };
-  const hasSelection = selectedIds.length > 0;
+
+  // Applies the active tab's selection only: whole saved workouts or loose
+  // saved exercises.
+  const confirmSelection = () => {
+    if (tab === "exercises") {
+      const selected = exercises.filter((workout) =>
+        selectedExerciseIds.includes(workout.id),
+      );
+      if (selected.length === 0) return;
+      onSelect(selected);
+      return;
+    }
+    const selected = routines.filter((routine) =>
+      selectedRoutineIds.includes(routine.id),
+    ) as SavedWorkoutRoutine[];
+    if (selected.length === 0) return;
+    onSelectWorkoutRoutines(selected);
+  };
+  const hasSelection =
+    tab === "exercises"
+      ? selectedExerciseIds.length > 0
+      : selectedRoutineIds.length > 0;
 
   return (
     <SheetFrame
       visible={visible}
-      title={t("settings.workout.saved")}
+      title={t("saved.title")}
       onClose={onClose}
       centerTitle
       hideDefaultClose={hasSelection}
@@ -249,12 +292,39 @@ export function SavedExercisesSheet({
       }
       size="full"
     >
-      <SavedExercisesContent
-        workouts={workouts}
-        onSelect={toggleWorkout}
-        selectable
-        selectedIds={selectedIds}
-      />
+      <View style={styles.savedTabs}>
+        <NativeSegmented
+          options={[
+            { value: "workouts", label: t("saved.tab.workouts") },
+            { value: "exercises", label: t("saved.tab.exercises") },
+          ]}
+          value={tab}
+          onChange={setTab}
+          accessibilityLabel={t("saved.title")}
+        />
+      </View>
+      {tab === "exercises" ? (
+        <SavedExercisesContent
+          workouts={exercises}
+          onSelect={toggleExercise}
+          selectable
+          selectedIds={selectedExerciseIds}
+        />
+      ) : (
+        <SavedRoutinesContent
+          routines={routines}
+          domain="workout"
+          onSelect={toggleRoutine}
+          selectable
+          selectedIds={selectedRoutineIds}
+        />
+      )}
     </SheetFrame>
   );
 }
+
+const styles = StyleSheet.create({
+  savedTabs: {
+    marginBottom: Spacing.four,
+  },
+});

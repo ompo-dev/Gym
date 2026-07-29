@@ -1,6 +1,12 @@
 import type { Entry } from '@/core/types';
+import type { SavedFoodRoutine } from '@/data/SavedRoutineRepository';
 
-import { foodRoutineItems, weekdayOf, workoutRoutineItems } from './routines';
+import {
+  foodRoutineEntries,
+  foodRoutineItems,
+  weekdayOf,
+  workoutRoutineItems,
+} from './routines';
 import type { FoodData, WorkoutData } from './schemas';
 
 let seq = 0;
@@ -82,6 +88,40 @@ test('unresolved entries are not saved into a routine', () => {
   ];
 
   expect(foodRoutineItems(entries)).toHaveLength(1);
+});
+
+test('reapplying saved diets recreates a resolved entry per meal', () => {
+  const routines: SavedFoodRoutine[] = [
+    {
+      id: 'r1',
+      domain: 'food',
+      name: 'Segunda',
+      weekday: 1,
+      createdAt: 1,
+      items: [
+        { text: 'cafe', data: meal('pao', 250) },
+        { text: 'almoco', data: meal('arroz', 600) },
+      ],
+    },
+    {
+      id: 'r2',
+      domain: 'food',
+      name: 'Terca',
+      weekday: null,
+      createdAt: 2,
+      items: [{ text: 'janta', data: meal('sopa', 300) }],
+    },
+  ];
+
+  const entries = foodRoutineEntries(routines, '2026-07-20', 1000);
+
+  // One entry per meal across every chosen routine, in order.
+  expect(entries.map((e) => e.text)).toEqual(['cafe', 'almoco', 'janta']);
+  expect(entries.every((e) => e.status === 'done' && e.domain === 'food')).toBe(true);
+  expect(entries.every((e) => e.date === '2026-07-20')).toBe(true);
+  expect((entries[1].data as FoodData).items[0].calories).toBe(600);
+  // Strictly increasing createdAt so the batch keeps its order in the day.
+  expect(entries[0].createdAt).toBeLessThan(entries[1].createdAt);
 });
 
 test('weekday is derived in local time, not UTC', () => {
