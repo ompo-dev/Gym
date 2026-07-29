@@ -248,7 +248,13 @@ flowchart TD
   G --> H
 ```
 
-Series sao sempre calculadas localmente e nunca sao enviadas para a IA. O
+Series vem do parser local **quando ele consegue le-las**: a nota com uma serie
+por linha (o formato do outliner) e lei, a IA nunca reescreve aqueles numeros.
+Nota escrita em prosa numa linha so — "uma de 3 com 20kg outra de 5 com 50kg e
+mais uma de 4 com 70kg" — e o caso em que o parser de linha ve uma serie e o
+resto da frase fica invisivel; ai `chooseWorkoutSets` aceita a leitura da IA.
+A regra completa (e por que ela e estreita) esta no doc da funcao em
+`src/domains/workout.ts`. O
 payload leva a linha do exercicio em `text` mais `context`: o nome do ultimo
 exercicio ja registrado no dia visivel (`CommandBus.lastExercise`), que a rota
 injeta no prompt como `Context: current exercise is "..."`. Da resposta o app

@@ -24,6 +24,7 @@ import { trimLeadingGaps } from "@/domains/chartScale";
 import {
   formatWorkoutDistance,
   formatWorkoutDuration,
+  formatWorkoutLoad,
   formatWorkoutPace,
   WORKOUT_METRIC_COLORS,
 } from "@/domains/workout";
@@ -411,7 +412,7 @@ export function WorkoutMonitorSheet({
                 />
                 <MonitorStat
                   label={t("monitor.load")}
-                  value={`${Math.round(report.totals.volumeKg)} kg`}
+                  value={formatWorkoutLoad(report.totals.volumeKg)}
                   delta={report.volumeDeltaPct}
                   color={WORKOUT_METRIC_COLORS.volume}
                 />

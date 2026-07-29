@@ -14,7 +14,12 @@ import {
   type WorkoutData,
 } from '@/domains/schemas';
 import { attachPantryProvenance, type PantryItem } from '@/domains/pantry';
-import { getWorkoutExerciseLine, parseWorkoutText } from '@/domains/workout';
+import {
+  chooseWorkoutSets,
+  getWorkoutExerciseLine,
+  inferWorkoutKind,
+  parseWorkoutText,
+} from '@/domains/workout';
 import { planLabel, planToNotes, workoutPlanSchema } from '@/domains/workoutPlan';
 
 import { CompositeCommand, type Command } from './Command';
@@ -336,9 +341,9 @@ export class CommandBus {
         promise = this.deps.enrichFn(
           {
           // A nota inteira: as linhas de serie sao a melhor pista de qual
-          // exercicio e ("30min" desambigua esteira de agachamento). Os numeros
-          // continuam vindo do parser local — nada que a IA devolva em `sets`
-          // e lido no merge abaixo.
+          // exercicio e ("30min" desambigua esteira de agachamento), e numa nota
+          // escrita em prosa o modelo e o unico que ve as series que o parser de
+          // linha nao alcanca. Quem ganha decide `chooseWorkoutSets`.
           text: entry.text,
           domain: entry.domain,
           intent: 'workoutAuto',
@@ -413,10 +418,14 @@ export class CommandBus {
         }
 
         const aiData = parsed.data as WorkoutData;
+        const sets = chooseWorkoutSets(entry.text, localData.sets, aiData.sets);
         const data: WorkoutData = {
           ...localData,
           exercise: cleanExerciseName(aiData.exercise) ?? localData.exercise,
-          kind: aiData.kind ?? localData.kind,
+          // Prose the line parser could not split: see `chooseWorkoutSets`. A
+          // note already written one set per line keeps the local numbers.
+          sets,
+          kind: aiData.kind ?? inferWorkoutKind({ sets }, localData.exercise),
           // Anatomy only ever comes from the model — the local parser reads
           // numbers, not what a movement trains.
           primary: aiData.primary ?? localData.primary,

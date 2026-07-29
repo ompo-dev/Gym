@@ -109,6 +109,21 @@ export function formatWorkoutSetVolume(set: WorkoutSet): string {
   return `${Math.round(getWorkoutSetVolume(set))} kg`;
 }
 
+/**
+ * Session tonnage (`volumeKg`), for totals — not for a single set, which stays in
+ * kg because one set never reaches a tonne. Past 1 t the kilogram digits stop
+ * carrying meaning: "15000 kg" is a number you read digit by digit, "15 t" is one
+ * you take in at a glance. One decimal below 10 t so a single set still moves it.
+ */
+export function formatWorkoutLoad(kg: number): string {
+  const rounded = Math.round(kg);
+  if (rounded < 1000) return `${rounded} kg`;
+  const tonnes = rounded / 1000;
+  return tonnes < 10
+    ? `${formatWorkoutNumber(Number(tonnes.toFixed(1)))} t`
+    : `${Math.round(tonnes)} t`;
+}
+
 export function formatWorkoutSetSummary(set: WorkoutSet): string {
   const parts: string[] = [];
   if (set.weight !== undefined && set.reps !== undefined) {
@@ -406,6 +421,37 @@ export function parseWorkoutText(
   return { exercise, kind: inferWorkoutKind({ sets }, exercise), sets, synergists: [], stabilizers: [] };
 }
 
+/** Same ceiling `parseSetMultiplier` uses: past this, a count is a hallucination. */
+const MAX_AI_SETS = 20;
+
+/**
+ * Which sets win, the local parse or the model's.
+ *
+ * The local parser reads LINES: one set per line. A note written as one prose
+ * sentence — "supino reto uma de 3 com 20kg outra de 5 com 50kg e mais uma serie
+ * de 4 reps com 70kg" — gives it a single line, so it can only ever return the
+ * first set and the rest of the sentence is invisible to it. The model reads
+ * language, so on a one-line note where the parser got at most one set, a richer
+ * read is the correct one.
+ *
+ * Everywhere else the local numbers stay law:
+ * - a multi-line note is the outliner's own format, where the user typed each
+ *   set by hand — the model must never rewrite those;
+ * - a single line the parser already expanded into several sets ("3x10 80kg")
+ *   was understood locally, so there is nothing to gain and a count to lose.
+ */
+export function chooseWorkoutSets(
+  text: string,
+  localSets: WorkoutSet[],
+  aiSets: WorkoutSet[],
+): WorkoutSet[] {
+  const lines = text.split('\n').filter((line) => line.trim().length > 0);
+  if (lines.length > 1) return localSets;
+  if (localSets.length > 1) return localSets;
+  if (aiSets.length > MAX_AI_SETS) return localSets;
+  return aiSets.length > localSets.length ? aiSets : localSets;
+}
+
 export function serializeWorkoutLines(lines: string[]): string {
   const trimmed = lines.map((line) => line.trim());
   const exercise = trimmed[0] ?? '';
@@ -459,7 +505,7 @@ export const workoutConfig: DomainConfig<WorkoutData, WorkoutTotals> = {
       {
         key: 'vol',
         label: t('totals.vol'),
-        value: `${Math.round(totals.volumeKg)} kg`,
+        value: formatWorkoutLoad(totals.volumeKg),
         color: WORKOUT_METRIC_COLORS.volume,
       },
       {

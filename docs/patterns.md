@@ -195,9 +195,12 @@ e sao hex fixos, nao tokens de `Colors`. Toda a UI de treino puxa dali:
 outliner, painel de progresso e linhas de treino salvo. Nao repetir hex no
 componente.
 
-O parser local e a fonte de verdade das series; numeros nunca vem da IA. A IA
-contribui com o que o parser nao tem como saber: `exercise` corrigido, `kind`,
-e a classificacao anatomica (`primary`, `synergists`, `stabilizers`). Ao mexer
+O parser local e a fonte de verdade das series **onde ele enxerga**: uma serie
+por linha. Numa nota de prosa de uma linha so ele ve no maximo a primeira, e
+`chooseWorkoutSets` deixa a leitura da IA ganhar — nota multi-linha (outliner) ou
+multiplicador ja expandido (`3x10 80kg`) mantem os numeros locais, sempre. A IA
+tambem contribui com o que o parser nao tem como saber: `exercise` corrigido,
+`kind`, e a classificacao anatomica (`primary`, `synergists`, `stabilizers`). Ao mexer
 no parser, mexer tambem em `src/domains/workout.test.ts` — essa e a rede de
 seguranca do formato de entrada.
 

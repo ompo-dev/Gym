@@ -5,6 +5,7 @@ import { t } from '@/i18n';
 import {
   formatWorkoutDistance,
   formatWorkoutDuration,
+  formatWorkoutLoad,
   formatWorkoutPace,
   type WorkoutTotals,
   uniqueWorkoutExerciseNames,
@@ -143,7 +144,7 @@ function cardioShape(totals: WorkoutTotals, pace: number | null) {
 
 function strengthShape(totals: WorkoutTotals) {
   return {
-    headline: `${Math.round(totals.volumeKg)} kg`,
+    headline: formatWorkoutLoad(totals.volumeKg),
     detail: totals.sets > 0 ? `${totals.sets} ${t('totals.sets')}` : '',
   };
 }
@@ -196,8 +197,10 @@ export function buildProgressRows(
     const current = cardio ? totals.distanceMeters : totals.volumeKg;
     const best = cardio ? past.best.distanceMeters : past.best.volumeKg;
     const last = cardio ? past.last?.totals.distanceMeters ?? 0 : past.last?.totals.volumeKg ?? 0;
+    // Same formatter as the headline: a PR reading "3 t" against a mark reading
+    // "2400 kg" makes the user do the unit conversion to see they beat it.
     const format = (value: number) =>
-      cardio ? formatWorkoutDistance(value) : `${Math.round(value)} kg`;
+      cardio ? formatWorkoutDistance(value) : formatWorkoutLoad(value);
 
     if (cardio && pace !== null && past.bestPace !== null && pace < past.bestPace) {
       rows.push({

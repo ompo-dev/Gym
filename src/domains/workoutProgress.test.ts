@@ -63,8 +63,9 @@ test('beating the previous best volume is a PR and shows both numbers', () => {
   const rows = buildProgressRows(today, history, TODAY);
 
   expect(rows[0].tone).toBe('pr');
-  expect(rows[0].headline).toBe('3000 kg');
-  expect(rows[0].reference).toBe('2400 kg');
+  // Tonnage past 1 t reads in tonnes, and the mark it beat uses the same unit.
+  expect(rows[0].headline).toBe('3 t');
+  expect(rows[0].reference).toBe('2.4 t');
   expect(rows[0].deltaPct).toBe(25);
 });
 
@@ -81,8 +82,8 @@ test('same-day entries are summed before comparing against history', () => {
 
   expect(rows).toHaveLength(1);
   expect(rows[0].tone).toBe('pr'); // 2400 today vs 1600 best
-  expect(rows[0].headline).toBe('2400 kg');
-  expect(rows[0].reference).toBe('1600 kg');
+  expect(rows[0].headline).toBe('2.4 t');
+  expect(rows[0].reference).toBe('1.6 t');
 });
 
 test('past sessions are also summed per day, so a split past day is not undercounted', () => {

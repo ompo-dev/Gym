@@ -1,4 +1,6 @@
 import {
+  chooseWorkoutSets,
+  formatWorkoutLoad,
   formatWorkoutPace,
   formatWorkoutSetSummary,
   formatWorkoutSetPace,
@@ -187,6 +189,17 @@ test('formatWorkoutSetVolume shows the set volume in kg', () => {
   expect(formatWorkoutSetVolume({ weight: 50, unit: 'kg', reps: 10 })).toBe('500 kg');
 });
 
+test('formatWorkoutLoad switches to tonnes once a session passes 1 t', () => {
+  expect(formatWorkoutLoad(0)).toBe('0 kg');
+  expect(formatWorkoutLoad(999)).toBe('999 kg');
+  expect(formatWorkoutLoad(1000)).toBe('1 t');
+  expect(formatWorkoutLoad(1500)).toBe('1.5 t');
+  // A single set still moves the reading below 10 t.
+  expect(formatWorkoutLoad(1560)).toBe('1.6 t');
+  expect(formatWorkoutLoad(15000)).toBe('15 t');
+  expect(formatWorkoutLoad(15400)).toBe('15 t');
+});
+
 test('formatWorkoutSetSummary shows cardio metrics', () => {
   expect(formatWorkoutSetSummary({ distanceMeters: 5000, durationSeconds: 1500 })).toBe(
     '5 km - 25 min',
@@ -198,6 +211,46 @@ test('formatWorkoutPace shows cardio pace when time and distance exist', () => {
   expect(getWorkoutSetPaceSecondsPerKm(set)).toBe(300);
   expect(formatWorkoutPace(300)).toBe('5:00/km');
   expect(formatWorkoutSetPace(set)).toBe('5:00/km');
+});
+
+describe('chooseWorkoutSets', () => {
+  const prose = 'supino reto uma de 3 com 20kg outra de 5 com 50kg e mais uma serie de 4 com 70kg';
+  const aiThree = [
+    { weight: 20, unit: 'kg' as const, reps: 3 },
+    { weight: 50, unit: 'kg' as const, reps: 5 },
+    { weight: 70, unit: 'kg' as const, reps: 4 },
+  ];
+
+  test('a one-line prose note takes the model read the line parser cannot see', () => {
+    // What the line parser actually gets from that sentence: the first set only.
+    const local = parseWorkoutText(prose).sets;
+    expect(local).toHaveLength(1);
+    expect(chooseWorkoutSets(prose, local, aiThree)).toEqual(aiThree);
+  });
+
+  test('a multi-line note keeps the numbers the user typed', () => {
+    const text = 'Supino reto\n20kg x 3\n50kg x 5';
+    const local = parseWorkoutText(text).sets;
+    expect(local).toHaveLength(2);
+    expect(chooseWorkoutSets(text, local, aiThree)).toEqual(local);
+  });
+
+  test('a set multiplier the parser already expanded is not overridden', () => {
+    const text = 'supino 3x10 80kg';
+    const local = parseWorkoutText(text).sets;
+    expect(local).toHaveLength(3);
+    expect(chooseWorkoutSets(text, local, [...aiThree, ...aiThree])).toEqual(local);
+  });
+
+  test('an absurd set count is a hallucination, not a read', () => {
+    const many = Array.from({ length: 21 }, () => ({ reps: 10 }));
+    expect(chooseWorkoutSets('supino', [], many)).toEqual([]);
+  });
+
+  test('the model adding nothing leaves the local parse alone', () => {
+    const local = [{ weight: 100, unit: 'kg' as const, reps: 8 }];
+    expect(chooseWorkoutSets('supino 100x8', local, [])).toEqual(local);
+  });
 });
 
 test('uniqueWorkoutExerciseNames extracts templates without results', () => {

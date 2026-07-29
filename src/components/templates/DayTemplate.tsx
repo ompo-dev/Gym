@@ -107,6 +107,10 @@ const KB_SHRINK_PX = 150;
 // the 0→1 rise and opens over `BTN_SPAN`. All are out well before progress hits 1.
 const BTN_STAGGER = 0.26;
 const BTN_SPAN = 0.3;
+// Breathing room each button takes with it: the slot opens to button + gap, and
+// the button is centred, so half lands on each side — adjacent buttons end up a
+// full `DOCK_GAP` apart. The bar is flex:1 and simply keeps whatever is left.
+const DOCK_GAP = Spacing.four;
 
 /**
  * One button's slot. Its width opens 0 → (button + gap) so the flex:1 stats bar
@@ -125,7 +129,7 @@ function useSlotStyle(progress: SharedValue<number>, index: number) {
       1,
     );
     return {
-      width: (Metrics.dockButton + Spacing.two) * p,
+      width: (Metrics.dockButton + DOCK_GAP) * p,
       opacity: p,
       transform: [{ scale: p }],
     };
@@ -1504,6 +1508,9 @@ const styles = StyleSheet.create({
   dockButtons: {
     flexDirection: "row",
     alignItems: "center",
+    // Only half of DOCK_GAP sits on the first slot's left edge, so the bar would
+    // end up closer to button one than the buttons are to each other.
+    paddingLeft: Spacing.two,
   },
   dockButtonSlot: {
     // Not clipped (see `useSlotStyle`); the button is centred in whatever width
