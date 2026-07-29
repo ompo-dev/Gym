@@ -109,10 +109,14 @@ const BTN_STAGGER = 0.26;
 const BTN_SPAN = 0.3;
 
 /**
- * One button's slot. Its width opens 0 → (icon + gap) so the flex:1 stats bar
- * shrinks to make room, and the button scales up from a point inside that room.
- * Button `index` only starts after the previous has opened (`BTN_STAGGER`), so
- * they come out of the bar one after another instead of together.
+ * One button's slot. Its width opens 0 → (button + gap) so the flex:1 stats bar
+ * shrinks to make room, and the button scales up inside that room. Button
+ * `index` only starts once the previous has opened (`BTN_STAGGER`), so they come
+ * out of the bar one after another instead of together.
+ *
+ * No `overflow: hidden` on the slot: the SwiftUI glass bleeds a couple of points
+ * past its frame, and a clip box exactly the button's size shaved all four sides
+ * — the buttons rendered as octagons. Scale + opacity carry the reveal instead.
  */
 function useSlotStyle(progress: SharedValue<number>, index: number) {
   return useAnimatedStyle(() => {
@@ -121,9 +125,9 @@ function useSlotStyle(progress: SharedValue<number>, index: number) {
       1,
     );
     return {
-      width: (Metrics.iconButton + Spacing.two) * p,
+      width: (Metrics.dockButton + Spacing.two) * p,
       opacity: p,
-      transform: [{ scale: 0.2 + 0.8 * p }],
+      transform: [{ scale: p }],
     };
   });
 }
@@ -394,16 +398,21 @@ export function DayTemplate<TData, TTotals>({
       if (now !== previous) runOnJS(setShrunk)(now);
     },
   );
-  // The buttons are only in the tree once the keyboard starts rising. A native
-  // SwiftUI host does not collapse to a width:0 slot the way an RN view does, so
-  // left mounted while the keyboard is down it reserves ~one button of dead space
-  // on the bar's right. Mounting at the very start of the rise still lets each
-  // slot grow from 0, so the reveal is unaffected.
+  // The buttons only exist in the tree while the keyboard is engaged: a native
+  // SwiftUI host does not collapse into a width:0 slot the way an RN view does,
+  // so left mounted with the keyboard down it reserved ~one button of dead space
+  // on the bar's right.
+  //
+  // Mounting is driven by `keyboardWillShow` (below), NOT by this reaction:
+  // `runOnJS` + render lands two or three frames late, which on a ~250 ms rise
+  // meant the slots first appeared around 30% and popped instead of growing from
+  // zero. Unmounting stays here, at the very end of the descent — that is what
+  // made closing look right, and now opening is its mirror.
   const [engaged, setEngaged] = useState(false);
   useAnimatedReaction(
     () => kbProgress.value > 0.02,
     (now, previous) => {
-      if (now !== previous) runOnJS(setEngaged)(now);
+      if (previous && !now) runOnJS(setEngaged)(false);
     },
   );
 
@@ -470,9 +479,16 @@ export function DayTemplate<TData, TTotals>({
     const hide = Keyboard.addListener("keyboardDidHide", () =>
       setKeyboardVisible(false),
     );
+    // Mounts the dock buttons BEFORE the keyboard starts moving (iOS fires
+    // `willShow` ahead of the animation), so their slots really open from zero.
+    const willShow = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      () => setEngaged(true),
+    );
     return () => {
       show.remove();
       hide.remove();
+      willShow.remove();
       if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
     };
   }, []);
@@ -1190,11 +1206,24 @@ export function DayTemplate<TData, TTotals>({
     else toggleWorkoutProgress();
   };
   const dismissStatsPanelResponder = useCallback(() => {
+    // Swallowed, not passed through: the media menu's dismissing tap used to
+    // reach the notes list, whose `keyboardShouldPersistTaps="handled"` then
+    // dismissed the keyboard and blurred the composer. Closing a menu should
+    // cost the menu, nothing else.
+    if (foodMediaMenuVisible) {
+      setFoodMediaMenuVisible(false);
+      return true;
+    }
     if (!foodGoalsVisible && !workoutProgressVisible) return false;
     closeAppModal("food.goals");
     closeAppModal("workout.progress");
     return true;
-  }, [closeAppModal, foodGoalsVisible, workoutProgressVisible]);
+  }, [
+    closeAppModal,
+    foodGoalsVisible,
+    foodMediaMenuVisible,
+    workoutProgressVisible,
+  ]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -1308,6 +1337,7 @@ export function DayTemplate<TData, TTotals>({
                         <NativeMenuButton
                           systemImage="camera"
                           tint={colors.carbs}
+                          size={Metrics.dockButton}
                           label={t("media.addAttachment")}
                         >
                           <SwiftButton
@@ -1343,7 +1373,7 @@ export function DayTemplate<TData, TTotals>({
                             <AppIcon
                               name="camera"
                               color={colors.carbs}
-                              size={20}
+                              size={19}
                             />
                           </GlassSurface>
                         </LoggedPressable>
@@ -1476,12 +1506,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   dockButtonSlot: {
-    overflow: "hidden",
-    paddingLeft: Spacing.two,
+    // Not clipped (see `useSlotStyle`); the button is centred in whatever width
+    // the slot has opened, so it grows out of the space the bar just freed.
+    alignItems: "center",
+    justifyContent: "center",
   },
   keyboardButton: {
-    width: Metrics.iconButton,
-    height: Metrics.iconButton,
+    width: Metrics.dockButton,
+    height: Metrics.dockButton,
     borderRadius: Radii.pill,
     alignItems: "center",
     justifyContent: "center",

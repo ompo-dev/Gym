@@ -18,15 +18,19 @@ import {
 } from '@/components/onboarding/onboardingNative';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
 
-/** The shared SwiftUI recipe: a circular glass control pinned to iconButton. */
-function glassCircleModifiers(tint?: string) {
+/**
+ * The shared SwiftUI recipe: a circular glass control pinned to `size`.
+ * ponytail: `controlSize` is the calibration knob — 'extraLarge' fills a 44 box
+ * but overflows a smaller one, so anything under iconButton steps down a size.
+ */
+function glassCircleModifiers(size: number, tint?: string) {
   return [
     swiftButtonStyle?.('glass'),
     swiftButtonBorderShape?.('circle'),
-    swiftControlSize?.('extraLarge'),
+    swiftControlSize?.(size >= Metrics.iconButton ? 'extraLarge' : 'large'),
     swiftLabelStyle?.('iconOnly'),
     tint ? swiftTint?.(tint) : undefined,
-    swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
+    swiftFrame?.({ width: size, height: size }),
   ].filter(Boolean);
 }
 
@@ -39,6 +43,8 @@ interface NativeMenuButtonProps {
   tint?: string;
   /** Trailing gap, e.g. when it sits next to a sheet close button. */
   marginRight?: boolean;
+  /** Defaults to a sheet-header button; the dock passes `Metrics.dockButton`. */
+  size?: number;
   /** The menu's items — SwiftButton / nested SwiftMenu / SwiftDivider. */
   children: ReactNode;
 }
@@ -56,15 +62,17 @@ export function NativeMenuButton({
   label,
   tint,
   marginRight,
+  size = Metrics.iconButton,
   children,
 }: NativeMenuButtonProps) {
+  const box = { width: size, height: size };
   return (
-    <View style={marginRight ? styles.hostMargin : styles.host}>
-      <SwiftHost style={styles.frame}>
+    <View style={[marginRight ? styles.hostMargin : styles.host, box]}>
+      <SwiftHost style={[styles.frame, box]}>
         <SwiftMenu
           label={label}
           systemImage={systemImage}
-          modifiers={glassCircleModifiers(tint)}>
+          modifiers={glassCircleModifiers(size, tint)}>
           {children}
         </SwiftMenu>
       </SwiftHost>
@@ -81,21 +89,24 @@ export function NativeIconButton({
   systemImage,
   label,
   tint,
+  size = Metrics.iconButton,
   onPress,
 }: {
   systemImage: string;
   label: string;
   tint?: string;
+  size?: number;
   onPress: () => void;
 }) {
+  const box = { width: size, height: size };
   return (
-    <View style={styles.host}>
-      <SwiftHost style={styles.frame}>
+    <View style={[styles.host, box]}>
+      <SwiftHost style={[styles.frame, box]}>
         <SwiftButton
           label={label}
           systemImage={systemImage}
           onPress={onPress}
-          modifiers={glassCircleModifiers(tint)}
+          modifiers={glassCircleModifiers(size, tint)}
         />
       </SwiftHost>
     </View>
@@ -112,6 +123,7 @@ export function DockActionButton({
   icon,
   label,
   tint,
+  size = Metrics.dockButton,
   onPress,
 }: {
   /** SF Symbol for the native button. */
@@ -120,6 +132,7 @@ export function DockActionButton({
   icon: AppIconName;
   label: string;
   tint: string;
+  size?: number;
   onPress: () => void;
 }) {
   if (IOS_NATIVE_ENABLED) {
@@ -128,6 +141,7 @@ export function DockActionButton({
         systemImage={systemImage}
         label={label}
         tint={tint}
+        size={size}
         onPress={onPress}
       />
     );
@@ -139,8 +153,12 @@ export function DockActionButton({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <GlassSurface glass="regular" isInteractive style={styles.rnButton}>
-        <AppIcon name={icon} color={tint} size={20} />
+      <GlassSurface
+        glass="regular"
+        isInteractive
+        style={[styles.rnButton, { width: size, height: size }]}
+      >
+        <AppIcon name={icon} color={tint} size={Math.round(size * 0.5)} />
       </GlassSurface>
     </LoggedPressable>
   );
