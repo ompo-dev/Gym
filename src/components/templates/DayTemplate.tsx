@@ -10,6 +10,11 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import Animated, {
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+  useDerivedValue,
+} from "react-native-reanimated";
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { GlassSurface } from "@/components/atoms/GlassSurface";
@@ -89,6 +94,12 @@ const UNDO_MS = 4_000;
 // Android uses a custom floating glass pill (~60 px tall). iOS gets its height
 // from the native tab bar + safe area, so the clearance is just the gap above it.
 const TAB_BAR_CLEARANCE = Platform.OS === "android" ? 90 : 20;
+// The dock finishes shrinking (and the buttons finish revealing) over the first
+// 150 px of keyboard rise, then the keyboard keeps rising underneath. Kept below
+// the shortest real keyboard (~216 px) so `progress` always reaches 1 — a larger
+// value on a short keyboard would leave the buttons half-revealed. Bump it if the
+// reveal should span more of the rise.
+const KB_SHRINK_PX = 150;
 const REFRESH_REASONING_INSTRUCTION =
   "Rewrite only description, meal.reasoning and meal.confidence for this final meal. Preserve meal.items exactly.";
 
@@ -328,6 +339,26 @@ export function DayTemplate<TData, TTotals>({
   const barcodeLookupRun = useRef(0);
   const foodReasoningRun = useRef(0);
   const isFood = config.id === "food";
+
+  // The dock follows the keyboard in real time instead of hard-swapping to a
+  // compact bar: `progress` 0→1 tracks the keyboard rise, the action buttons
+  // animate their width from 0 → full (revealing left-to-right under
+  // overflow:hidden), and the flex:1 dock shrinks into whatever width is left.
+  const keyboard = useAnimatedKeyboard();
+  const kbProgress = useDerivedValue(() =>
+    Math.min(Math.max(keyboard.height.value / KB_SHRINK_PX, 0), 1),
+  );
+  // Every button is a Metrics.iconButton glass circle in a Spacing.two-gapped
+  // row with a matching leading gap, so the reserved width is exact without
+  // measuring: count * (iconButton + gap). Food = media + saved (+ dismiss on
+  // iOS); workout = saved (+ dismiss on iOS).
+  const dockButtonCount = (isFood ? 2 : 1) + (Platform.OS === "ios" ? 1 : 0);
+  const dockButtonsWidth = dockButtonCount * (Metrics.iconButton + Spacing.two);
+  const dockButtonsStyle = useAnimatedStyle(() => ({
+    width: dockButtonsWidth * kbProgress.value,
+    opacity: kbProgress.value,
+  }));
+
   const modalStack = useAppModalStore((state) => state.stack);
   const replaceAppModal = useAppModalStore((state) => state.replaceAppModal);
   const closeAppModal = useAppModalStore((state) => state.closeAppModal);
@@ -1067,6 +1098,13 @@ export function DayTemplate<TData, TTotals>({
     if (workoutProgressVisible) closeAppModal("workout.progress");
     else replaceAppModal({ id: "workout.progress", domain: "workout" });
   };
+  // Always-set onPress keeps TotalsDock's Pressable stable (no remount/flicker
+  // when the keyboard toggles); the panel just does nothing while typing.
+  const onDockPress = () => {
+    if (keyboardVisible) return;
+    if (isFood) toggleFoodGoals();
+    else toggleWorkoutProgress();
+  };
   const dismissStatsPanelResponder = useCallback(() => {
     if (!foodGoalsVisible && !workoutProgressVisible) return false;
     closeAppModal("food.goals");
@@ -1164,79 +1202,50 @@ export function DayTemplate<TData, TTotals>({
               ) : null}
             </View>
 
-            {keyboardVisible ? (
-              <>
-                <View style={styles.keyboardBar}>
-                  <View style={styles.keyboardDock}>
-                    <TotalsDock
-                      items={
-                        isFood
-                          ? totalItems.filter(
-                              (item) => item.key === "cal" || item.key === "h",
-                            )
-                          : totalItems.filter(
-                              (item) =>
-                                item.key === "sets" ||
-                                item.key === "vol" ||
-                                item.key === "dist",
-                            )
-                      }
-                      compact
-                    />
-                  </View>
+            <View style={styles.dockRow}>
+              <View style={styles.dockFill}>
+                <TotalsDock items={totalItems} onPress={onDockPress} />
+              </View>
 
-                  {isFood ? (
-                    <>
-                      {IOS_NATIVE_ENABLED ? (
-                        <NativeMenuButton
+              {/* Persistent, not swapped: width 0 → full follows the keyboard so
+                  the flex:1 dock shrinks into place instead of popping. Inert and
+                  invisible (width 0) while the keyboard is down. */}
+              <Animated.View
+                style={[styles.dockButtons, dockButtonsStyle]}
+                pointerEvents={keyboardVisible ? "auto" : "none"}
+              >
+                {isFood ? (
+                  <>
+                    {IOS_NATIVE_ENABLED ? (
+                      <NativeMenuButton
+                        systemImage="camera"
+                        tint={colors.carbs}
+                        label={t("media.addAttachment")}
+                      >
+                        <SwiftButton
+                          label={t("media.foodPhoto")}
                           systemImage="camera"
-                          tint={colors.carbs}
-                          label={t("media.addAttachment")}
-                        >
-                          <SwiftButton
-                            label={t("media.foodPhoto")}
-                            systemImage="camera"
-                            onPress={() => handleSelectFoodMedia("foodPhoto")}
-                          />
-                          <SwiftButton
-                            label={t("media.menuPhoto")}
-                            systemImage="menucard"
-                            onPress={() => handleSelectFoodMedia("menuPhoto")}
-                          />
-                          <SwiftButton
-                            label={t("media.barcode")}
-                            systemImage="barcode.viewfinder"
-                            onPress={() => handleSelectFoodMedia("barcode")}
-                          />
-                        </NativeMenuButton>
-                      ) : (
-                        <LoggedPressable
-                          onPress={() =>
-                            setFoodMediaMenuVisible((current) => !current)
-                          }
-                          hitSlop={10}
-                          accessibilityRole="button"
-                          accessibilityLabel={t("media.addAttachment")}
-                        >
-                          <GlassSurface
-                            glass="regular"
-                            isInteractive
-                            style={styles.keyboardButton}
-                          >
-                            <AppIcon
-                              name="camera"
-                              color={colors.carbs}
-                              size={20}
-                            />
-                          </GlassSurface>
-                        </LoggedPressable>
-                      )}
-
+                          onPress={() => handleSelectFoodMedia("foodPhoto")}
+                        />
+                        <SwiftButton
+                          label={t("media.menuPhoto")}
+                          systemImage="menucard"
+                          onPress={() => handleSelectFoodMedia("menuPhoto")}
+                        />
+                        <SwiftButton
+                          label={t("media.barcode")}
+                          systemImage="barcode.viewfinder"
+                          onPress={() => handleSelectFoodMedia("barcode")}
+                        />
+                      </NativeMenuButton>
+                    ) : (
                       <LoggedPressable
-                        onPress={openSavedMealPicker}
+                        onPress={() =>
+                          setFoodMediaMenuVisible((current) => !current)
+                        }
                         hitSlop={10}
                         accessibilityRole="button"
-                        accessibilityLabel={t("media.addSavedMeal")}
+                        accessibilityLabel={t("media.addAttachment")}
                       >
                         <GlassSurface
                           glass="regular"
@@ -1244,19 +1253,19 @@ export function DayTemplate<TData, TTotals>({
                           style={styles.keyboardButton}
                         >
                           <AppIcon
-                            name="plus"
-                            color={colors.accent}
+                            name="camera"
+                            color={colors.carbs}
                             size={20}
                           />
                         </GlassSurface>
                       </LoggedPressable>
-                    </>
-                  ) : (
+                    )}
+
                     <LoggedPressable
-                      onPress={openSavedExercisePicker}
+                      onPress={openSavedMealPicker}
                       hitSlop={10}
                       accessibilityRole="button"
-                      accessibilityLabel={t("media.addSavedWorkout")}
+                      accessibilityLabel={t("media.addSavedMeal")}
                     >
                       <GlassSurface
                         glass="regular"
@@ -1266,36 +1275,46 @@ export function DayTemplate<TData, TTotals>({
                         <AppIcon name="plus" color={colors.accent} size={20} />
                       </GlassSurface>
                     </LoggedPressable>
-                  )}
-
-                  {Platform.OS === "ios" ? (
-                    <LoggedPressable
-                      onPress={Keyboard.dismiss}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel="Dismiss keyboard"
+                  </>
+                ) : (
+                  <LoggedPressable
+                    onPress={openSavedExercisePicker}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("media.addSavedWorkout")}
+                  >
+                    <GlassSurface
+                      glass="regular"
+                      isInteractive
+                      style={styles.keyboardButton}
                     >
-                      <GlassSurface
-                        glass="regular"
-                        isInteractive
-                        style={styles.keyboardButton}
-                      >
-                        <AppIcon
-                          name="keyboard"
-                          color={colors.textSecondary}
-                          size={18}
-                        />
-                      </GlassSurface>
-                    </LoggedPressable>
-                  ) : null}
-                </View>
-              </>
-            ) : (
-              <TotalsDock
-                items={totalItems}
-                onPress={isFood ? toggleFoodGoals : toggleWorkoutProgress}
-              />
-            )}
+                      <AppIcon name="plus" color={colors.accent} size={20} />
+                    </GlassSurface>
+                  </LoggedPressable>
+                )}
+
+                {Platform.OS === "ios" ? (
+                  <LoggedPressable
+                    onPress={Keyboard.dismiss}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss keyboard"
+                  >
+                    <GlassSurface
+                      glass="regular"
+                      isInteractive
+                      style={styles.keyboardButton}
+                    >
+                      <AppIcon
+                        name="keyboard"
+                        color={colors.textSecondary}
+                        size={18}
+                      />
+                    </GlassSurface>
+                  </LoggedPressable>
+                ) : null}
+              </Animated.View>
+            </View>
           </View>
         </View>
       </SafeAreaView>
@@ -1369,13 +1388,20 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
     justifyContent: "flex-end",
   },
-  keyboardBar: {
+  dockRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  dockFill: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dockButtons: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.two,
-  },
-  keyboardDock: {
-    flex: 1,
+    paddingLeft: Spacing.two,
+    overflow: "hidden",
   },
   keyboardButton: {
     width: Metrics.iconButton,

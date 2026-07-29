@@ -22,6 +22,8 @@ jest.mock('react-native-reanimated', () => {
     Easing: new Proxy({}, { get: () => () => identity }),
     FadeIn: chainable,
     useSharedValue: (initial) => ({ value: initial }),
+    useDerivedValue: (fn) => ({ value: fn() }),
+    useAnimatedKeyboard: () => ({ height: { value: 0 }, state: { value: 0 } }),
     useAnimatedStyle: () => ({}),
     useAnimatedProps: () => ({}),
     withTiming: (toValue) => toValue,
