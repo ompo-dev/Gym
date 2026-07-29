@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
+import { GlassSurface } from '@/components/atoms/GlassSurface';
+import { LoggedPressable } from '@/components/atoms/Logged';
 import {
+  IOS_NATIVE_ENABLED,
+  SwiftButton,
   SwiftHost,
   SwiftMenu,
   swiftButtonBorderShape,
@@ -11,7 +16,19 @@ import {
   swiftLabelStyle,
   swiftTint,
 } from '@/components/onboarding/onboardingNative';
-import { Metrics, Spacing } from '@/constants/theme';
+import { Metrics, Radii, Spacing } from '@/constants/theme';
+
+/** The shared SwiftUI recipe: a circular glass control pinned to iconButton. */
+function glassCircleModifiers(tint?: string) {
+  return [
+    swiftButtonStyle?.('glass'),
+    swiftButtonBorderShape?.('circle'),
+    swiftControlSize?.('extraLarge'),
+    swiftLabelStyle?.('iconOnly'),
+    tint ? swiftTint?.(tint) : undefined,
+    swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
+  ].filter(Boolean);
+}
 
 interface NativeMenuButtonProps {
   /** SF Symbol shown on the button itself (e.g. "ellipsis", "camera"). */
@@ -47,18 +64,85 @@ export function NativeMenuButton({
         <SwiftMenu
           label={label}
           systemImage={systemImage}
-          modifiers={[
-            swiftButtonStyle?.('glass'),
-            swiftButtonBorderShape?.('circle'),
-            swiftControlSize?.('extraLarge'),
-            swiftLabelStyle?.('iconOnly'),
-            tint ? swiftTint?.(tint) : undefined,
-            swiftFrame?.({ width: Metrics.iconButton, height: Metrics.iconButton }),
-          ].filter(Boolean)}>
+          modifiers={glassCircleModifiers(tint)}>
           {children}
         </SwiftMenu>
       </SwiftHost>
     </View>
+  );
+}
+
+/**
+ * The plain-button twin of {@link NativeMenuButton}: same glass circle, same
+ * size, but it just fires `onPress` instead of opening a menu. This is what
+ * makes every dock button match the camera menu instead of a hand-styled pill.
+ */
+export function NativeIconButton({
+  systemImage,
+  label,
+  tint,
+  onPress,
+}: {
+  systemImage: string;
+  label: string;
+  tint?: string;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.host}>
+      <SwiftHost style={styles.frame}>
+        <SwiftButton
+          label={label}
+          systemImage={systemImage}
+          onPress={onPress}
+          modifiers={glassCircleModifiers(tint)}
+        />
+      </SwiftHost>
+    </View>
+  );
+}
+
+/**
+ * One dock action button, identical to its siblings on every platform:
+ * a SwiftUI glass circle on iOS (like the camera menu), the RN glass fallback
+ * elsewhere. Callers never branch on platform.
+ */
+export function DockActionButton({
+  systemImage,
+  icon,
+  label,
+  tint,
+  onPress,
+}: {
+  /** SF Symbol for the native button. */
+  systemImage: string;
+  /** RN icon for the fallback. */
+  icon: AppIconName;
+  label: string;
+  tint: string;
+  onPress: () => void;
+}) {
+  if (IOS_NATIVE_ENABLED) {
+    return (
+      <NativeIconButton
+        systemImage={systemImage}
+        label={label}
+        tint={tint}
+        onPress={onPress}
+      />
+    );
+  }
+  return (
+    <LoggedPressable
+      onPress={onPress}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <GlassSurface glass="regular" isInteractive style={styles.rnButton}>
+        <AppIcon name={icon} color={tint} size={20} />
+      </GlassSurface>
+    </LoggedPressable>
   );
 }
 
@@ -77,5 +161,13 @@ const styles = StyleSheet.create({
     height: Metrics.iconButton,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  rnButton: {
+    width: Metrics.iconButton,
+    height: Metrics.iconButton,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
 });

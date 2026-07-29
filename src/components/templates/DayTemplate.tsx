@@ -16,7 +16,15 @@ import Animated, {
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { GlassSurface } from "@/components/atoms/GlassSurface";
 import { LoggedPressable } from "@/components/atoms/Logged";
+import {
+  DockActionButton,
+  NativeMenuButton,
+} from "@/components/molecules/NativeMenuButton";
 import { UndoToast } from "@/components/molecules/UndoToast";
+import {
+  IOS_NATIVE_ENABLED,
+  SwiftButton,
+} from "@/components/onboarding/onboardingNative";
 import { AppModalHost } from "@/components/organisms/AppModalHost";
 import { DayHeader } from "@/components/organisms/DayHeader";
 import { FoodGoalsSheet } from "@/components/organisms/FoodGoalsSheet";
@@ -384,6 +392,18 @@ export function DayTemplate<TData, TTotals>({
     () => kbProgress.value > 0.5,
     (now, previous) => {
       if (now !== previous) runOnJS(setShrunk)(now);
+    },
+  );
+  // The buttons are only in the tree once the keyboard starts rising. A native
+  // SwiftUI host does not collapse to a width:0 slot the way an RN view does, so
+  // left mounted while the keyboard is down it reserves ~one button of dead space
+  // on the bar's right. Mounting at the very start of the rise still lets each
+  // slot grow from 0, so the reveal is unaffected.
+  const [engaged, setEngaged] = useState(false);
+  useAnimatedReaction(
+    () => kbProgress.value > 0.02,
+    (now, previous) => {
+      if (now !== previous) runOnJS(setEngaged)(now);
     },
   );
 
@@ -1255,7 +1275,7 @@ export function DayTemplate<TData, TTotals>({
                   visible={workoutProgressVisible}
                 />
               ) : null}
-              {keyboardVisible && isFood ? (
+              {keyboardVisible && isFood && !IOS_NATIVE_ENABLED ? (
                 <FoodMediaActionMenu
                   visible={foodMediaMenuVisible}
                   onSelect={handleSelectFoodMedia}
@@ -1276,64 +1296,79 @@ export function DayTemplate<TData, TTotals>({
                   staggered slice of the rise, so they come out of the bar's edge
                   one by one and the flex:1 dock shrinks into what's left. Inert
                   (width 0) while the keyboard is down. */}
-              <View
-                style={styles.dockButtons}
-                pointerEvents={keyboardVisible ? "auto" : "none"}
-              >
+              {engaged ? (
+                <View
+                  style={styles.dockButtons}
+                  pointerEvents={keyboardVisible ? "auto" : "none"}
+                >
                 {isFood ? (
                   <>
                     <Animated.View style={[styles.dockButtonSlot, b0Style]}>
-                      <LoggedPressable
-                        onPress={() =>
-                          setFoodMediaMenuVisible((current) => !current)
-                        }
-                        hitSlop={10}
-                        accessibilityRole="button"
-                        accessibilityLabel={t("media.addAttachment")}
-                      >
-                        <GlassSurface
-                          glass="regular"
-                          isInteractive
-                          style={styles.keyboardButton}
+                      {IOS_NATIVE_ENABLED ? (
+                        <NativeMenuButton
+                          systemImage="camera"
+                          tint={colors.carbs}
+                          label={t("media.addAttachment")}
                         >
-                          <AppIcon name="camera" color={colors.carbs} size={20} />
-                        </GlassSurface>
-                      </LoggedPressable>
+                          <SwiftButton
+                            label={t("media.foodPhoto")}
+                            systemImage="camera"
+                            onPress={() => handleSelectFoodMedia("foodPhoto")}
+                          />
+                          <SwiftButton
+                            label={t("media.menuPhoto")}
+                            systemImage="menucard"
+                            onPress={() => handleSelectFoodMedia("menuPhoto")}
+                          />
+                          <SwiftButton
+                            label={t("media.barcode")}
+                            systemImage="barcode.viewfinder"
+                            onPress={() => handleSelectFoodMedia("barcode")}
+                          />
+                        </NativeMenuButton>
+                      ) : (
+                        <LoggedPressable
+                          onPress={() =>
+                            setFoodMediaMenuVisible((current) => !current)
+                          }
+                          hitSlop={10}
+                          accessibilityRole="button"
+                          accessibilityLabel={t("media.addAttachment")}
+                        >
+                          <GlassSurface
+                            glass="regular"
+                            isInteractive
+                            style={styles.keyboardButton}
+                          >
+                            <AppIcon
+                              name="camera"
+                              color={colors.carbs}
+                              size={20}
+                            />
+                          </GlassSurface>
+                        </LoggedPressable>
+                      )}
                     </Animated.View>
 
                     <Animated.View style={[styles.dockButtonSlot, b1Style]}>
-                      <LoggedPressable
+                      <DockActionButton
+                        systemImage="plus"
+                        icon="plus"
+                        tint={colors.accent}
+                        label={t("media.addSavedMeal")}
                         onPress={openSavedMealPicker}
-                        hitSlop={10}
-                        accessibilityRole="button"
-                        accessibilityLabel={t("media.addSavedMeal")}
-                      >
-                        <GlassSurface
-                          glass="regular"
-                          isInteractive
-                          style={styles.keyboardButton}
-                        >
-                          <AppIcon name="plus" color={colors.accent} size={20} />
-                        </GlassSurface>
-                      </LoggedPressable>
+                      />
                     </Animated.View>
                   </>
                 ) : (
                   <Animated.View style={[styles.dockButtonSlot, b0Style]}>
-                    <LoggedPressable
+                    <DockActionButton
+                      systemImage="plus"
+                      icon="plus"
+                      tint={colors.accent}
+                      label={t("media.addSavedWorkout")}
                       onPress={openSavedExercisePicker}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel={t("media.addSavedWorkout")}
-                    >
-                      <GlassSurface
-                        glass="regular"
-                        isInteractive
-                        style={styles.keyboardButton}
-                      >
-                        <AppIcon name="plus" color={colors.accent} size={20} />
-                      </GlassSurface>
-                    </LoggedPressable>
+                    />
                   </Animated.View>
                 )}
 
@@ -1341,27 +1376,17 @@ export function DayTemplate<TData, TTotals>({
                   <Animated.View
                     style={[styles.dockButtonSlot, isFood ? b2Style : b1Style]}
                   >
-                    <LoggedPressable
+                    <DockActionButton
+                      systemImage="keyboard.chevron.compact.down"
+                      icon="keyboard"
+                      tint={colors.textSecondary}
+                      label="Dismiss keyboard"
                       onPress={Keyboard.dismiss}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel="Dismiss keyboard"
-                    >
-                      <GlassSurface
-                        glass="regular"
-                        isInteractive
-                        style={styles.keyboardButton}
-                      >
-                        <AppIcon
-                          name="keyboard"
-                          color={colors.textSecondary}
-                          size={18}
-                        />
-                      </GlassSurface>
-                    </LoggedPressable>
+                    />
                   </Animated.View>
                 ) : null}
-              </View>
+                </View>
+              ) : null}
             </View>
           </View>
         </Animated.View>
