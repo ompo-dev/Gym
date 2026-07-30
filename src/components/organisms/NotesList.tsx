@@ -1,5 +1,13 @@
 import { type RefObject, useEffect, useRef, useState } from 'react';
-import { FlatList, Keyboard, type LayoutChangeEvent, StyleSheet, TextInput, View } from 'react-native';
+import {
+  FlatList,
+  Keyboard,
+  type LayoutChangeEvent,
+  Platform,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { AppText } from '@/components/atoms/AppText';
 import { LoggedTextInput } from '@/components/atoms/Logged';
@@ -149,9 +157,14 @@ export function NotesList<TData, TTotals>({
   };
 
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', ({ endCoordinates }) => {
+    // `willShow` (iOS) fires as the keyboard STARTS rising and already carries
+    // its final frame, so centring the focused line here — animated — rides the
+    // rise instead of snapping into place after it settled (`didShow`). Android
+    // has no will-event; `didShow` there is close enough on its faster keyboard.
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const show = Keyboard.addListener(showEvent, ({ endCoordinates }) => {
       keyboardTop.current = endCoordinates.screenY;
-      if (focusedLine.current) measureViewport(() => scrollLineToCenter(focusedLine.current!, false));
+      if (focusedLine.current) measureViewport(() => scrollLineToCenter(focusedLine.current!, true));
     });
     const hide = Keyboard.addListener('keyboardDidHide', () => {
       keyboardTop.current = null;

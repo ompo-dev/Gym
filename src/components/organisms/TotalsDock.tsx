@@ -94,9 +94,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   dockCompact: {
-    minHeight: Metrics.control,
+    // Height stays `Metrics.dock`, same as the full bar: shrinking it mid-rise
+    // made the bar snap vertically while the buttons beside it did not, so the
+    // two read as misaligned. Compact only tightens the horizontal padding.
+    minHeight: Metrics.dock,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.three,
     borderRadius: Radii.pill,
     gap: Spacing.one,
   },

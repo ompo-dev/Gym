@@ -128,11 +128,7 @@ function useSlotStyle(progress: SharedValue<number>, index: number) {
       Math.max((progress.value - index * BTN_STAGGER) / BTN_SPAN, 0),
       1,
     );
-    return {
-      width: (Metrics.dockButton + DOCK_GAP) * p,
-      opacity: p,
-      transform: [{ scale: p }],
-    };
+    return { opacity: p, transform: [{ scale: p }] };
   });
 }
 const REFRESH_REASONING_INSTRUCTION =
@@ -402,23 +398,18 @@ export function DayTemplate<TData, TTotals>({
       if (now !== previous) runOnJS(setShrunk)(now);
     },
   );
-  // The buttons only exist in the tree while the keyboard is engaged: a native
-  // SwiftUI host does not collapse into a width:0 slot the way an RN view does,
-  // so left mounted with the keyboard down it reserved ~one button of dead space
-  // on the bar's right.
-  //
-  // Mounting is driven by `keyboardWillShow` (below), NOT by this reaction:
-  // `runOnJS` + render lands two or three frames late, which on a ~250 ms rise
-  // meant the slots first appeared around 30% and popped instead of growing from
-  // zero. Unmounting stays here, at the very end of the descent — that is what
-  // made closing look right, and now opening is its mirror.
-  const [engaged, setEngaged] = useState(false);
-  useAnimatedReaction(
-    () => kbProgress.value > 0.02,
-    (now, previous) => {
-      if (previous && !now) runOnJS(setEngaged)(false);
-    },
-  );
+  // The buttons are always mounted and absolutely positioned, so they never
+  // reserve layout width — a native SwiftUI host will not collapse a width:0
+  // slot, which is why mounting them used to be gated on a JS event (and that
+  // gate, firing a frame or two after the UI-thread rise began, is exactly why
+  // the buttons and the bar did not move as one). The bar now shrinks by the
+  // same width via an animated right margin, so dock, buttons and footer all
+  // ride the single `keyboard.height` clock and opening is closing reversed.
+  const dockButtonCount = (isFood ? 2 : 1) + (Platform.OS === "ios" ? 1 : 0);
+  const dockButtonsWidth = dockButtonCount * (Metrics.dockButton + DOCK_GAP);
+  const dockFillStyle = useAnimatedStyle(() => ({
+    marginRight: kbProgress.value * dockButtonsWidth,
+  }));
 
   const modalStack = useAppModalStore((state) => state.stack);
   const replaceAppModal = useAppModalStore((state) => state.replaceAppModal);
@@ -483,16 +474,9 @@ export function DayTemplate<TData, TTotals>({
     const hide = Keyboard.addListener("keyboardDidHide", () =>
       setKeyboardVisible(false),
     );
-    // Mounts the dock buttons BEFORE the keyboard starts moving (iOS fires
-    // `willShow` ahead of the animation), so their slots really open from zero.
-    const willShow = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      () => setEngaged(true),
-    );
     return () => {
       show.remove();
       hide.remove();
-      willShow.remove();
       if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
     };
   }, []);
@@ -1317,23 +1301,23 @@ export function DayTemplate<TData, TTotals>({
             </View>
 
             <View style={styles.dockRow}>
-              <View style={styles.dockFill}>
+              <Animated.View style={[styles.dockFill, dockFillStyle]}>
                 <TotalsDock
                   items={dockItems}
                   compact={shrunk}
                   onPress={onDockPress}
                 />
-              </View>
+              </Animated.View>
 
-              {/* Each button in its own slot: width grows 0 → (icon + gap) on a
-                  staggered slice of the rise, so they come out of the bar's edge
-                  one by one and the flex:1 dock shrinks into what's left. Inert
-                  (width 0) while the keyboard is down. */}
-              {engaged ? (
-                <View
-                  style={styles.dockButtons}
-                  pointerEvents={keyboardVisible ? "auto" : "none"}
-                >
+              {/* Absolute, so the buttons never reserve layout width (no dead
+                  space with the keyboard down, no mount gate). The bar's animated
+                  right margin opens exactly this strip as it rises; each button
+                  scales in on its staggered slice, one after another. Inert and
+                  invisible (opacity 0) while the keyboard is down. */}
+              <View
+                style={styles.dockButtons}
+                pointerEvents={keyboardVisible ? "auto" : "none"}
+              >
                 {isFood ? (
                   <>
                     <Animated.View style={[styles.dockButtonSlot, b0Style]}>
@@ -1419,8 +1403,7 @@ export function DayTemplate<TData, TTotals>({
                     />
                   </Animated.View>
                 ) : null}
-                </View>
-              ) : null}
+              </View>
             </View>
           </View>
         </Animated.View>
@@ -1505,16 +1488,19 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  // Absolute right-strip the bar's margin opens into; each slot is a fixed
+  // button + gap box, so the group's width matches `dockButtonsWidth`.
   dockButtons: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
     flexDirection: "row",
     alignItems: "center",
-    // Only half of DOCK_GAP sits on the first slot's left edge, so the bar would
-    // end up closer to button one than the buttons are to each other.
-    paddingLeft: Spacing.two,
+    justifyContent: "flex-end",
   },
   dockButtonSlot: {
-    // Not clipped (see `useSlotStyle`); the button is centred in whatever width
-    // the slot has opened, so it grows out of the space the bar just freed.
+    width: Metrics.dockButton + DOCK_GAP,
     alignItems: "center",
     justifyContent: "center",
   },
