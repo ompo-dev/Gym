@@ -101,12 +101,19 @@ const TAB_BAR_CLEARANCE = Platform.OS === "android" ? 90 : 20;
 // the shortest real keyboard (~216 px) so `progress` always reaches 1 — a larger
 // value on a short keyboard would leave the buttons half-revealed. Bump it if the
 // reveal should span more of the rise.
-const KB_SHRINK_PX = 150;
-// The action buttons don't fade in together — each grows out of the shrinking
-// stats bar's edge one after the other: button `i` starts `BTN_STAGGER` later in
-// the 0→1 rise and opens over `BTN_SPAN`. All are out well before progress hits 1.
-const BTN_STAGGER = 0.26;
-const BTN_SPAN = 0.3;
+// Spread over more of the keyboard travel (still under the shortest portrait
+// keyboard so `progress` always reaches 1): a smaller value crammed the whole
+// reveal into the fast head of the show curve, so the buttons read as a spawn
+// rather than growing in with the rise.
+const KB_SHRINK_PX = 210;
+// The action buttons don't appear together — each grows in on its own slice of
+// the 0→1 rise (`BTN_STAGGER` apart, `BTN_SPAN` long), so they arrive one after
+// another and the last lands as the rise completes.
+const BTN_STAGGER = 0.3;
+const BTN_SPAN = 0.4;
+// The bar's height while the keyboard is up — matches the action buttons so the
+// row reads as equal-height controls. Down, it keeps the taller `Metrics.dock`.
+const DOCK_COMPACT_H = Metrics.dockButton;
 // Breathing room each button takes with it: the slot opens to button + gap, and
 // the button is centred, so half lands on each side — adjacent buttons end up a
 // full `DOCK_GAP` apart. The bar is flex:1 and simply keeps whatever is left.
@@ -408,7 +415,11 @@ export function DayTemplate<TData, TTotals>({
   const dockButtonCount = (isFood ? 2 : 1) + (Platform.OS === "ios" ? 1 : 0);
   const dockButtonsWidth = dockButtonCount * (Metrics.dockButton + DOCK_GAP);
   const dockFillStyle = useAnimatedStyle(() => ({
-    marginRight: kbProgress.value * dockButtonsWidth,
+    // + a half-gap so the bar sits a full DOCK_GAP from the first button, the
+    // same distance the buttons keep from each other.
+    marginRight: kbProgress.value * (dockButtonsWidth + Spacing.two),
+    // Shrink the bar's height to the buttons' as it rises, on the same clock.
+    height: Metrics.dock - kbProgress.value * (Metrics.dock - DOCK_COMPACT_H),
   }));
 
   const modalStack = useAppModalStore((state) => state.stack);
@@ -1305,6 +1316,7 @@ export function DayTemplate<TData, TTotals>({
                 <TotalsDock
                   items={dockItems}
                   compact={shrunk}
+                  fill
                   onPress={onDockPress}
                 />
               </Animated.View>

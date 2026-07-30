@@ -113,9 +113,9 @@ export const Radii = {
 
 export const Metrics = {
   iconButton: 44,
-  /** The dock's action buttons: smaller than a sheet-header button on purpose,
-   *  they sit beside the totals pill and 44 read as oversized there. */
-  dockButton: 38,
+  /** The dock's action buttons — same height as the shrunk totals pill so the
+   *  keyboard row reads as one set of equal-height controls. */
+  dockButton: 44,
   control: 48,
   dock: 56,
   rowMinHeight: 56,

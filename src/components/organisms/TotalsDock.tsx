@@ -24,6 +24,9 @@ interface TotalsDockProps {
   compact?: boolean;
   onPress?: () => void;
   attachedTop?: boolean;
+  /** Fill the parent's height instead of using `minHeight` — lets the caller
+   *  animate the bar's height (the keyboard dock shrinks it toward the buttons). */
+  fill?: boolean;
 }
 
 export function TotalsDock({
@@ -31,6 +34,7 @@ export function TotalsDock({
   compact = false,
   onPress,
   attachedTop = false,
+  fill = false,
 }: TotalsDockProps) {
   const colors = useColors();
   const visibleItems = items;
@@ -42,6 +46,7 @@ export function TotalsDock({
       style={[
         styles.dock,
         compact && styles.dockCompact,
+        fill && styles.dockFill,
         attachedTop && styles.attachedTop,
       ]}>
       {visibleItems.map((item, index) => (
@@ -61,7 +66,12 @@ export function TotalsDock({
   );
 
   return onPress ? (
-    <LoggedPressable onPress={onPress} accessibilityRole="button" accessibilityLabel="Open totals details">
+    <LoggedPressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Open totals details"
+      style={fill ? styles.pressableFill : undefined}
+    >
       {body}
     </LoggedPressable>
   ) : (
@@ -94,14 +104,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   dockCompact: {
-    // Height stays `Metrics.dock`, same as the full bar: shrinking it mid-rise
-    // made the bar snap vertically while the buttons beside it did not, so the
-    // two read as misaligned. Compact only tightens the horizontal padding.
-    minHeight: Metrics.dock,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
     borderRadius: Radii.pill,
     gap: Spacing.one,
+  },
+  // Fill the wrapper's (animated) height and centre content in it; no minHeight
+  // or vertical padding of its own, so the caller owns the bar's height.
+  dockFill: {
+    minHeight: 0,
+    flex: 1,
+    paddingVertical: 0,
+  },
+  pressableFill: {
+    flex: 1,
   },
   attachedTop: {
     borderTopLeftRadius: Radii.md,
