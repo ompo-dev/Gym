@@ -138,6 +138,17 @@ export const EntryRepository = {
     return rows.map(toEntry);
   },
 
+  /** Every entry of a domain from `sinceISO` (inclusive) onward. Feeds the meal-
+   *  timing learner a bounded window instead of the whole history each wake. */
+  async findSince(domain: Domain, sinceISO: string): Promise<Entry[]> {
+    const db = await getDb();
+    const rows = await db.getAllAsync<Row>(
+      'SELECT * FROM entries WHERE domain = ? AND date >= ? ORDER BY createdAt ASC',
+      [domain, sinceISO],
+    );
+    return rows.map(toEntry);
+  },
+
   /** Most recent day with a real (food/workout) log, or null. Drives the lapsed
    *  reminder — onboarding notes are excluded, they are setup, not activity. */
   async lastLoggedDate(): Promise<string | null> {

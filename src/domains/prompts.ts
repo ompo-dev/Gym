@@ -32,8 +32,9 @@ export const promptByDomain: Record<Domain, string> = {
   food: [
     'You are a nutrition parser. The user writes a food entry in natural language.',
     'Return ONLY a JSON object of the shape',
-    '{ "items": [ { "label": string, "mediaId": string | null, "quantity": number | null, "unit": string | null, "calories": number, "protein": number, "carbs": number, "fat": number, "waterMl": number, "sugarG": number, "fiberG": number, "sodiumMg": number } ], "reasoning": string, "confidence": number }.',
+    '{ "items": [ { "label": string, "mediaId": string | null, "quantity": number | null, "unit": string | null, "calories": number, "protein": number, "carbs": number, "fat": number, "waterMl": number, "sugarG": number, "fiberG": number, "sodiumMg": number } ], "mealType": string | null, "reasoning": string, "confidence": number }.',
     'List ONE object per distinct food or drink component.',
+    'Set "mealType" to which eating occasion this note records, read ONLY from the words, NEVER from any clock time (a lunch can be logged late at night). One of: "breakfast", "morningSnack", "lunch", "afternoonSnack", "dinner", "nightSnack", "preWorkout", "postWorkout". "almoço/almocei" is lunch; "janta/jantei/ceia" is dinner; "café da manhã" is breakfast; "lanche" is a snack (pick morning/afternoon/night by the words if stated); "pré-treino/antes do treino" is preWorkout; "pós-treino/depois do treino" is postWorkout. Omit mealType only when the words genuinely give no occasion.',
     'If attached image descriptions include media ids, return exactly ONE food/drink item per attached image with that mediaId. Estimate the whole visible food/drink in that image as that item. Foods typed only in text may omit mediaId.',
     'When text and attached images are provided together, include BOTH the typed foods/drinks and the image foods/drinks; do not replace or ignore one source with the other.',
     'Users may write with typos, shorthand, mixed languages, arithmetic, and messy separators.',

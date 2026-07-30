@@ -182,6 +182,15 @@ codigo de reversao. Os componentes da geladeira (`PantrySheet`,
 repository sob demanda ao abrir, fora do store — mesma regra do historico de
 treino, pois nao e o dia visivel e sincronizar no store nao pagaria por si.
 
+## Rotina de refeicoes (derivada, nunca armazenada)
+
+Mesma regra da geladeira. Nao ha tabela de rotina: `buildRoutine(EntryRepository
+.findSince('food', -30d))` (`src/domains/mealTiming.ts`, puro) recalcula os
+horarios tipicos de cada refeicao a cada agendamento de lembrete. O tipo da
+refeicao mora no proprio `foodSchema.mealType` (lido do texto pela IA, opcional +
+`.catch` pra nao apagar historico); o horario sai da **mediana** dos `createdAt`
+por tipo, imune ao log retroativo. Detalhe do fluxo em `data-flows.md` §16.
+
 ## Observabilidade
 
 `src/core/log.ts` e um logger unico para o terminal do `expo start`. Silencioso

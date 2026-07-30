@@ -134,6 +134,14 @@ describeLive('live: the model splits what the user actually typed', () => {
       expect(lunch).not.toBe(dinner);
       expect(lunch).not.toMatch(/feij/);
       expect(dinner).not.toMatch(/frango/);
+
+      // The model tags each occasion from the WORDS: lunch note → lunch, dinner
+      // note → dinner. (The local fallback would cover an omission, but the
+      // prompt should get it right.)
+      const lunchNote = notes!.find((n) => show(n.data).toLowerCase().includes('frango'));
+      const dinnerNote = notes!.find((n) => show(n.data).toLowerCase().includes('feij'));
+      expect((lunchNote!.data as { mealType?: string }).mealType).toBe('lunch');
+      expect((dinnerNote!.data as { mealType?: string }).mealType).toBe('dinner');
     },
     LIVE_TIMEOUT,
   );

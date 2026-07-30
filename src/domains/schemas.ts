@@ -66,8 +66,31 @@ export const foodRecipeSchema = z.object({
 });
 export type FoodRecipe = z.infer<typeof foodRecipeSchema>;
 
+/**
+ * Which eating occasion a meal is. Read from the note's WORDS by the model
+ * ("almocei" → lunch), never from the clock — a lunch can be logged at 9pm. The
+ * app learns the user's real meal times from this + `createdAt` to time its
+ * reminders. `preWorkout`/`postWorkout` tie a meal to training.
+ */
+export const MEAL_TYPES = [
+  'breakfast',
+  'morningSnack',
+  'lunch',
+  'afternoonSnack',
+  'dinner',
+  'nightSnack',
+  'preWorkout',
+  'postWorkout',
+] as const;
+export const mealTypeSchema = z.enum(MEAL_TYPES);
+export type MealType = z.infer<typeof mealTypeSchema>;
+
 export const foodSchema = z.object({
   items: z.array(foodItemSchema),
+  // Optional + `.catch`, same rule as reasoning/recipe below: `parseData`
+  // revalidates every stored row against THIS schema, so a required field would
+  // erase every meal logged before meal typing existed.
+  mealType: mealTypeSchema.optional().catch(undefined),
   // AI-provided explanation + certainty for the detail sheet. Optional +
   // `.catch` so a missing/garbled field never fails the whole enrich, and old
   // rows saved before this existed still validate.

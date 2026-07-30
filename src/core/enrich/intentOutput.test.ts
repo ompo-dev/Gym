@@ -85,4 +85,15 @@ describe('foodAuto output gate', () => {
       schema.safeParse({ purchase: [{ label: 'arroz', grams: 1000 }] }).success,
     ).toBe(true);
   });
+
+  test('a valid mealType survives; an invalid one is dropped, never fails the note', () => {
+    const good = schema.safeParse({ ...meal('almoço'), mealType: 'lunch' });
+    expect(good.success).toBe(true);
+    if (good.success && 'items' in good.data) expect(good.data.mealType).toBe('lunch');
+
+    // A hallucinated type must `.catch` to undefined — the meal still counts.
+    const bad = schema.safeParse({ ...meal('almoço'), mealType: 'brunch' });
+    expect(bad.success).toBe(true);
+    if (bad.success && 'items' in bad.data) expect(bad.data.mealType).toBeUndefined();
+  });
 });

@@ -467,20 +467,59 @@ sequenceDiagram
   quando o SO acorda a task (`core/background/enrichDrain.ts`, `expo-background-task`,
   minimo 15min, um unico worker). Simulador iOS nao roda background task.
 
-## 15. Lembretes locais
+## 15. Lembretes locais (com horarios aprendidos)
 
 Local, sem backend nem push — `expo-notifications` agendando na propria maquina.
+**Tres** lembretes ao dia — cafe, almoco, janta — cujos horarios o app aprende da
+rotina do usuario.
 
-- Ajustes > Lembretes: liga/desliga + horario. Ao ligar pela primeira vez pede
-  permissao; negada, o switch volta e um alerta manda o usuario aos ajustes do
-  aparelho. Android 13+ cria um channel antes do prompt.
-- **Lembrete diario** (`reminders.ts`): um `scheduleNotificationAsync` com trigger
-  `DAILY` no horario escolhido. Id fixo (`gym.daily-reminder`) → reagendar
-  cancela e recria, nunca empilha duplicata. Reafirmado no boot por `initReminders`.
-- **Nudge de lapso** (Fase 3, `maybeNudgeLapsed`): a background task, ao acordar,
-  se os lembretes estao ligados e nao ha nota food/workout ha >= 2 dias
-  (`shouldNudgeLapsed`, `EntryRepository.lastLoggedDate`), dispara uma notificacao
-  imediata (`trigger: null`), deduplicada uma vez por dia. Copy e gatilho
-  distintos do lembrete diario, entao os dois nao colidem num dia normal.
-- Os helpers puros de horario e a decisao de lapso ficam em `reminderPrefs.ts`
-  (sem import nativo), testados em `reminderPrefs.test.ts`.
+- Ajustes > Lembretes: um unico liga/desliga. Ao ligar pede permissao; negada, o
+  switch volta e um alerta manda aos ajustes do aparelho (Android 13+ cria um
+  channel antes do prompt). Ligado, mostra os 3 horarios aprendidos (so leitura —
+  quem manda no horario e a rotina, nao o usuario).
+- **Agendamento** (`reminders.ts`): para cada slot um `scheduleNotificationAsync`
+  `DAILY` no horario aprendido, id fixo por slot (`gym.reminder.<tipo>`) →
+  reagendar cancela e recria os 3, nunca empilha. Reafirmado no boot
+  (`initReminders`) e apos o drain de background (`refreshSchedule`), entao as
+  notas de hoje ja alimentam o horario de amanha. **DAILY**, nao DATE: nao suprime
+  o ping de um dia em que a refeicao ja foi anotada — isso pediria horizonte DATE
+  + reabastecimento (deferido).
+- **Nudge de lapso** (`maybeNudgeLapsed`): inalterado — sem nota food/workout ha
+  >= 2 dias, notificacao imediata deduplicada por dia.
+
+### Como o horario e aprendido (§16)
+
+Ver secao 16.
+
+## 16. Rotina aprendida (tipo de refeicao + timing)
+
+O problema: `createdAt` e quando a nota foi **digitada**, nao quando a comida foi
+**comida** — "almocei" anotado 21h junto com a janta. Dois sinais separados:
+
+- **que refeicao e** → lido do TEXTO pela IA (`foodSchema.mealType`), nunca do
+  relogio. Fallback local em `mealTypeFromText` (regex sem acento) e, por ultimo,
+  `mealTypeFromHour`. `mealTypeOf(entry)` encadeia os tres, entao **o historico
+  antigo (sem `mealType`) tambem classifica** — sem migracao, sem backfill.
+- **que horas come** → mediana dos horarios logados por tipo. A **mediana** e a
+  defesa contra o log retroativo: um "almoco" isolado as 21h nao move a mediana de
+  um mes de almocos ~12:50. Sem score, sem peso.
+
+`mealTiming.ts` (puro, testado) faz tudo: `buildRoutine(entries)` agrupa por tipo,
+descarta clusters logados juntos com tipos diferentes (`batchLoggedIds` — nota
+dividida em lote e retroativa por definicao), exige `MIN_SAMPLES` e tira a mediana
+em minutos ancorados nas 4h (pra 1h da manha nao rachar em torno da meia-noite).
+`slotTimes` devolve os 3 horarios: aprendido quando ha amostra, senao o default
+(10h/13h/20h).
+
+Perfil de rotina e **derivado, nunca armazenado** — mesma regra da geladeira.
+`EntryRepository.findSince('food', -30d)` recalcula a cada agendamento; nao ha
+tabela de rotina pra dessincronizar.
+
+Fuso horario (`core/timezone.ts`): `Intl` do Hermes, guardado em `settings`
+(`timezone`, `timezone_auto`). Agendar e local do aparelho (DAILY dispara na hora
+do relogio), entao v1 nao reage a mudanca de fuso — o valor fica pro backend
+futuro e deteccao de viagem. Toggle "fuso automatico" nos ajustes.
+
+Pre/pos-treino: `mealType` os carrega quando a IA le do texto ("pré-treino"), mas
+**nao geram notificacao propria na v1** e a derivacao por proximidade temporal
+ficou deferida (`// ponytail`).

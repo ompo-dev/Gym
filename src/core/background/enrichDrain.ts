@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 import { bus } from '@/core/command/bus';
 import { log } from '@/core/log';
-import { maybeNudgeLapsed } from '@/core/notifications/reminders';
+import { maybeNudgeLapsed, refreshSchedule } from '@/core/notifications/reminders';
 
 const TASK = 'gym.enrich-drain';
 /** The OS floor (15 min). iOS treats it as a hint and picks its own moment. */
@@ -26,6 +26,8 @@ if (isNative) {
       // every enrich, so the task holds the process open until the queue settles
       // instead of returning straight into a suspend.
       const drained = await bus.resumePending();
+      // Fold today's new notes into the learned meal times, then nudge if lapsed.
+      await refreshSchedule();
       await maybeNudgeLapsed();
       log.note('enrich drain ran', { drained });
       return BackgroundTask.BackgroundTaskResult.Success;

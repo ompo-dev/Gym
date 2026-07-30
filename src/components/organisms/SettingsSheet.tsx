@@ -1,6 +1,3 @@
-import DateTimePicker, {
-  DateTimePickerAndroid,
-} from "@react-native-community/datetimepicker";
 import Constants from "expo-constants";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert, Platform, StyleSheet, View } from "react-native";
@@ -16,15 +13,15 @@ import {
   type AppModalAnchor,
 } from "@/core/appModals";
 import { enrich } from "@/core/enrich/client";
+import { formatReminderTime } from "@/core/notifications/reminderPrefs";
 import {
-  formatReminderTime,
-  type ReminderPrefs,
-} from "@/core/notifications/reminderPrefs";
-import {
-  getReminderPrefs,
-  setReminderTime,
+  getScheduledSlots,
+  remindersEnabled as fetchRemindersEnabled,
   setRemindersEnabled,
+  slotLabel,
 } from "@/core/notifications/reminders";
+import { isTimeZoneAuto, setTimeZoneAuto } from "@/core/timezone";
+import type { ScheduledSlot } from "@/domains/mealTiming";
 import {
   buildOnboardingPromptContext,
   defaultOnboardingProfile,
@@ -90,48 +87,11 @@ interface SettingsSheetProps {
   domain: Domain;
 }
 
-/** The daily-reminder time control. iOS shows the inline compact picker; Android
- *  opens the native dialog from a tappable value row. */
-function ReminderTimeField({
-  hour,
-  minute,
-  onChange,
-}: {
-  hour: number;
-  minute: number;
-  onChange: (hour: number, minute: number) => void;
-}) {
-  const value = new Date();
-  value.setHours(hour, minute, 0, 0);
-  const apply = (date?: Date) => {
-    if (date) onChange(date.getHours(), date.getMinutes());
-  };
-  if (Platform.OS === "android") {
-    return (
-      <LoggedPressable
-        onPress={() =>
-          DateTimePickerAndroid.open({
-            value,
-            mode: "time",
-            is24Hour: true,
-            onChange: (_event, date) => apply(date),
-          })
-        }
-        accessibilityRole="button"
-        accessibilityLabel={t("settings.reminders.time")}
-      >
-        <ValueTrailing label={formatReminderTime(hour, minute)} />
-      </LoggedPressable>
-    );
-  }
-  return (
-    <DateTimePicker
-      value={value}
-      mode="time"
-      display="compact"
-      onChange={(_event, date) => apply(date)}
-    />
-  );
+/** The three learned reminder times, as "Café 10:00 · Almoço 12:55 · Janta 20:00". */
+function scheduleSummary(slots: ScheduledSlot[]): string {
+  return slots
+    .map((s) => `${slotLabel(s.type)} ${formatReminderTime(s.hour, s.minute)}`)
+    .join(" · ");
 }
 
 export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
@@ -154,7 +114,8 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const activeSettingsId = settingsStack.at(-1)?.id ?? null;
 
   const [autoTimezone, setAutoTimezone] = useState(true);
-  const [reminders, setReminders] = useState<ReminderPrefs | null>(null);
+  const [remindersOn, setRemindersOn] = useState<boolean | null>(null);
+  const [reminderSlots, setReminderSlots] = useState<ScheduledSlot[]>([]);
   const [savedMealsCount, setSavedMealsCount] = useState(0);
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
   const [savedExercisesCount, setSavedExercisesCount] = useState(0);
@@ -204,7 +165,11 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     if (!visible) return;
     void SavedMealRepository.count().then(setSavedMealsCount);
     void SavedExerciseRepository.count().then(setSavedExercisesCount);
-    if (Platform.OS !== "web") void getReminderPrefs().then(setReminders);
+    if (Platform.OS !== "web") {
+      void fetchRemindersEnabled().then(setRemindersOn);
+      void getScheduledSlots().then(setReminderSlots);
+      void isTimeZoneAuto().then(setAutoTimezone);
+    }
     void Promise.all([
       SavedRoutineRepository.count("food"),
       SavedRoutineRepository.count("workout"),
@@ -443,11 +408,11 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
 
   // Optimistic toggle: flip the switch now, revert if the OS denies permission.
   const toggleReminders = (enabled: boolean) => {
-    setReminders((prev) => (prev ? { ...prev, enabled } : prev));
+    setRemindersOn(enabled);
     void (async () => {
       const ok = await setRemindersEnabled(enabled);
       if (!ok) {
-        setReminders((prev) => (prev ? { ...prev, enabled: false } : prev));
+        setRemindersOn(false);
         if (enabled) {
           Alert.alert(
             t("settings.reminders.title"),
@@ -457,9 +422,9 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
       }
     })();
   };
-  const changeReminderTime = (hour: number, minute: number) => {
-    setReminders((prev) => (prev ? { ...prev, hour, minute } : prev));
-    void setReminderTime(hour, minute);
+  const toggleAutoTimezone = (auto: boolean) => {
+    setAutoTimezone(auto);
+    void setTimeZoneAuto(auto);
   };
 
   const settingsBody = (
@@ -574,7 +539,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
               />
             </Section>
 
-            {Platform.OS !== "web" && reminders ? (
+            {Platform.OS !== "web" && remindersOn !== null ? (
               <Section label={t("settings.reminders.title")}>
                 <SettingsRow
                   icon="bell"
@@ -583,24 +548,20 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
                   subtitle={t("settings.reminders.hint")}
                   trailing={
                     <Toggle
-                      value={reminders.enabled}
+                      value={remindersOn}
                       onValueChange={toggleReminders}
                       label={t("settings.reminders.title")}
                     />
                   }
                 />
-                {reminders.enabled ? (
+                {remindersOn && reminderSlots.length ? (
                   <>
                     <Divider />
                     <SettingsRow
-                      title={t("settings.reminders.time")}
-                      trailing={
-                        <ReminderTimeField
-                          hour={reminders.hour}
-                          minute={reminders.minute}
-                          onChange={changeReminderTime}
-                        />
-                      }
+                      icon="clock"
+                      iconColor={colors.accent}
+                      title={t("settings.reminders.schedule")}
+                      subtitle={scheduleSummary(reminderSlots)}
                     />
                   </>
                 ) : null}
@@ -629,7 +590,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
                 trailing={
                   <Toggle
                     value={autoTimezone}
-                    onValueChange={setAutoTimezone}
+                    onValueChange={toggleAutoTimezone}
                     label={t("settings.device.autoTimezone")}
                   />
                 }

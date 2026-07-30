@@ -537,6 +537,33 @@ test('a mixed note splits into one note per action', async () => {
   expect(day.food.entries[0].status).toBe('error');
 });
 
+// Two eating occasions in one note — "almocei arroz e frango e jantei arroz e
+// feijao" — is TWO meals, both `items` (no purchase). The exact case the user
+// hit: the model returns two note[] entries and the bus must explode them into
+// two separate meals, each counting on its own.
+test('two meals in one note split into two separate meal entries', async () => {
+  const { bus, day } = harness(async () => ({
+    ok: true as const,
+    data: {
+      notes: [
+        { text: 'almocei arroz e frango', data: { items: [{ label: 'arroz', calories: 130, protein: 3, carbs: 28, fat: 0 }, { label: 'frango', calories: 165, protein: 31, carbs: 0, fat: 4 }] } },
+        { text: 'jantei arroz e feijao', data: { items: [{ label: 'arroz', calories: 130, protein: 3, carbs: 28, fat: 0 }, { label: 'feijao', calories: 77, protein: 5, carbs: 14, fat: 0 }] } },
+      ],
+    },
+  }));
+
+  await bus.addEntry('almocei arroz e frango e jantei arroz e feijao', 'food');
+  await flush();
+
+  expect(day.food.entries).toHaveLength(2);
+  const [lunch, dinner] = day.food.entries;
+  expect(lunch.text).toBe('almocei arroz e frango');
+  expect(dinner.text).toBe('jantei arroz e feijao');
+  // Each carries only its own foods.
+  expect(lunch.data && 'items' in lunch.data && lunch.data.items.some((i) => i.label === 'frango')).toBe(true);
+  expect(dinner.data && 'items' in dinner.data && dinner.data.items.some((i) => i.label === 'feijao')).toBe(true);
+});
+
 // A single action must never be wrapped: a meal drawn from the fridge is linked
 // and repriced with the real product the app injected.
 test('a meal eaten from the fridge is linked and repriced', async () => {
