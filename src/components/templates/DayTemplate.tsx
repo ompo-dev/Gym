@@ -106,11 +106,6 @@ const TAB_BAR_CLEARANCE = Platform.OS === "android" ? 90 : 20;
 // reveal into the fast head of the show curve, so the buttons read as a spawn
 // rather than growing in with the rise.
 const KB_SHRINK_PX = 250;
-// The action buttons don't appear together — each grows in on its own slice of
-// the 0→1 rise (`BTN_STAGGER` apart, `BTN_SPAN` long), so they arrive one after
-// another and the last lands as the rise completes.
-const BTN_STAGGER = 0.3;
-const BTN_SPAN = 0.4;
 // The bar's height while the keyboard is up. A few px over the button frame so
 // it matches the SwiftUI glass buttons, whose material bleeds past their frame —
 // so the bar does not read as shorter than them. Down, it keeps `Metrics.dock`.
@@ -118,22 +113,31 @@ const DOCK_COMPACT_H = Metrics.dockButton + 4;
 // Breathing room each button takes with it: the slot opens to button + gap, and
 // the button is centred, so half lands on each side — adjacent buttons end up a
 // full `DOCK_GAP` apart. The bar is flex:1 and simply keeps whatever is left.
-const DOCK_GAP = Spacing.four;
+const DOCK_GAP = Spacing.three;
 
 /**
- * One button's slot. Its width opens 0 → (button + gap) so the flex:1 stats bar
- * shrinks to make room, and the button scales up inside that room. Button
- * `index` only starts once the previous has opened (`BTN_STAGGER`), so they come
- * out of the bar one after another instead of together.
+ * One button's reveal, tied to the space the bar has ACTUALLY opened for it.
+ *
+ * The buttons sit in a strip pinned to the right, under the bar; the bar uncovers
+ * them right-to-left as its margin grows. Hand-tuned stagger/span constants used
+ * to drive the reveal on a separate clock from that margin, so mid-rise the
+ * buttons were already solid while the bar had not moved out from under them —
+ * they overlapped, which is the misalignment in the frames.
+ *
+ * `progress * count` is how many whole slots have been uncovered. Slot `index`
+ * (0 = leftmost) has `count - 1 - index` slots to its right, so it reveals over
+ * exactly the stretch where its own slot opens: fully scaled precisely when its
+ * space is fully there, never before. Opening is closing reversed because both
+ * read the same number.
  *
  * No `overflow: hidden` on the slot: the SwiftUI glass bleeds a couple of points
  * past its frame, and a clip box exactly the button's size shaved all four sides
  * — the buttons rendered as octagons. Scale + opacity carry the reveal instead.
  */
-function useSlotStyle(progress: SharedValue<number>, index: number) {
+function useSlotStyle(progress: SharedValue<number>, index: number, count: number) {
   return useAnimatedStyle(() => {
     const p = Math.min(
-      Math.max((progress.value - index * BTN_STAGGER) / BTN_SPAN, 0),
+      Math.max(progress.value * count - (count - 1 - index), 0),
       1,
     );
     return { opacity: p, transform: [{ scale: p }] };
@@ -389,9 +393,10 @@ export function DayTemplate<TData, TTotals>({
   const kbProgress = useDerivedValue(() =>
     Math.min(Math.max(keyboard.height.value / KB_SHRINK_PX, 0), 1),
   );
-  const b0Style = useSlotStyle(kbProgress, 0);
-  const b1Style = useSlotStyle(kbProgress, 1);
-  const b2Style = useSlotStyle(kbProgress, 2);
+  const dockButtonCount = (isFood ? 2 : 1) + (Platform.OS === "ios" ? 1 : 0);
+  const b0Style = useSlotStyle(kbProgress, 0, dockButtonCount);
+  const b1Style = useSlotStyle(kbProgress, 1, dockButtonCount);
+  const b2Style = useSlotStyle(kbProgress, 2, dockButtonCount);
   const footerAnimStyle = useAnimatedStyle(() => {
     const base = insets.bottom + TAB_BAR_CLEARANCE;
     return {
@@ -399,9 +404,16 @@ export function DayTemplate<TData, TTotals>({
       paddingBottom: base - kbProgress.value * (base - Spacing.two),
     };
   });
+  // Swapping the bar's contents is a React re-render — a hard relayout that
+  // cannot ride the UI-thread clock. Fired at the halfway mark it landed in the
+  // middle of the motion, which is the frame where the bar is still showing all
+  // five macros, overflowing, while the buttons are already out. Flipping it at
+  // the very first pixel of travel means the swap happens while everything else
+  // is still at rest, and the whole shrink then runs with stable content. Same
+  // threshold on the way down, so it is symmetric.
   const [shrunk, setShrunk] = useState(false);
   useAnimatedReaction(
-    () => kbProgress.value > 0.5,
+    () => kbProgress.value > 0.02,
     (now, previous) => {
       if (now !== previous) runOnJS(setShrunk)(now);
     },
@@ -413,7 +425,6 @@ export function DayTemplate<TData, TTotals>({
   // the buttons and the bar did not move as one). The bar now shrinks by the
   // same width via an animated right margin, so dock, buttons and footer all
   // ride the single `keyboard.height` clock and opening is closing reversed.
-  const dockButtonCount = (isFood ? 2 : 1) + (Platform.OS === "ios" ? 1 : 0);
   const dockButtonsWidth = dockButtonCount * (Metrics.dockButton + DOCK_GAP);
   const dockFillStyle = useAnimatedStyle(() => ({
     // + a half-gap so the bar sits a full DOCK_GAP from the first button, the
@@ -1408,7 +1419,7 @@ export function DayTemplate<TData, TTotals>({
                     style={[styles.dockButtonSlot, isFood ? b2Style : b1Style]}
                   >
                     <DockActionButton
-                      systemImage="chevron.down"
+                      systemImage="keyboard.chevron.compact.down"
                       icon="keyboard"
                       tint={colors.textSecondary}
                       label="Dismiss keyboard"
@@ -1493,9 +1504,14 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
     justifyContent: "flex-end",
   },
+  // Fixed height, so the row is the one box both the bar and the button strip
+  // are centred in. Without it the row was sized by the bar, whose height
+  // animates — the absolutely-positioned buttons (top:0/bottom:0) re-centred on
+  // every frame and drifted against the bar as it shrank.
   dockRow: {
     flexDirection: "row",
     alignItems: "center",
+    height: Metrics.dock,
   },
   dockFill: {
     flex: 1,

@@ -16,6 +16,7 @@ import {
   foodSchema,
   purchaseSchema,
   schemaByDomain,
+  workoutMultiSchema,
 } from '@/domains/schemas';
 import { workoutPlanSchema } from '@/domains/workoutPlan';
 import { z } from 'zod';
@@ -90,8 +91,12 @@ const INTENT_SCHEMA: Partial<Record<EnrichEngineInput['intent'], z.ZodType>> = {
   // `purchase`, a meal has `items`. The bus explodes a split into real notes and
   // treats the other two exactly as before.
   foodAuto: z.union([foodMultiSchema, foodEntrySchema]),
-  // Disjoint the same way food is: a log has `exercise`, a plan has `days`.
-  workoutAuto: z.union([workoutPlanSchema, schemaByDomain.workout]),
+  // Disjoint the same way food is: a split has `notes`, a plan has `days`, a log
+  // has `exercise`. The multi shape MUST be here — this gate runs BEFORE the bus
+  // ever sees the answer, so leaving it out rejected every correctly-split
+  // workout note as "did not match schema" and silently fell back to the local
+  // one-exercise parse, which is the whole bug the split existed to fix.
+  workoutAuto: z.union([workoutPlanSchema, workoutMultiSchema, schemaByDomain.workout]),
   foodEdit: foodEditSchema,
   purchase: purchaseSchema,
   // A recipe answers with the whole meal, recipe included — same shape a parse
@@ -117,6 +122,19 @@ const MAX_TOKENS: Partial<Record<EnrichEngineInput['intent'], number>> = {
   // Seven days of exercises and sets.
   workoutPlan: 3000,
 };
+
+/**
+ * The gate every model answer passes before any caller sees it. Exported so a
+ * test can feed it a real payload: `INTENT_COVERAGE` only proves a schema is
+ * *present*, which is why a `workoutAuto` union that was missing the split shape
+ * looked fully covered while rejecting every split note in production.
+ */
+export function intentOutputSchema(
+  intent: EnrichEngineInput['intent'],
+  domain: Domain,
+): z.ZodType {
+  return INTENT_SCHEMA[intent] ?? schemaByDomain[domain];
+}
 
 /**
  * Exposed for the test that pins the pairing: an intent with a prompt but no
@@ -402,8 +420,7 @@ export async function runEnrichEngine(
   // to `purchaseSchema`, NOT to `schemaByDomain.food` — the union would happily
   // accept a meal-shaped reply, and a note saying "comprei" would land 1100
   // kcal on the day. Failing loudly here is the guarantee.
-  const outputSchema = INTENT_SCHEMA[intent] ?? schemaByDomain[domain];
-  const parsed = outputSchema.safeParse(raw);
+  const parsed = intentOutputSchema(intent, domain).safeParse(raw);
   if (!parsed.success) return { ok: false, error: 'AI response did not match schema' };
 
   return { ok: true, data: parsed.data, mediaDescriptions };

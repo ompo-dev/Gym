@@ -122,9 +122,9 @@ export function IOSNativeBottomSheet({
           ]}
         >
           <SwiftVStack
-            spacing={18}
+            spacing={10}
             modifiers={[
-              swiftPadding({ top: 10, bottom: 18, leading: 20, trailing: 20 }),
+              swiftPadding({ top: 8, bottom: 10, leading: 20, trailing: 20 }),
             ]}
           >
             <SwiftText
@@ -143,7 +143,7 @@ export function IOSNativeBottomSheet({
                 swiftButtonStyle("borderedProminent"),
                 swiftControlSize("large"),
                 swiftTint(colors.accent),
-                swiftFrame({ minHeight: 56, maxWidth: 2400 }),
+                swiftFrame({ minHeight: 50, maxWidth: 2400 }),
               ]}
             />
           </SwiftVStack>
@@ -287,7 +287,9 @@ export function PickerSheet({
       <IOSNativeBottomSheet
         visible
         title={title}
-        height={activePicker === "height" ? 430 : 380}
+        // Just the content: title + (segmented) + wheel + button. The old 430/380
+        // left a dead strip under the button on every one of these sheets.
+        height={activePicker === "height" ? 330 : 290}
         doneLabel={text.pickerDone}
         onClose={onClose}
         onDone={() => {
@@ -314,7 +316,7 @@ export function PickerSheet({
           onSelectionChange={setIosSelection}
           modifiers={[
             swiftPickerStyle("wheel"),
-            swiftFrame({ minHeight: 220, maxWidth: 2400 }),
+            swiftFrame({ minHeight: 160, maxWidth: 2400 }),
           ]}
         >
           {nativeItems.map((item) => (
@@ -577,7 +579,7 @@ function DateWheels({
         selectedValue={year}
         onValueChange={(v) => commit(Number(v), month, day)}
         itemStyle={styles.pickerItem}
-        style={styles.weightPickerColumn}>
+        style={styles.datePickerYearColumn}>
         {years.map((y) => (
           <Picker.Item key={y} label={String(y)} value={y} color={colors.text} />
         ))}

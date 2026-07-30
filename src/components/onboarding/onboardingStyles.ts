@@ -67,7 +67,11 @@ export function createOnboardingStyles(colors: OnboardingColors) {
     left: 22,
     right: 22,
     bottom: 0,
-    backgroundColor: colors.bg,
+    // Deliberately transparent. Painting the page background here put an opaque
+    // slab of the exact same colour directly behind the totals dock's Liquid
+    // Glass, which then had a flat colour to sample and rendered as invisible —
+    // the dock read as bare text instead of the pill it is on the diet home,
+    // where the footer is transparent over the scrolling list.
     paddingTop: 14,
   },
   primaryButton: {
@@ -989,7 +993,7 @@ export function createOnboardingStyles(colors: OnboardingColors) {
     flex: 1,
     backgroundColor: colors.overlay,
     justifyContent: "flex-end",
-    padding: 14,
+    padding: 10,
   },
   nativeSheetHost: {
     position: 'absolute',
@@ -1002,9 +1006,9 @@ export function createOnboardingStyles(colors: OnboardingColors) {
     borderRadius: 30,
     backgroundColor: colors.sheet,
     paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 18,
-    gap: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 10,
   },
   sheetHandle: {
     width: 64,
@@ -1045,7 +1049,9 @@ export function createOnboardingStyles(colors: OnboardingColors) {
     backgroundColor: colors.segmentActive,
   },
   pickerItem: {
-    fontSize: 22,
+    // 22 clipped the 4-digit year to "20…" — the wheel truncates rather than
+    // shrinking, so the type size is what has to give.
+    fontSize: 19,
     color: colors.text,
   },
   weightPickerRow: {
@@ -1053,6 +1059,10 @@ export function createOnboardingStyles(colors: OnboardingColors) {
   },
   weightPickerColumn: {
     flex: 1,
+  },
+  /** The year needs room for four digits where day and month need two or three. */
+  datePickerYearColumn: {
+    flex: 1.4,
   },
   nativePicker: {
     width: "100%",

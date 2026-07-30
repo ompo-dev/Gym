@@ -107,6 +107,33 @@ Interacoes principais:
 - Botao de midia abre menu de camera/galeria/barcode.
 - Botao de refeicao salva abre o seletor de refeicoes salvas.
 
+### Subida do teclado (dock + botoes)
+
+Tudo roda num relogio so: `useAnimatedKeyboard().height`. O footer translada
+`-height`, e `kbProgress` (0→1 nos primeiros `KB_SHRINK_PX`) move o resto.
+
+- **Os botoes sempre existem**, absolutos numa faixa presa a direita, sob a
+  barra. Nao reservam largura (host SwiftUI nao colapsa em `width:0`), entao
+  com o teclado fechado nao sobra vao.
+- **A barra abre espaco** com `marginRight` crescente e a faixa vai sendo
+  descoberta da direita para a esquerda.
+- **O reveal de cada botao e funcao do espaco que a barra ja abriu**, nao de um
+  stagger proprio: slot `i` (0 = mais a esquerda) usa
+  `clamp(progress * count - (count - 1 - i), 0, 1)`. Escala e opacidade chegam a
+  1 exatamente quando a fatia dele acabou de abrir — nunca antes. Por isso nao
+  ha sobreposicao, e abrir e o fechar invertido por construcao. Constantes de
+  stagger/span separadas (o modelo antigo) andavam fora de fase com a margem e
+  os botoes apareciam por cima da barra no meio da subida.
+- **`dockRow` tem altura fixa** (`Metrics.dock`). A barra encolhe a altura
+  *dentro* dela; se a linha fosse dimensionada pela barra, os botoes absolutos
+  (`top:0/bottom:0`) recentrariam a cada frame e derivariam contra ela.
+- **A troca full → compacto (`shrunk`) e re-render de React**, logo um salto de
+  layout que nao acompanha a UI thread. Dispara em `kbProgress > 0.02`, no
+  primeiro pixel de curso, quando todo o resto ainda esta parado — e volta no
+  mesmo limiar, entao e simetrico. No meio (0.5) o salto caia bem no olho do
+  usuario: barra com os cinco macros estourando enquanto os botoes ja estavam
+  fora.
+
 ## Menu de Midia
 
 Arquivo: `FoodMediaActionMenu.tsx`

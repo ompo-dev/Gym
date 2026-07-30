@@ -216,6 +216,42 @@ Servidor:
 - Chama DeepSeek.
 - Valida resposta no servidor e o cliente valida de novo antes de aplicar.
 
+### O portao de saida: `INTENT_SCHEMA` (invariante)
+
+**Toda forma que o prompt de um intent pode responder TEM que estar no
+`INTENT_SCHEMA` daquele intent** (`src/core/enrich/deepseek.ts`). Esse schema
+roda em `runEnrichEngine`, **antes** de qualquer chamador — se a resposta nao
+casa, vira `{ ok: false }` e o `CommandBus` nunca ve o conteudo.
+
+Foi exatamente assim que o split de treino nasceu quebrado: o prompt pedia
+`notes[]`, o `CommandBus` sabia explodir `notes[]`, mas `workoutAuto` era
+`union([plan, single])`. O modelo dividia certo, o portao rejeitava, e a nota
+caia no parser local — uma nota so, com o cardio grudado no exercicio de forca.
+
+`INTENT_COVERAGE` **nao** pega isso: ele so prova que existe *algum* schema.
+Quem pega e `src/core/enrich/intentOutput.test.ts`, que joga um payload real de
+cada forma (split, single, plan) contra o portao. Ao adicionar uma forma nova a
+um prompt de router, adicione junto:
+
+1. a forma no `INTENT_SCHEMA` daquele intent;
+2. o ramo que a consome no `CommandBus`;
+3. um caso em `intentOutput.test.ts`.
+
+### Teste ao vivo do modelo
+
+Os testes normais mockam `enrichFn` — provam o encanamento e **nada** sobre o
+modelo obedecer o prompt. `src/core/enrich/live.test.ts` chama o DeepSeek de
+verdade com os prompts reais e frases reais, e fica `skip` sem `LIVE_AI=1`
+(custa dinheiro e rede, entao nunca roda no CI nem em `npm test`):
+
+```bash
+LIVE_AI=1 DEEPSEEK_API_KEY=... npx jest src/core/enrich/live.test.ts
+```
+
+Rode depois de mexer em qualquer prompt de router. Ele usa um shim de `fetch`
+sobre `node:https` porque o `fetch` do jest-expo nao tem transporte no ambiente
+de teste.
+
 ## UI Nativa iOS
 
 `src/components/onboarding/onboardingNative.ts` carrega `@expo/ui/swift-ui`
