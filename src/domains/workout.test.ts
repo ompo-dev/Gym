@@ -189,6 +189,22 @@ test('formatWorkoutSetVolume shows the set volume in kg', () => {
   expect(formatWorkoutSetVolume({ weight: 50, unit: 'kg', reps: 10 })).toBe('500 kg');
 });
 
+test('"cada lado" doubles the load — per side of a barbell', () => {
+  // "50kg x 3 cada lado" = 50 per side = 100 total.
+  expect(parseWorkoutSetLine('50kg x 3 cada lado')).toEqual({
+    weight: 100,
+    unit: 'kg',
+    reps: 3,
+  });
+  // Through the set multiplier: two sets, both doubled.
+  expect(parseWorkoutText('supino reto\n2 de 10 50kg cada lado').sets).toEqual([
+    { reps: 10, weight: 100, unit: 'kg' },
+    { reps: 10, weight: 100, unit: 'kg' },
+  ]);
+  // Without the phrase it stays as written.
+  expect(parseWorkoutSetLine('50kg x 3')).toEqual({ weight: 50, unit: 'kg', reps: 3 });
+});
+
 test('formatWorkoutLoad switches to tonnes once a session passes 1 t', () => {
   expect(formatWorkoutLoad(0)).toBe('0 kg');
   expect(formatWorkoutLoad(999)).toBe('999 kg');

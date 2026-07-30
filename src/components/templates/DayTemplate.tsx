@@ -105,15 +105,16 @@ const TAB_BAR_CLEARANCE = Platform.OS === "android" ? 90 : 20;
 // keyboard so `progress` always reaches 1): a smaller value crammed the whole
 // reveal into the fast head of the show curve, so the buttons read as a spawn
 // rather than growing in with the rise.
-const KB_SHRINK_PX = 210;
+const KB_SHRINK_PX = 250;
 // The action buttons don't appear together — each grows in on its own slice of
 // the 0→1 rise (`BTN_STAGGER` apart, `BTN_SPAN` long), so they arrive one after
 // another and the last lands as the rise completes.
 const BTN_STAGGER = 0.3;
 const BTN_SPAN = 0.4;
-// The bar's height while the keyboard is up — matches the action buttons so the
-// row reads as equal-height controls. Down, it keeps the taller `Metrics.dock`.
-const DOCK_COMPACT_H = Metrics.dockButton;
+// The bar's height while the keyboard is up. A few px over the button frame so
+// it matches the SwiftUI glass buttons, whose material bleeds past their frame —
+// so the bar does not read as shorter than them. Down, it keeps `Metrics.dock`.
+const DOCK_COMPACT_H = Metrics.dockButton + 4;
 // Breathing room each button takes with it: the slot opens to button + gap, and
 // the button is centred, so half lands on each side — adjacent buttons end up a
 // full `DOCK_GAP` apart. The bar is flex:1 and simply keeps whatever is left.
@@ -1407,7 +1408,7 @@ export function DayTemplate<TData, TTotals>({
                     style={[styles.dockButtonSlot, isFood ? b2Style : b1Style]}
                   >
                     <DockActionButton
-                      systemImage="keyboard.chevron.compact.down"
+                      systemImage="chevron.down"
                       icon="keyboard"
                       tint={colors.textSecondary}
                       label="Dismiss keyboard"

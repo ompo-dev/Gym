@@ -256,6 +256,26 @@ export const workoutSchema = z.object({
 export type WorkoutData = z.infer<typeof workoutSchema>;
 
 /**
+ * One workout note that logs SEVERAL exercises — "supino 3x10 e corrida 5km".
+ * The local line-parser cannot tell which sets belong to which exercise on a
+ * single prose line, so here the model does the split and the bus explodes it
+ * into one resolved note per exercise, exactly like {@link foodMultiSchema}.
+ * Disjoint from the single shape by its `notes` key.
+ */
+export const workoutMultiSchema = z.object({
+  notes: z
+    .array(
+      z.object({
+        text: z.string().trim().min(1).max(500),
+        data: workoutSchema,
+      }),
+    )
+    .min(1)
+    .max(8),
+});
+export type WorkoutMultiData = z.infer<typeof workoutMultiSchema>;
+
+/**
  * What one onboarding note yields. Every field is optional because a note is a
  * sentence, not a form — "1,75m e 98kg" carries two of the six and that is a
  * complete, valid note.

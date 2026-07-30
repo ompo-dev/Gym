@@ -45,6 +45,9 @@ const SET_MULTIPLIER_RE =
   /\b(\d+)\s*(x|×|de|por)\s*(\d+(?:[.,]\d+)?)(?:\s+(\d+(?:[.,]\d+)?)\s*(kg|kgs?|lb|lbs?)?)?/i;
 const LEADING_WEIGHT_SET_MULTIPLIER_RE =
   /\b(\d+(?:[.,]\d+)?)\s*(kg|kgs?|lb|lbs?)\s+(\d+)\s*(x|\u00d7|de|por)\s*(\d+(?:[.,]\d+)?)/i;
+// "50kg cada lado" on a barbell is 50 per side → 100 total. Doubles the load of
+// the set on any line that says the weight is per side.
+const PER_SIDE_RE = /\b(?:cada\s+lado|por\s+lado|each\s+side|per\s+side)\b/i;
 const CARDIO_EXERCISE_RE =
   /\b(?:cardio|corrida|correr|run|running|esteira|treadmill|caminhada|walk|walking|bike|bicicleta|ciclismo|cycling|spinning|eliptico|eliptical|remo|rowing|natacao|nadar|swim|swimming|escada|stair|hiit)\b/i;
 
@@ -314,6 +317,7 @@ export function parseWorkoutSetLine(line: string, unitHint: 'kg' | 'lb' = 'kg'):
     ...(distanceMeters !== undefined ? { distanceMeters } : {}),
     ...(durationSeconds !== undefined ? { durationSeconds } : {}),
   };
+  if (set.weight !== undefined && PER_SIDE_RE.test(line)) set.weight *= 2;
 
   return Object.keys(set).length ? set : null;
 }
@@ -340,6 +344,7 @@ function parseSetMultiplier(line: string, unitHint: 'kg' | 'lb'): WorkoutSet[] |
       unit: normalizeUnit(leadingWeightMatch[2]) ?? unitHint,
       reps: Math.round(toNumber(leadingWeightMatch[5])),
     };
+    if (PER_SIDE_RE.test(line) && set.weight !== undefined) set.weight *= 2;
     return Array.from({ length: count }, () => ({ ...set }));
   }
 
@@ -360,6 +365,7 @@ function parseSetMultiplier(line: string, unitHint: 'kg' | 'lb'): WorkoutSet[] |
     set.weight = toNumber(match[4]);
     set.unit = normalizeUnit(match[5]) ?? unitHint;
   }
+  if (PER_SIDE_RE.test(line) && set.weight !== undefined) set.weight *= 2;
   return Array.from({ length: count }, () => ({ ...set }));
 }
 

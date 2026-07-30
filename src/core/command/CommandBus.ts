@@ -12,6 +12,7 @@ import {
   type OnboardingData,
   schemaByDomain,
   type WorkoutData,
+  workoutMultiSchema,
 } from '@/domains/schemas';
 import { attachPantryProvenance, type PantryItem } from '@/domains/pantry';
 import {
@@ -398,6 +399,38 @@ export class CommandBus {
             });
             await this.run(
               new CompositeCommand(planLabel(plan.data), [
+                ...commands,
+                new DeleteEntryCommand(this, entry, false),
+              ]),
+            );
+            this.deps.onNoteReplaced?.();
+            return;
+          }
+        }
+
+        // One note that logged SEVERAL exercises — "supino 3x10 e corrida 5km".
+        // The local line-parser cannot tell which sets belong to which exercise
+        // on one prose line, so the model split it; explode into one resolved
+        // note per exercise, one composite (a single undo takes them all back).
+        const multi = workoutMultiSchema.safeParse(res.data);
+        if (multi.success && multi.data.notes.length > 1) {
+          const commands = multi.data.notes.flatMap((note) => {
+            const cmd = this.createAddEntry(
+              note.text,
+              entry.domain,
+              undefined,
+              entry.date,
+              note.data,
+            );
+            return cmd ? [cmd] : [];
+          });
+          if (commands.length) {
+            log.note('workout log → notes', {
+              from: entry.text.slice(0, 40),
+              exercises: commands.length,
+            });
+            await this.run(
+              new CompositeCommand(`${commands.length} exercises`, [
                 ...commands,
                 new DeleteEntryCommand(this, entry, false),
               ]),
