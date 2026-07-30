@@ -53,6 +53,12 @@ Erros:
 - Falha de rede: `queued`, retry com backoff ate 5 tentativas.
 - Erro da IA ou schema invalido: `error` com botao `tentar de novo`.
 
+Uma nota pode virar varias. Quando o texto tem mais de uma acao — "comprei X e
+comi Y", ou duas refeicoes ("almocei arroz com frango e na janta comi arroz com
+ovo") — o modelo devolve `notes[]` e o bus explode em uma nota `done` por acao,
+num `CompositeCommand` (um undo desfaz todas). Detalhe do mecanismo em
+`architecture.md`.
+
 ## 3. Nota de Comida com Fotos ou Cardapio
 
 ```mermaid
@@ -271,6 +277,25 @@ colidem na mesma entrada de cache de proposito — a correcao ja aconteceu antes
 do hash. A chave nao inclui o `context`, entao o mesmo texto reaproveita o
 resultado mesmo que o exercicio anterior do dia tenha mudado.
 
+### Uma nota, varios exercicios
+
+O parser de linha registra um exercicio por nota. Quando a nota tem mais de um
+exercicio numa frase — "supino reto 2 de 10 50kg cada lado e uma corrida de 1km
+em 10min" — o parser nao sabe quais series pertencem a qual movimento, entao o
+modelo devolve `workoutMultiSchema` (`notes[]`) e o bus explode em uma nota `done`
+por exercicio, num `CompositeCommand` (um undo desfaz todas): uma de forca
+(supino) e uma de cardio (corrida). O router conta os exercicios distintos: um so
+volta na forma LOG normal; dois ou mais viram `notes[]`. Nunca dropa um
+exercicio.
+
+### "cada lado" dobra a carga
+
+`cada lado` / `por lado` / `each side` / `per side` numa linha de serie significa
+que o peso e por lado de uma barra ou par de halteres — `50kg cada lado` = 100kg.
+O `PER_SIDE_RE` em `parseWorkoutSetLine` e nos dois ramos de `parseSetMultiplier`
+dobra a carga localmente, e o prompt de LOG ensina a mesma regra para a IA. Sem
+a palavra, o peso vai como escrito.
+
 ### Series e cardio na mesma estrutura
 
 `parseWorkoutSetLine` tenta cardio e forca na mesma linha:
@@ -404,3 +429,58 @@ Retry:
 1. Entrada em `error` mostra `tentar de novo`.
 2. Tap limpa tentativas e status vira `thinking`.
 3. `CommandBus` reexecuta enriquecimento.
+
+O retry automatico (backoff) vive **em memoria** (`attempts` Map + `setTimeout`),
+entao morre junto com o processo. Uma nota que ficou `thinking`/`queued`, ou que
+desistiu como `error:enrich.offline`, nao tem quem a retome sozinha — e o que a
+proxima secao resolve.
+
+## 14. Drenagem da fila (boot + background)
+
+```mermaid
+sequenceDiagram
+  participant Root as RootLayout
+  participant Bus as CommandBus
+  participant Repo as EntryRepository
+  participant OS as WorkManager/BGTask
+
+  Root->>Bus: resumePending() (apos hydrate + onboarding)
+  Bus->>Repo: findPending()
+  Repo-->>Bus: thinking/queued/error:offline
+  Bus->>Bus: re-enfileira cada (pula midia)
+  Root->>OS: registerEnrichDrain() (task 15min)
+  OS-->>Bus: (mais tarde) resumePending() + maybeNudgeLapsed()
+```
+
+`CommandBus.resumePending()` re-dirige o que ficou pendente:
+
+- `findPending` (novo no `EntryRepository`) traz, de qualquer dia, as entradas
+  `thinking`/`queued` e as `error` cujo motivo e `enrich.offline`. Erros
+  deterministicos (`parse`/`failed`) ficam de fora — repeti-los daria o mesmo
+  erro; esperam o retry manual.
+- **Idempotente**: cache LRU + `inflight` deduplicam, e so linhas pendentes sao
+  tocadas. `resumePending` **aguarda** cada enrich, entao a background task
+  segura o processo aberto ate a fila assentar em vez de voltar pro suspend.
+- **Pula midia**: `runEnrich` so reenvia `text`; retomar uma nota com foto
+  reconstruiria a refeicao sem as imagens (mesma razao do §3).
+- Roda no boot (`app/_layout.tsx`, depois do hydrate + onboarding) e de novo
+  quando o SO acorda a task (`core/background/enrichDrain.ts`, `expo-background-task`,
+  minimo 15min, um unico worker). Simulador iOS nao roda background task.
+
+## 15. Lembretes locais
+
+Local, sem backend nem push — `expo-notifications` agendando na propria maquina.
+
+- Ajustes > Lembretes: liga/desliga + horario. Ao ligar pela primeira vez pede
+  permissao; negada, o switch volta e um alerta manda o usuario aos ajustes do
+  aparelho. Android 13+ cria um channel antes do prompt.
+- **Lembrete diario** (`reminders.ts`): um `scheduleNotificationAsync` com trigger
+  `DAILY` no horario escolhido. Id fixo (`gym.daily-reminder`) → reagendar
+  cancela e recria, nunca empilha duplicata. Reafirmado no boot por `initReminders`.
+- **Nudge de lapso** (Fase 3, `maybeNudgeLapsed`): a background task, ao acordar,
+  se os lembretes estao ligados e nao ha nota food/workout ha >= 2 dias
+  (`shouldNudgeLapsed`, `EntryRepository.lastLoggedDate`), dispara uma notificacao
+  imediata (`trigger: null`), deduplicada uma vez por dia. Copy e gatilho
+  distintos do lembrete diario, entao os dois nao colidem num dia normal.
+- Os helpers puros de horario e a decisao de lapso ficam em `reminderPrefs.ts`
+  (sem import nativo), testados em `reminderPrefs.test.ts`.

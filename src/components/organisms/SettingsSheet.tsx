@@ -1,6 +1,9 @@
+import DateTimePicker, {
+  DateTimePickerAndroid,
+} from "@react-native-community/datetimepicker";
 import Constants from "expo-constants";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { Alert, Platform, StyleSheet, View } from "react-native";
 import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from "@/components/atoms/AppIcon";
@@ -13,6 +16,15 @@ import {
   type AppModalAnchor,
 } from "@/core/appModals";
 import { enrich } from "@/core/enrich/client";
+import {
+  formatReminderTime,
+  type ReminderPrefs,
+} from "@/core/notifications/reminderPrefs";
+import {
+  getReminderPrefs,
+  setReminderTime,
+  setRemindersEnabled,
+} from "@/core/notifications/reminders";
 import {
   buildOnboardingPromptContext,
   defaultOnboardingProfile,
@@ -78,6 +90,50 @@ interface SettingsSheetProps {
   domain: Domain;
 }
 
+/** The daily-reminder time control. iOS shows the inline compact picker; Android
+ *  opens the native dialog from a tappable value row. */
+function ReminderTimeField({
+  hour,
+  minute,
+  onChange,
+}: {
+  hour: number;
+  minute: number;
+  onChange: (hour: number, minute: number) => void;
+}) {
+  const value = new Date();
+  value.setHours(hour, minute, 0, 0);
+  const apply = (date?: Date) => {
+    if (date) onChange(date.getHours(), date.getMinutes());
+  };
+  if (Platform.OS === "android") {
+    return (
+      <LoggedPressable
+        onPress={() =>
+          DateTimePickerAndroid.open({
+            value,
+            mode: "time",
+            is24Hour: true,
+            onChange: (_event, date) => apply(date),
+          })
+        }
+        accessibilityRole="button"
+        accessibilityLabel={t("settings.reminders.time")}
+      >
+        <ValueTrailing label={formatReminderTime(hour, minute)} />
+      </LoggedPressable>
+    );
+  }
+  return (
+    <DateTimePicker
+      value={value}
+      mode="time"
+      display="compact"
+      onChange={(_event, date) => apply(date)}
+    />
+  );
+}
+
 export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const colors = useColors();
   useAppStore((s) => s.lang); // re-render strings when language changes
@@ -98,6 +154,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const activeSettingsId = settingsStack.at(-1)?.id ?? null;
 
   const [autoTimezone, setAutoTimezone] = useState(true);
+  const [reminders, setReminders] = useState<ReminderPrefs | null>(null);
   const [savedMealsCount, setSavedMealsCount] = useState(0);
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
   const [savedExercisesCount, setSavedExercisesCount] = useState(0);
@@ -147,6 +204,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     if (!visible) return;
     void SavedMealRepository.count().then(setSavedMealsCount);
     void SavedExerciseRepository.count().then(setSavedExercisesCount);
+    if (Platform.OS !== "web") void getReminderPrefs().then(setReminders);
     void Promise.all([
       SavedRoutineRepository.count("food"),
       SavedRoutineRepository.count("workout"),
@@ -383,6 +441,27 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     setSettingsOptionMenu(null);
   };
 
+  // Optimistic toggle: flip the switch now, revert if the OS denies permission.
+  const toggleReminders = (enabled: boolean) => {
+    setReminders((prev) => (prev ? { ...prev, enabled } : prev));
+    void (async () => {
+      const ok = await setRemindersEnabled(enabled);
+      if (!ok) {
+        setReminders((prev) => (prev ? { ...prev, enabled: false } : prev));
+        if (enabled) {
+          Alert.alert(
+            t("settings.reminders.title"),
+            t("settings.reminders.denied"),
+          );
+        }
+      }
+    })();
+  };
+  const changeReminderTime = (hour: number, minute: number) => {
+    setReminders((prev) => (prev ? { ...prev, hour, minute } : prev));
+    void setReminderTime(hour, minute);
+  };
+
   const settingsBody = (
           <>
             <AccountCard />
@@ -494,6 +573,39 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
                 onPress={openEstimationBias}
               />
             </Section>
+
+            {Platform.OS !== "web" && reminders ? (
+              <Section label={t("settings.reminders.title")}>
+                <SettingsRow
+                  icon="bell"
+                  iconColor={colors.water}
+                  title={t("settings.reminders.title")}
+                  subtitle={t("settings.reminders.hint")}
+                  trailing={
+                    <Toggle
+                      value={reminders.enabled}
+                      onValueChange={toggleReminders}
+                      label={t("settings.reminders.title")}
+                    />
+                  }
+                />
+                {reminders.enabled ? (
+                  <>
+                    <Divider />
+                    <SettingsRow
+                      title={t("settings.reminders.time")}
+                      trailing={
+                        <ReminderTimeField
+                          hour={reminders.hour}
+                          minute={reminders.minute}
+                          onChange={changeReminderTime}
+                        />
+                      }
+                    />
+                  </>
+                ) : null}
+              </Section>
+            ) : null}
 
             <Section label={t("settings.section.device")}>
               <View ref={themeRowRef} collapsable={false}>

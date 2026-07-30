@@ -156,11 +156,16 @@ repository <- SQLite e o caminho de leitura; o LRU so evita reprocessar uma nota
 identica. Nao existe tier de cache generico, de proposito — seria estado a mais
 para sincronizar sem ganho.
 
-Duas notas nascem de uma quando o modelo devolve mais de uma acao: "comprei X e
-comi Y" volta como `notes[]` e o bus explode em uma nota por acao num
-`CompositeCommand` (um undo desfaz o conjunto), igual ao plano de treino que vira
-uma nota por exercicio. Nota de refeicao que puxa da geladeira e vinculada e
-reprecificada com o produto real em `attachPantryProvenance` antes de resolver.
+Varias notas nascem de uma quando o modelo devolve mais de uma acao. O mesmo
+mecanismo — `notes[]` explodido em `CompositeCommand`, um undo desfaz o conjunto —
+cobre quatro casos: comida multi-acao ("comprei X e comi Y" → compra + refeicao),
+duas ocasioes de refeicao numa nota ("almocei arroz com frango e na janta comi
+arroz com ovo" → duas refeicoes), o plano de treino que vira uma nota por
+exercicio, e a nota de treino que registra varios exercicios de uma vez ("supino
+3x10 e corrida 5km" → uma nota de forca + uma de cardio). Cada nota gerada ja
+nasce `done` com seus dados, sem novo round-trip. Nota de refeicao que puxa da
+geladeira e vinculada e reprecificada com o produto real em
+`attachPantryProvenance` antes de resolver.
 
 Comida com foto/barcode tem caminho especial em `DayTemplate`, porque precisa
 juntar dados de Open Food Facts, imagens, descricoes e nota em um unico
@@ -184,7 +189,7 @@ em release (`__DEV__`) e sob jest (`NODE_ENV === 'test'`). A instrumentacao mora
 nos pontos por onde tudo ja passa, nao espalhada por componente:
 
 - `useAppModalStore`: toda navegacao (sheet/modal/menu/picker) com de -> para.
-- `CommandBus`: ciclo de vida da nota (add/edit/delete/undo/retry/split/resolved).
+- `CommandBus`: ciclo de vida da nota (add/edit/delete/undo/retry/resume/split/resolved).
 - `enrich/client` + `enrich/deepseek`: request e response reais, com `usage` de
   cache do DeepSeek (hit/miss) e o corpo inteiro no erro.
 - `useAppStore`, `EntryRepository`: troca de dia e escritas no banco.

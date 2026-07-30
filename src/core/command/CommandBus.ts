@@ -56,6 +56,9 @@ export interface RepoPort {
   insert: (entry: Entry) => Promise<void>;
   update: (id: string, patch: Partial<Entry>) => Promise<void>;
   delete: (id: string) => Promise<void>;
+  /** Unfinished notes across every day — see {@link CommandBus.resumePending}.
+   *  Optional so a test harness need not provide it. */
+  findPending?: () => Promise<Entry[]>;
 }
 
 export interface BusDeps {
@@ -192,6 +195,47 @@ export class CommandBus {
     this.cancelled.delete(entry.id);
     void this.setStatus(entry.domain, entry.id, 'thinking');
     this.enqueueEnrich(entry);
+  }
+
+  /**
+   * Re-drive every note the app never finished enriching. The retry queue lives
+   * in memory (`attempts` Map + `setTimeout`), so a kill or long background drop
+   * leaves `thinking`/`queued`/`error:offline` rows with nothing to resume them.
+   * Called on cold start and on a background wake; the two share this one path.
+   *
+   * Idempotent by construction: the LRU cache and `inflight` Map dedupe, and only
+   * unfinished rows are touched. Awaits each enrich so a background task can hold
+   * the process open until the drain settles instead of returning into a suspend.
+   *
+   * Media notes are skipped: `runEnrich` only re-sends `text`, so resuming one
+   * would rebuild the meal without its photos — the same reason the retry button
+   * is hidden for them (see docs/data-flows.md §3).
+   */
+  async resumePending(): Promise<number> {
+    const pending = (await this.deps.repo.findPending?.()) ?? [];
+    // ponytail: skip media here rather than in SQL — the column is JSON, and the
+    // set is tiny, so filtering in JS is simpler than a LIKE on serialized text.
+    const drainable = pending.filter((entry) => !entry.media?.length);
+    if (!drainable.length) return 0;
+    log.note('resume pending', {
+      count: drainable.length,
+      skippedMedia: pending.length - drainable.length,
+    });
+    // ponytail: unbounded fan-out; pending is normally a handful. Add a
+    // concurrency cap if a user can realistically pile up dozens while offline.
+    await Promise.all(
+      drainable.map(async (entry) => {
+        this.attempts.delete(entry.id);
+        this.cancelled.delete(entry.id);
+        if (entry.status !== 'thinking') {
+          await this.setStatus(entry.domain, entry.id, 'thinking');
+        }
+        await this.runEnrich(entry).catch(() => {
+          /* runEnrich already routed the failure to queued/error */
+        });
+      }),
+    );
+    return drainable.length;
   }
 
   // ---- internals used by the commands ------------------------------------

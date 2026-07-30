@@ -12,7 +12,9 @@
       "icon": "./assets/gym.icon",
       "appleTeamId": "0000000000",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.com.ompinho.gymnotes"]
+        "com.apple.security.application-groups": [
+          "group.com.ompinho.gymnotes"
+        ]
       }
     },
     "android": {
@@ -63,7 +65,14 @@
           "photosPermission": "Permitir que o Gym acesse suas fotos para anexar imagens de alimentos e cardapios"
         }
       ],
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      "expo-background-task",
+      [
+        "expo-notifications",
+        {
+          "color": "#F0B648"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

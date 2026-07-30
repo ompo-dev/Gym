@@ -54,6 +54,14 @@ function harness(
       if (cur) rows.set(id, { ...cur, ...patch });
     },
     delete: async (id) => void rows.delete(id),
+    // Mirrors EntryRepository.findPending: unfinished notes across every day.
+    findPending: async () =>
+      [...rows.values()].filter(
+        (e) =>
+          e.status === 'thinking' ||
+          e.status === 'queued' ||
+          (e.status === 'error' && e.error === 'enrich.offline'),
+      ),
   };
 
   const bus = new CommandBus({
@@ -662,4 +670,51 @@ test('a successful enrich is still cached', async () => {
   await flush();
 
   expect(enrichFn).toHaveBeenCalledTimes(1);
+});
+
+// ---- resume pending (background/boot drain) ---------------------------------
+
+// The in-memory retry queue dies with the process. A note left thinking/queued,
+// or that gave up as error:offline, has nothing to resume it on the next launch
+// — resumePending re-drives exactly those, skips media (retry loses the photos)
+// and done rows, and is idempotent once they resolve.
+test('resumePending re-drives stuck notes, skipping media and done', async () => {
+  const enrichFn = jest.fn(async () => foodOk());
+  const { bus, rows } = harness(enrichFn);
+
+  const seed = (over: Partial<Entry> & Pick<Entry, 'id' | 'text' | 'status'>): Entry => ({
+    date: TODAY,
+    domain: 'food',
+    media: undefined,
+    data: null,
+    error: null,
+    createdAt: 1,
+    ...over,
+  });
+  rows.set('a', seed({ id: 'a', text: 'burger', status: 'thinking' }));
+  rows.set('b', seed({ id: 'b', text: 'salad', status: 'error', error: 'enrich.offline' }));
+  rows.set(
+    'c',
+    seed({
+      id: 'c',
+      text: 'photo',
+      status: 'thinking',
+      media: [{ id: 'm', kind: 'foodPhoto', description: '' }],
+    }),
+  );
+  rows.set('d', seed({ id: 'd', text: 'eaten', status: 'done' }));
+
+  const count = await bus.resumePending();
+  await flush();
+
+  expect(count).toBe(2); // a + b only
+  expect(enrichFn).toHaveBeenCalledTimes(2);
+  expect(rows.get('a')?.status).toBe('done');
+  expect(rows.get('b')?.status).toBe('done');
+  expect(rows.get('c')?.status).toBe('thinking'); // media note left for the user
+  expect(rows.get('d')?.status).toBe('done');
+
+  // Nothing pending now → a second sweep is a no-op (idempotent).
+  expect(await bus.resumePending()).toBe(0);
+  expect(enrichFn).toHaveBeenCalledTimes(2);
 });

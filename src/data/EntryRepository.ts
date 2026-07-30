@@ -118,6 +118,36 @@ export const EntryRepository = {
     return rows.map(toEntry);
   },
 
+  /**
+   * Notes the app never finished enriching, across every day. `thinking`/`queued`
+   * were in flight or waiting on the in-memory backoff when the process died;
+   * `error` + `enrich.offline` gave up after the network retries ran out — all
+   * safe to re-drive when the app (or a background task) wakes with a network
+   * again. Deterministic failures (`enrich.parse`/`enrich.failed`) are left for a
+   * manual retry. The literal mirrors `ENRICH_ERROR.offline` — kept a string here
+   * so the data layer does not import the command layer.
+   */
+  async findPending(): Promise<Entry[]> {
+    const db = await getDb();
+    const rows = await db.getAllAsync<Row>(
+      `SELECT * FROM entries
+        WHERE status IN ('thinking', 'queued')
+           OR (status = 'error' AND error = 'enrich.offline')
+        ORDER BY createdAt ASC`,
+    );
+    return rows.map(toEntry);
+  },
+
+  /** Most recent day with a real (food/workout) log, or null. Drives the lapsed
+   *  reminder — onboarding notes are excluded, they are setup, not activity. */
+  async lastLoggedDate(): Promise<string | null> {
+    const db = await getDb();
+    const row = await db.getFirstAsync<{ maxDate: string | null }>(
+      "SELECT MAX(date) AS maxDate FROM entries WHERE domain IN ('food', 'workout')",
+    );
+    return row?.maxDate ?? null;
+  },
+
   async insert(entry: Entry): Promise<void> {
     log.db('entries.insert', { id: entry.id, domain: entry.domain, status: entry.status });
     const db = await getDb();
