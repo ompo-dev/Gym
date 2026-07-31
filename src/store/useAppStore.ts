@@ -32,6 +32,11 @@ interface AppState {
   onboardingDone: boolean;
   onboardingProfile: OnboardingProfile | null;
   apiKeys: ApiKeys;
+  /** True while notes are queued for lack of network. Set by the CommandBus (via
+   *  `onOffline`), read by the header badge. Not persisted — a fresh launch
+   *  re-derives it the first time a request succeeds or fails. */
+  isOffline: boolean;
+  setOffline: (offline: boolean) => void;
   setApiKeys: (patch: Partial<ApiKeys>) => Promise<void>;
   setDate: (domain: Domain, date: string) => void;
   setEntries: (domain: Domain, entries: Entry[]) => void;
@@ -88,6 +93,10 @@ export const useAppStore = create<AppState>((set) => ({
   onboardingDone: false,
   onboardingProfile: null,
   apiKeys: defaultApiKeys(),
+  isOffline: false,
+
+  setOffline: (offline) =>
+    set((s) => (s.isOffline === offline ? {} : { isOffline: offline })),
 
   setDate: (domain, date) => {
     log.store(`setDate ${domain}`, { date });

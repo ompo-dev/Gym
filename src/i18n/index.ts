@@ -381,6 +381,9 @@ const dict = {
     "reminders.lunch.body": "Registra seu almoço de hoje.",
     "reminders.dinner.title": "Janta 🌙",
     "reminders.dinner.body": "Não esquece de anotar a janta.",
+    "offline.badge": "Offline",
+    "offline.title": "Você está offline",
+    "offline.body": "Suas anotações estão salvas e vão ser enviadas assim que a conexão voltar.",
     "settings.bias.title": "Viés de estimativa",
     "settings.bias.body":
       "Às vezes os dados encontrados online não são perfeitos. Escolha como GymNotes deve lidar com a incerteza nas estimativas de calorias de acordo com seus objetivos.",
@@ -804,6 +807,9 @@ const dict = {
     "reminders.lunch.body": "Log today's lunch.",
     "reminders.dinner.title": "Dinner 🌙",
     "reminders.dinner.body": "Don't forget to log dinner.",
+    "offline.badge": "Offline",
+    "offline.title": "You're offline",
+    "offline.body": "Your notes are saved and will be sent as soon as you're back online.",
     "settings.bias.title": "Estimation bias",
     "settings.bias.body":
       "Sometimes online nutrition data is not perfect. Choose how GymNotes should handle uncertainty in calorie estimates based on your goals.",

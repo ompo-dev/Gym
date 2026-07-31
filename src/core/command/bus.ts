@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { Keyboard } from 'react-native';
 
 import { enrich } from '@/core/enrich/client';
+import { isDeviceOffline } from '@/core/net/connectivity';
 import { buildOnboardingPromptContext, buildWorkoutPromptContext } from '@/core/onboarding';
 import { EntryRepository } from '@/data/EntryRepository';
 import { PantryRepository } from '@/data/PantryRepository';
@@ -36,6 +37,10 @@ export const bus = new CommandBus({
     upsert: (domain, entry) => useAppStore.getState().upsertEntry(domain, entry),
     remove: (domain, id) => useAppStore.getState().removeEntry(domain, id),
   },
+  // Offline plumbing: the bus asks the radio whether to park or back off, and
+  // reports the offline state into the store for the header badge.
+  isOffline: isDeviceOffline,
+  onOffline: (offline) => useAppStore.getState().setOffline(offline),
   // The row the cursor is in is about to be deleted and replaced by the plan.
   onNoteReplaced: () => Keyboard.dismiss(),
   onResolved: () => {

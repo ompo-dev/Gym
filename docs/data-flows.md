@@ -523,3 +523,48 @@ futuro e deteccao de viagem. Toggle "fuso automatico" nos ajustes.
 Pre/pos-treino: `mealType` os carrega quando a IA le do texto ("pré-treino"), mas
 **nao geram notificacao propria na v1** e a derivacao por proximidade temporal
 ficou deferida (`// ponytail`).
+
+## 17. Offline e a fila
+
+Nao ha fila nova: **as notas SAO a fila**. Uma nota nasce `thinking`; se o enrich
+nao completa, fica `queued` na tabela `entries` — persistida, ordenada, drenavel.
+`resumePending` ja re-dispara `thinking`/`queued` de qualquer dia.
+
+```mermaid
+flowchart TD
+  A["nota de comida offline"] --> B["enrich lanca NetworkError"]
+  B --> C["CommandBus.retryLater"]
+  C --> D{"checkOffline()?"}
+  D -->|sim| E["status = queued · onOffline(true) · SEM timer"]
+  D -->|nao| F["backoff de 5 tentativas (blip de servidor)"]
+  G["reconectou / boot / task 15min"] --> H["resumePending()"]
+  H --> I["enrich volta → done · markOnline"]
+```
+
+Duas camadas, de proposito:
+
+- **Verdade = o resultado da requisicao.** So um `NetworkError` *lancado* enfileira;
+  uma resposta que volta — ok, chave rejeitada, schema invalido — prova que a rede
+  esta de pe (`markOnline`, nos 3 pontos de `await`, **nunca** em `applyResolved`,
+  que tambem roda no fallback local offline de treino/onboarding). Erros
+  terminais (`{ok:false}`) continuam `error`, nunca fila.
+- **Gatilho = `expo-network`** (`core/net/connectivity.ts`), so pra decidir
+  "vale tentar agora" e acordar o dreno. Portal cativo mente (`isConnected:true`
+  sem alcance); por isso o radio nunca define o badge — quem define e o resultado.
+
+`retryLater` **nao gasta as 5 tentativas quando offline**: sem incremento, sem
+timer, so `queued`. Antes, o avião virava "falhou" em ~31s. Online-mas-falhou
+mantem o backoff de sempre. (`// ponytail`: proxy configurado e inalcancavel
+tambem enfileira pra sempre em vez de errar — aceitavel; o badge diz "na fila".)
+
+Ja era offline: **treino e onboarding 100%** (parser local); **comida-texto**
+agora enfileira em vez de errar. **Comida com foto** e o gap — `runEnrich` so
+reenvia `text`, entao `resumePending` a pula (retomar reconstruiria a refeicao
+sem as imagens). Fica em `error` com a copy atual; re-encodar o `uri`→base64 na
+hora do dreno e uma fase propria (I/O + limite de 2.5MB por imagem), deferida.
+
+Badge: `useAppStore.isOffline` (setado por `onOffline`) mostra a pilula ambar de
+nuvem-cortada no header, entre o DateNav e ajustes. Tocar abre um `Popover`
+SwiftUI nativo (iOS) / `Alert` (Android) explicando a fila. As laterais do header
+sao espelhadas (um spacer do lado esquerdo casa a largura do badge) pro DateNav
+nao deslocar ao ficar offline.

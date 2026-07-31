@@ -26,6 +26,7 @@ const SF: Record<AppIconName, SFSymbol> = {
   chevronUp: 'chevron.up',
   circleDot: 'smallcircle.filled.circle',
   circleHelp: 'questionmark.circle',
+  cloudOff: 'icloud.slash',
   clock: 'clock',
   contrast: 'circle.righthalf.filled',
   crown: 'crown',

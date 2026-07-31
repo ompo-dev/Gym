@@ -21,7 +21,7 @@ const workoutOk = () => ({ exercise: 'Supino reto', kind: 'série' });
 
 function harness(
   enrichFn: (req: EnrichRequest) => Promise<EnrichResponse>,
-  extraDeps: Partial<Pick<BusDeps, 'getUserContext' | 'getPantry'>> = {},
+  extraDeps: Partial<Pick<BusDeps, 'getUserContext' | 'getPantry' | 'isOffline' | 'onOffline'>> = {},
 ) {
   const day: Record<Domain, { date: string; entries: Entry[] }> = {
     food: { date: TODAY, entries: [] },
@@ -697,6 +697,78 @@ test('a successful enrich is still cached', async () => {
   await flush();
 
   expect(enrichFn).toHaveBeenCalledTimes(1);
+});
+
+// ---- offline queue ----------------------------------------------------------
+
+// Offline, the retry queue must NOT burn its five attempts and decay to "failed"
+// — a plane trip would turn every food note into an error in ~30s. The note is
+// parked as `queued`, no backoff timer is set, and the badge flag is raised.
+test('offline: a failed note is parked as queued, no timer, badge on', async () => {
+  const flags: boolean[] = [];
+  const { bus, day, scheduled } = harness(
+    async () => {
+      throw new Error('offline');
+    },
+    { isOffline: () => true, onOffline: (o) => flags.push(o) },
+  );
+
+  await bus.addEntry('burger', 'food');
+  await flush();
+
+  expect(day.food.entries[0].status).toBe('queued');
+  expect(scheduled).toHaveLength(0); // no backoff timer while offline
+  expect(flags).toContain(true); // header badge turned on
+});
+
+test('reconnecting drains the parked note to done', async () => {
+  let offline = true;
+  const { bus, day } = harness(
+    async () => {
+      if (offline) throw new Error('offline');
+      return foodOk();
+    },
+    { isOffline: () => offline },
+  );
+
+  await bus.addEntry('burger', 'food');
+  await flush();
+  expect(day.food.entries[0].status).toBe('queued');
+
+  offline = false;
+  await bus.resumePending(); // what the connectivity listener calls
+  await flush();
+  expect(day.food.entries[0].status).toBe('done');
+});
+
+// The distinction that must never break: only a THROW (network down) queues.
+// A request that failed while ONLINE (server blip) keeps the bounded backoff.
+test('online request failure still uses the retry backoff, not the offline park', async () => {
+  const { bus, day, scheduled } = harness(
+    async () => {
+      throw new Error('server blip');
+    },
+    { isOffline: () => false },
+  );
+
+  await bus.addEntry('burger', 'food');
+  await flush();
+
+  expect(day.food.entries[0].status).toBe('queued');
+  expect(scheduled).toHaveLength(1); // backoff timer, exactly as before
+});
+
+test('a request that comes back clears the offline flag', async () => {
+  const flags: boolean[] = [];
+  const { bus } = harness(async () => foodOk(), {
+    isOffline: () => false,
+    onOffline: (o) => flags.push(o),
+  });
+
+  await bus.addEntry('burger', 'food');
+  await flush();
+
+  expect(flags).toContain(false); // markOnline fired on the resolved request
 });
 
 // ---- resume pending (background/boot drain) ---------------------------------

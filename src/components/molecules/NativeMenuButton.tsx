@@ -23,7 +23,7 @@ import { Metrics, Radii, Spacing } from '@/constants/theme';
  * ponytail: `controlSize` is the calibration knob — 'extraLarge' fills a 44 box
  * but overflows a smaller one, so anything under iconButton steps down a size.
  */
-function glassCircleModifiers(size: number, tint?: string) {
+export function glassCircleModifiers(size: number, tint?: string) {
   return [
     swiftButtonStyle?.('glass'),
     swiftButtonBorderShape?.('circle'),

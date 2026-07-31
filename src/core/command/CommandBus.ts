@@ -76,6 +76,19 @@ export interface BusDeps {
   getPantry?: () => Promise<PantryItem[]>;
   onResolved?: () => void; // e.g. success haptic
   /**
+   * Is the device offline right now? Consulted when a request throws, to decide
+   * between parking the note in the queue (offline) and the bounded retry
+   * backoff (online but the request failed). Injected — the bus never imports
+   * expo-network — so a test can force either branch.
+   */
+  isOffline?: () => boolean | Promise<boolean>;
+  /**
+   * The offline state changed: `true` when a note was parked for lack of
+   * network, `false` when any request came back. Drives the header badge. Kept a
+   * callback like the others so the bus stays free of the store.
+   */
+  onOffline?: (offline: boolean) => void;
+  /**
    * A note was consumed and replaced by what it asked for. The surface uses it
    * to let go of the focus that is about to belong to a deleted row — the user
    * asked for a plan, not for a keyboard over one.
@@ -338,6 +351,7 @@ export class CommandBus {
       try {
         const res = await promise;
         this.inflight.delete(key);
+        this.markOnline();
         if (this.cancelled.has(entry.id)) return;
         if (!res.ok) throw new Error(res.error);
 
@@ -402,6 +416,7 @@ export class CommandBus {
       try {
         const res = await promise;
         this.inflight.delete(key);
+        this.markOnline();
         if (this.cancelled.has(entry.id)) return;
 
         if (!res.ok) {
@@ -540,6 +555,7 @@ export class CommandBus {
     try {
       const res = await promise;
       this.inflight.delete(key);
+      this.markOnline();
       if (this.cancelled.has(entry.id)) return;
 
       if (!res.ok) {
@@ -605,7 +621,36 @@ export class CommandBus {
     }
   }
 
+  /** A request came back at all — ok, rejected key, or schema error — so the
+   *  network is up. Only a thrown `NetworkError` means offline, never a resolved
+   *  response, so this lives at the await sites, not in `applyResolved` (which
+   *  also runs for the offline workout/onboarding local fallback). */
+  private markOnline(): void {
+    this.deps.onOffline?.(false);
+  }
+
+  private async checkOffline(): Promise<boolean> {
+    try {
+      return (await this.deps.isOffline?.()) ?? false;
+    } catch {
+      return false;
+    }
+  }
+
   private async retryLater(entry: Entry): Promise<void> {
+    // Offline: do NOT burn the five attempts on a network that isn't there. Park
+    // the note as `queued` and let the connectivity listener (on reconnect) or
+    // the background task drain it. The attempt counter is never touched, so an
+    // offline note never decays into `error`.
+    // ponytail: a configured-but-unreachable proxy also lands here and queues
+    // forever instead of erroring — acceptable; the badge reads "queued", not
+    // "failed". Add a max-offline-age sweep if that ever bites.
+    if (await this.checkOffline()) {
+      log.note('offline → queued', { id: entry.id });
+      this.deps.onOffline?.(true);
+      await this.setStatus(entry.domain, entry.id, 'queued');
+      return;
+    }
     const attempt = (this.attempts.get(entry.id) ?? 0) + 1;
     this.attempts.set(entry.id, attempt);
     if (attempt >= MAX_ATTEMPTS) {

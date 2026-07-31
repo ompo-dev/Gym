@@ -341,6 +341,7 @@ export function DayTemplate<TData, TTotals>({
   config: DomainConfig<TData, TTotals>;
 }) {
   useAppStore((s) => s.lang);
+  const isOffline = useAppStore((s) => s.isOffline);
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const {
@@ -1253,6 +1254,7 @@ export function DayTemplate<TData, TTotals>({
             onNext={goNext}
             onToday={goToday}
             onOpenSettings={openSettings}
+            isOffline={isOffline}
           />
         </View>
 

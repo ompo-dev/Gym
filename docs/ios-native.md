@@ -79,6 +79,7 @@ Modifiers come from `@expo/ui/swift-ui/modifiers` and are passed as a
 | Settings toggles / switches | ✅ SwiftUI `Toggle` | shared `Toggle` primitive (`settings/primitives`, nutrition edit) |
 | Bias slider | ✅ SwiftUI `Slider` | `EstimationBiasSheet` |
 | Camera action menu | ✅ SwiftUI `Menu` | `DayTemplate` keyboard button (no popover on iOS) |
+| Offline badge tooltip | ✅ SwiftUI `Popover` (self-anchoring) | `OfflineBadge.ios.tsx` (header) / `Alert` fallback in `OfflineBadge.tsx` |
 | Settings sheets (Form) | 🚧 SwiftUI `Form` — pilot | `HealthProfileSheet` done (native branch); `NutritionGoals`/`WorkoutMonitor`/`Pantry` pending device-verify then replicate |
 | **App sheets/modals** | ❌ RN `Modal` + glass | `SheetFrame` — candidate → SwiftUI `BottomSheet` |
 | **Macro / workout stat bars** | ❌ custom RN | `MacroStat`, bars — need native Swift |
@@ -111,8 +112,9 @@ Image/Label used as needed inside hosts).
 
 **Not applicable (no matching UI — would be new features, not conversions):**
 ColorPicker, ContextMenu, ControlGroup, LazyHStack, LazyVStack, Link, Namespace,
-Overlay, Popover, RNHostView, ScrollView, SwipeActions, TabView (tab bar already
+Overlay, RNHostView, ScrollView, SwipeActions, TabView (tab bar already
 NativeTabs), AccessoryWidgetBackground (for widgets, not built yet).
+(`Popover` is now live — the offline-badge tooltip.)
 
 **Optional native additions (additive, not conversions) — say the word:**
 - `ContextMenu` on food/note rows (long-press → Edit/Delete) — a real iOS pattern

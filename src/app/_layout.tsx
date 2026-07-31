@@ -10,6 +10,7 @@ import { Colors } from '@/constants/theme';
 import { registerEnrichDrain } from '@/core/background/enrichDrain';
 import { bus } from '@/core/command/bus';
 import { installErrorLogging, log } from '@/core/log';
+import { startConnectivityWatch } from '@/core/net/connectivity';
 import { initReminders } from '@/core/notifications/reminders';
 import { useCommandLink } from '@/core/siri/useCommandLink';
 import { useWidgetSync } from '@/core/widgets/useWidgetSync';
@@ -47,6 +48,9 @@ export default function RootLayout() {
     void bus.resumePending();
     void registerEnrichDrain();
     void initReminders();
+    // Drain the queue the moment the radio comes back — the fastest of the three
+    // triggers (this, boot, 15-min task) wins, all idempotent.
+    return startConnectivityWatch(() => bus.resumePending());
   }, [backgroundReady]);
 
   return (
