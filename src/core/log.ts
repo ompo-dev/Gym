@@ -14,10 +14,18 @@
 // On in the Metro dev terminal, off in a release bundle, and off under jest —
 // the logs are a debugging stream for `expo start`, not noise for the test
 // runner. `NODE_ENV === 'test'` is what jest sets and Metro never does.
-const ON =
+//
+// `_setOnForTest` lets the log buffer test push entries through emit without
+// spewing console noise — it only flips the ring-buffer path, not the console.
+let ON =
   typeof __DEV__ !== 'undefined' &&
   __DEV__ &&
   (typeof process === 'undefined' || process.env?.NODE_ENV !== 'test');
+
+/** Test-only: enable the ring buffer so log.<category>() pushes to it. */
+export function _setOnForTest(on: boolean): void {
+  ON = on;
+}
 
 export type LogCategory =
   | 'nav'
@@ -59,11 +67,53 @@ function stamp(): string {
   )}`;
 }
 
+// ---- ring buffer (dev-only, on-screen log inspection) -----------------------
+
+const RING_CAPACITY = 500;
+
+interface LogEntry {
+  ts: string;
+  category: LogCategory;
+  event: string;
+  meta?: string;
+}
+
+const ring: LogEntry[] = [];
+
+/**
+ * Clip `meta` to ~500 chars so an AI log with a base64 image (megabytes) does
+ * not blow up the ring buffer. The raw payload is still on the console.
+ */
+function clipMeta(meta: unknown): string | undefined {
+  if (meta === undefined) return undefined;
+  let text: string;
+  try {
+    text = JSON.stringify(meta);
+  } catch {
+    text = String(meta);
+  }
+  return text.length > 500 ? text.slice(0, 497) + "..." : text;
+}
+
+/** Copy of the ring buffer, most recent first. */
+export function getLogBuffer(): ReadonlyArray<LogEntry> {
+  return [...ring].reverse();
+}
+
+export function clearLogBuffer(): void {
+  ring.length = 0;
+}
+
 function emit(category: LogCategory, event: string, meta?: unknown): void {
   if (!ON) return;
   const head = `${stamp()} ${ICON[category]} [${category}] ${event}`;
   if (meta === undefined) console.log(head);
   else console.log(head, meta);
+
+  // Push clipped entry into the ring buffer. The clip is done HERE, on push,
+  // so the ring never holds a reference to the original (potentially huge) meta.
+  if (ring.length >= RING_CAPACITY) ring.shift();
+  ring.push({ ts: stamp(), category, event, meta: clipMeta(meta) });
 }
 
 function make(category: LogCategory) {

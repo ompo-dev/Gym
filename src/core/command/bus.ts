@@ -39,7 +39,10 @@ export const bus = new CommandBus({
   },
   // Offline plumbing: the bus asks the radio whether to park or back off, and
   // reports the offline state into the store for the header badge.
-  isOffline: isDeviceOffline,
+  // offlineForce flag forces every note into the offline queue so the dev can
+  // test the full pipeline without toggling airplane mode.
+  isOffline: async () =>
+    (await isDeviceOffline()) || useAppStore.getState().devFlags.offlineForce,
   onOffline: (offline) => useAppStore.getState().setOffline(offline),
   // The row the cursor is in is about to be deleted and replaced by the plan.
   onNoteReplaced: () => Keyboard.dismiss(),

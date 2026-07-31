@@ -84,6 +84,7 @@ import {
 } from "@/domains/schemas";
 import type { DomainConfig } from "@/domains/types";
 import { uniqueWorkoutExerciseNames } from "@/domains/workout";
+import { useFeature } from "@/core/dev/flags";
 import { useColors } from "@/hooks/use-colors";
 import { useDay } from "@/hooks/useDay";
 import { useTotals } from "@/hooks/useTotals";
@@ -342,6 +343,9 @@ export function DayTemplate<TData, TTotals>({
 }) {
   useAppStore((s) => s.lang);
   const isOffline = useAppStore((s) => s.isOffline);
+  const featureCamera = useFeature("camera");
+  const featureSavedMeals = useFeature("savedMeals");
+  const featureSavedExercises = useFeature("savedExercises");
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const {
@@ -1346,74 +1350,82 @@ export function DayTemplate<TData, TTotals>({
               >
                 {isFood ? (
                   <>
-                    <Animated.View style={[styles.dockButtonSlot, b0Style]}>
-                      {IOS_NATIVE_ENABLED ? (
-                        <NativeMenuButton
-                          systemImage="camera"
-                          tint={colors.carbs}
-                          size={Metrics.dockButton}
-                          label={t("media.addAttachment")}
-                        >
-                          <SwiftButton
-                            label={t("media.foodPhoto")}
+                    {featureCamera && (
+                      <Animated.View style={[styles.dockButtonSlot, b0Style]}>
+                        {IOS_NATIVE_ENABLED ? (
+                          <NativeMenuButton
                             systemImage="camera"
-                            onPress={() => handleSelectFoodMedia("foodPhoto")}
-                          />
-                          <SwiftButton
-                            label={t("media.menuPhoto")}
-                            systemImage="menucard"
-                            onPress={() => handleSelectFoodMedia("menuPhoto")}
-                          />
-                          <SwiftButton
-                            label={t("media.barcode")}
-                            systemImage="barcode.viewfinder"
-                            onPress={() => handleSelectFoodMedia("barcode")}
-                          />
-                        </NativeMenuButton>
-                      ) : (
-                        <LoggedPressable
-                          onPress={() =>
-                            setFoodMediaMenuVisible((current) => !current)
-                          }
-                          hitSlop={10}
-                          accessibilityRole="button"
-                          accessibilityLabel={t("media.addAttachment")}
-                        >
-                          <GlassSurface
-                            glass="regular"
-                            isInteractive
-                            style={styles.keyboardButton}
+                            tint={colors.carbs}
+                            size={Metrics.dockButton}
+                            label={t("media.addAttachment")}
                           >
-                            <AppIcon
-                              name="camera"
-                              color={colors.carbs}
-                              size={19}
+                            <SwiftButton
+                              label={t("media.foodPhoto")}
+                              systemImage="camera"
+                              onPress={() => handleSelectFoodMedia("foodPhoto")}
                             />
-                          </GlassSurface>
-                        </LoggedPressable>
-                      )}
-                    </Animated.View>
+                            <SwiftButton
+                              label={t("media.menuPhoto")}
+                              systemImage="menucard"
+                              onPress={() => handleSelectFoodMedia("menuPhoto")}
+                            />
+                            <SwiftButton
+                              label={t("media.barcode")}
+                              systemImage="barcode.viewfinder"
+                              onPress={() => handleSelectFoodMedia("barcode")}
+                            />
+                          </NativeMenuButton>
+                        ) : (
+                          <LoggedPressable
+                            onPress={() =>
+                              setFoodMediaMenuVisible((current) => !current)
+                            }
+                            hitSlop={10}
+                            accessibilityRole="button"
+                            accessibilityLabel={t("media.addAttachment")}
+                          >
+                            <GlassSurface
+                              glass="regular"
+                              isInteractive
+                              style={styles.keyboardButton}
+                            >
+                              <AppIcon
+                                name="camera"
+                                color={colors.carbs}
+                                size={19}
+                              />
+                            </GlassSurface>
+                          </LoggedPressable>
+                        )}
+                      </Animated.View>
+                    )}
 
-                    <Animated.View style={[styles.dockButtonSlot, b1Style]}>
-                      <DockActionButton
-                        systemImage="plus"
-                        icon="plus"
-                        tint={colors.accent}
-                        label={t("media.addSavedMeal")}
-                        onPress={openSavedMealPicker}
-                      />
-                    </Animated.View>
+                    {featureSavedMeals && (
+                      <Animated.View style={[styles.dockButtonSlot, b1Style]}>
+                        <DockActionButton
+                          systemImage="plus"
+                          icon="plus"
+                          tint={colors.accent}
+                          label={t("media.addSavedMeal")}
+                          onPress={openSavedMealPicker}
+                        />
+                      </Animated.View>
+                    )}
                   </>
                 ) : (
-                  <Animated.View style={[styles.dockButtonSlot, b0Style]}>
-                    <DockActionButton
-                      systemImage="plus"
-                      icon="plus"
-                      tint={colors.accent}
-                      label={t("media.addSavedWorkout")}
-                      onPress={openSavedExercisePicker}
-                    />
-                  </Animated.View>
+                  <>
+                    {featureSavedExercises && (
+                      <Animated.View style={[styles.dockButtonSlot, b0Style]}>
+                        <DockActionButton
+                          systemImage="plus"
+                          icon="plus"
+                          tint={colors.accent}
+                          label={t("media.addSavedWorkout")}
+                          onPress={openSavedExercisePicker}
+                        />
+                      </Animated.View>
+                    )}
+                  </>
                 )}
 
                 {Platform.OS === "ios" ? (

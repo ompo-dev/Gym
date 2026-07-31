@@ -8,8 +8,24 @@ function toISO(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+// ---- time travel (dev-only, in-memory — gone on restart) --------------------
+// Only `todayISO` applies the offset; `addDays` and `timeLabel` do not change.
+// Default 0 means no existing test or behaviour is affected.
+
+let devDayOffset = 0;
+
+export function setDevDayOffset(days: number): void {
+  devDayOffset = days;
+}
+
+export function getDevDayOffset(): number {
+  return devDayOffset;
+}
+
 export function todayISO(): string {
-  return toISO(new Date());
+  const d = new Date();
+  if (devDayOffset !== 0) d.setDate(d.getDate() + devDayOffset);
+  return toISO(d);
 }
 
 export function addDays(iso: string, delta: number): string {

@@ -40,6 +40,7 @@ import { SettingsRepository } from "@/data/SettingsRepository";
 import { mergeFoodEdit } from "@/domains/food";
 import { foodEditSchema, foodSchema, type FoodData } from "@/domains/schemas";
 import { useColors } from "@/hooks/use-colors";
+import { useFeature } from "@/core/dev/flags";
 import { getLang, t } from "@/i18n";
 import { useAppModalStore } from "@/store/useAppModalStore";
 import { useAppStore, type ThemeMode } from "@/store/useAppStore";
@@ -106,6 +107,8 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const setTheme = useAppStore((s) => s.setTheme);
   const signOut = useAppStore((s) => s.signOut);
   const eraseAllData = useAppStore((s) => s.eraseAllData);
+  const featurePantry = useFeature("pantry");
+  const featureWorkoutMonitor = useFeature("workoutMonitor");
   const profile =
     useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
   const settingsStack = visible
@@ -492,15 +495,17 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
             {/* Both sections always: Settings is one screen for the whole app,
                 so which tab opened it should not hide half the saved data. */}
             <Section label={t("settings.section.workout")}>
-              <SettingsRow
-                icon="dumbbell"
-                iconColor={colors.accent}
-                title={t("settings.workout.monitor")}
-                subtitle={t("settings.workout.monitorHint")}
-                trailing={<Chevron />}
-                onPress={openWorkoutMonitor}
-              />
-              <Divider />
+              {featureWorkoutMonitor && (
+                <SettingsRow
+                  icon="dumbbell"
+                  iconColor={colors.accent}
+                  title={t("settings.workout.monitor")}
+                  subtitle={t("settings.workout.monitorHint")}
+                  trailing={<Chevron />}
+                  onPress={openWorkoutMonitor}
+                />
+              )}
+              {featureWorkoutMonitor && <Divider />}
               <SettingsRow
                 icon="bookmark"
                 iconColor={colors.water}
@@ -530,14 +535,16 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
                 onPress={openSavedMeals}
               />
               <Divider />
-              <SettingsRow
-                icon="apple"
-                iconColor={colors.protein}
-                title={t("pantry.title")}
-                trailing={<Chevron />}
-                onPress={openPantry}
-              />
-              <Divider />
+              {featurePantry && (
+                <SettingsRow
+                  icon="apple"
+                  iconColor={colors.protein}
+                  title={t("pantry.title")}
+                  trailing={<Chevron />}
+                  onPress={openPantry}
+                />
+              )}
+              {featurePantry && <Divider />}
               <SettingsRow
                 icon="calendar"
                 iconColor={colors.protein}

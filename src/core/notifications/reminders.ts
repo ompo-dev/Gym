@@ -72,7 +72,19 @@ export async function remindersEnabled(): Promise<boolean> {
   return (await SettingsRepository.get(ENABLED_KEY)) === '1';
 }
 
-async function ensurePermission(): Promise<boolean> {
+/**
+ * Dev-only: fire one reminder immediately (trigger: null) so the dev can test
+ * the exact copy and sound without waiting for the scheduled time.
+ */
+export async function debugFireReminder(type: MealType): Promise<void> {
+  if (!(await ensurePermission())) return;
+  await Notifications.scheduleNotificationAsync({
+    content: slotCopy(type),
+    trigger: null,
+  });
+}
+
+export async function ensurePermission(): Promise<boolean> {
   if (Platform.OS === 'android') {
     // Android 13+ shows no permission prompt until at least one channel exists.
     await Notifications.setNotificationChannelAsync(CHANNEL_ID, {

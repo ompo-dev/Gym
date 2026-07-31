@@ -33,6 +33,7 @@ import { useRepositoryData } from '@/hooks/useRepositoryData';
 import { formatFoodQuantity, formatWaterMl, sumFoodData } from '@/domains/food';
 import { formatPantryGrams } from '@/domains/pantry';
 import type { FoodData } from '@/domains/schemas';
+import { useFeature } from '@/core/dev/flags';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 import { useAppModalStore } from '@/store/useAppModalStore';
@@ -151,6 +152,7 @@ export function FoodEntryDetailSheet({
   nested,
 }: FoodEntryDetailSheetProps) {
   const colors = useColors();
+  const featureAiEdit = useFeature("aiEdit");
   const profile = useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
   const enabledMicros = enabledMicronutrients(profile);
   const microStats = MICRO_STATS.filter((item) => enabledMicros.includes(item.key));
@@ -324,11 +326,13 @@ export function FoodEntryDetailSheet({
         />
       )}
       <SwiftMenu label={t('details.editNutrition')} systemImage="pencil">
-        <SwiftButton
-          label={t('details.editWithAi')}
-          systemImage="sparkles"
-          onPress={() => openAfterMenu(aiEditId)}
-        />
+        {featureAiEdit && (
+          <SwiftButton
+            label={t('details.editWithAi')}
+            systemImage="sparkles"
+            onPress={() => openAfterMenu(aiEditId)}
+          />
+        )}
         <SwiftButton
           label={t('details.editManually')}
           systemImage="slider.horizontal.3"
@@ -380,7 +384,11 @@ export function FoodEntryDetailSheet({
                 mealSaved={mealSaved}
                 onClose={closeMenu}
                 onSaveMeal={handleSaveMeal}
-                onEditWithAi={() => openAfterMenu(aiEditId)}
+                onEditWithAi={
+                  featureAiEdit
+                    ? () => openAfterMenu(aiEditId)
+                    : undefined
+                }
                 onEditManually={() => openAfterMenu(nutritionEditId)}
                 onDelete={handleDelete}
               />

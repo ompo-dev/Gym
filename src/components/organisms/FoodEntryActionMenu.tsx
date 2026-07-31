@@ -21,7 +21,7 @@ interface FoodEntryActionMenuProps {
   mealSaved?: boolean;
   onClose: () => void;
   onSaveMeal: () => void;
-  onEditWithAi: () => void;
+  onEditWithAi?: () => void;
   onEditManually: () => void;
   onDelete: () => void;
 }
@@ -127,11 +127,13 @@ export function FoodEntryActionMenu({
               onPress={() => setEditing(false)}
             />
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <ActionRow
-              icon="sparkles"
-              label={t('details.editWithAi')}
-              onPress={() => runAndClose(onEditWithAi)}
-            />
+            {onEditWithAi && (
+              <ActionRow
+                icon="sparkles"
+                label={t('details.editWithAi')}
+                onPress={() => runAndClose(onEditWithAi)}
+              />
+            )}
             <ActionRow
               icon="sliders"
               label={t('details.editManually')}

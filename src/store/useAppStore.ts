@@ -2,6 +2,7 @@ import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
 import { todayISO } from '@/core/date';
+import { DEFAULT_FLAGS, type FeatureFlag, type FeatureFlags } from '@/core/dev/flags';
 import { log } from '@/core/log';
 import type { ApiKeyMode, ApiKeys } from '@/core/enrich/types';
 import {
@@ -36,6 +37,9 @@ interface AppState {
    *  `onOffline`), read by the header badge. Not persisted — a fresh launch
    *  re-derives it the first time a request succeeds or fails. */
   isOffline: boolean;
+  /** Dev feature flags, persisted as JSON blob under "dev_flags". */
+  devFlags: FeatureFlags;
+  setFeature: (flag: FeatureFlag, value: boolean) => void;
   setOffline: (offline: boolean) => void;
   setApiKeys: (patch: Partial<ApiKeys>) => Promise<void>;
   setDate: (domain: Domain, date: string) => void;
@@ -59,6 +63,7 @@ const ONBOARDING_PROFILE_KEY = 'onboarding_profile';
 const API_MODE_KEY = 'api_mode';
 const API_KEY_CHAT_KEY = 'api_key_chat';
 const API_KEY_IMAGE_KEY = 'api_key_image';
+const DEV_FLAGS_KEY = 'dev_flags';
 
 const defaultApiKeys = (): ApiKeys => ({ mode: 'managed', chat: '', image: '' });
 
@@ -94,9 +99,16 @@ export const useAppStore = create<AppState>((set) => ({
   onboardingProfile: null,
   apiKeys: defaultApiKeys(),
   isOffline: false,
+  devFlags: { ...DEFAULT_FLAGS },
 
   setOffline: (offline) =>
     set((s) => (s.isOffline === offline ? {} : { isOffline: offline })),
+
+  setFeature: (flag, value) => {
+    const next = { ...useAppStore.getState().devFlags, [flag]: value };
+    set({ devFlags: next });
+    void SettingsRepository.set(DEV_FLAGS_KEY, JSON.stringify(next));
+  },
 
   setDate: (domain, date) => {
     log.store(`setDate ${domain}`, { date });
@@ -136,6 +148,7 @@ export const useAppStore = create<AppState>((set) => ({
         storedApiMode,
         storedChatKey,
         storedImageKey,
+        storedDevFlags,
       ] = await Promise.all([
         SettingsRepository.get(THEME_KEY),
         SettingsRepository.get(LANG_KEY),
@@ -144,6 +157,7 @@ export const useAppStore = create<AppState>((set) => ({
         SettingsRepository.get(API_MODE_KEY),
         SettingsRepository.get(API_KEY_CHAT_KEY),
         SettingsRepository.get(API_KEY_IMAGE_KEY),
+        SettingsRepository.get(DEV_FLAGS_KEY),
       ]);
       const theme = isThemeMode(storedTheme) ? storedTheme : 'system';
       const lang = isLang(storedLang) ? storedLang : defaultLang;
@@ -159,6 +173,7 @@ export const useAppStore = create<AppState>((set) => ({
           chat: storedChatKey ?? '',
           image: storedImageKey ?? '',
         },
+        devFlags: parseDevFlags(storedDevFlags),
       });
     } catch {
       applyTheme('system');
@@ -253,6 +268,17 @@ export const useAppStore = create<AppState>((set) => ({
 }));
 
 registerLangGetter(() => useAppStore.getState().lang);
+
+/** Merge persisted flags over defaults so new flags added later always start with their default. */
+function parseDevFlags(value: string | null): FeatureFlags {
+  if (!value) return { ...DEFAULT_FLAGS };
+  try {
+    const parsed = JSON.parse(value) as Partial<FeatureFlags>;
+    return { ...DEFAULT_FLAGS, ...parsed };
+  } catch {
+    return { ...DEFAULT_FLAGS };
+  }
+}
 
 function parseOnboardingProfile(value: string | null): OnboardingProfile | null {
   if (!value) return null;
