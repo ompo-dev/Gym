@@ -36,6 +36,7 @@ import {
   type SavedMeal,
 } from "@/data/SavedMealRepository";
 import { SavedRoutineRepository } from "@/data/SavedRoutineRepository";
+import { SettingsRepository } from "@/data/SettingsRepository";
 import { mergeFoodEdit } from "@/domains/food";
 import { foodEditSchema, foodSchema, type FoodData } from "@/domains/schemas";
 import { useColors } from "@/hooks/use-colors";
@@ -46,6 +47,7 @@ import { useAppStore, type ThemeMode } from "@/store/useAppStore";
 import { FoodEntryDetailSheet } from "./FoodEntryDetailSheet";
 import { FoodNutritionEditSheet } from "./FoodNutritionEditSheet";
 import { ApiKeysSheet } from "./settings/ApiKeysSheet";
+import { DeveloperSheet } from "./settings/DeveloperSheet";
 import { EstimationBiasSheet } from "./settings/EstimationBiasSheet";
 import { HealthProfileSheet } from "./settings/HealthProfileSheet";
 import { NutritionGoalsSheet } from "./settings/NutritionGoalsSheet";
@@ -113,6 +115,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     : [];
   const activeSettingsId = settingsStack.at(-1)?.id ?? null;
 
+  const [devMode, setDevMode] = useState(false);
   const [autoTimezone, setAutoTimezone] = useState(true);
   const [remindersOn, setRemindersOn] = useState<boolean | null>(null);
   const [reminderSlots, setReminderSlots] = useState<ScheduledSlot[]>([]);
@@ -170,6 +173,9 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
       void getScheduledSlots().then(setReminderSlots);
       void isTimeZoneAuto().then(setAutoTimezone);
     }
+    void SettingsRepository.get("dev_mode").then(
+      (v) => setDevMode(v === "1"),
+    );
     void Promise.all([
       SavedRoutineRepository.count("food"),
       SavedRoutineRepository.count("workout"),
@@ -220,6 +226,20 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const openApiKeys = () => {
     if (!canOpenAppModal("settings.root", "settings.apiKeys")) return;
     openAppModal({ id: "settings.apiKeys", domain });
+  };
+
+  const openDeveloper = () => {
+    if (!canOpenAppModal("settings.root", "settings.developer")) return;
+    openAppModal({ id: "settings.developer", domain });
+  };
+
+  const closeDeveloper = () => {
+    closeAppModal("settings.developer");
+  };
+
+  const toggleDevMode = (on: boolean) => {
+    setDevMode(on);
+    void SettingsRepository.set("dev_mode", on ? "1" : "0");
   };
 
   const closeSettings = () => {
@@ -661,6 +681,31 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
               />
             </Section>
 
+            {__DEV__ ? (
+              <Section label="Developer">
+                <SettingsRow
+                  title="Developer mode"
+                  trailing={
+                    <Toggle
+                      value={devMode}
+                      onValueChange={toggleDevMode}
+                      label="Developer mode"
+                    />
+                  }
+                />
+                {devMode ? (
+                  <>
+                    <Divider />
+                    <SettingsRow
+                      title="Abrir painel"
+                      trailing={<Chevron />}
+                      onPress={openDeveloper}
+                    />
+                  </>
+                ) : null}
+              </Section>
+            ) : null}
+
             <View
               style={[
                 settingsStyles.card,
@@ -834,6 +879,14 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
           <ApiKeysSheet
             visible
             onClose={() => closeAppModal("settings.apiKeys")}
+          />
+        );
+
+      case "settings.developer":
+        return (
+          <DeveloperSheet
+            visible
+            onClose={closeDeveloper}
           />
         );
 

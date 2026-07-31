@@ -210,6 +210,17 @@ export const EntryRepository = {
     const db = await getDb();
     await db.runAsync('DELETE FROM entries WHERE id = ?', [id]);
   },
+
+  /** Delete every entry whose id starts with `prefix`. Returns the count. */
+  async deleteByIdPrefix(prefix: string): Promise<number> {
+    log.db('entries.deleteByIdPrefix', { prefix });
+    const db = await getDb();
+    const result = await db.runAsync(
+      `DELETE FROM entries WHERE id LIKE ?`,
+      [`${prefix}%`],
+    );
+    return result.changes;
+  },
 };
 
 export type EntryRepositoryType = typeof EntryRepository;

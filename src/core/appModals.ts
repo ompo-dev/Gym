@@ -31,6 +31,7 @@ export type AppModalId =
   | "settings.savedMeals"
   | "settings.pantry"
   | "settings.apiKeys"
+  | "settings.developer"
   | "settings.routines"
   | "day.saveRoutine"
   | "settings.savedMealDetails"
@@ -71,6 +72,7 @@ export const APP_MODAL_LABELS: Record<AppModalId, string> = {
   "settings.savedMeals": "Refeições salvas",
   "settings.pantry": "Geladeira",
   "settings.apiKeys": "Chaves de API",
+  "settings.developer": "Developer",
   "settings.routines": "Dias salvos",
   "day.saveRoutine": "Salvar o dia",
   "settings.savedMealDetails": "Detalhes da refeição salva",
@@ -122,6 +124,7 @@ export const APP_MODAL_LINKS: Partial<
     "settings.savedMeals",
     "settings.pantry",
     "settings.apiKeys",
+    "settings.developer",
     "settings.routines",
   ],
   "settings.nutritionGoals": [
@@ -190,6 +193,7 @@ export type AppModal =
   | { id: "settings.savedMeals"; domain: Domain }
   | { id: "settings.pantry"; domain: Domain }
   | { id: "settings.apiKeys"; domain: Domain }
+  | { id: "settings.developer"; domain: Domain }
   | { id: "settings.routines"; domain: Domain }
   | { id: "day.saveRoutine"; domain: Domain }
   | { id: "settings.savedMealDetails"; domain: Domain; mealId: string }
