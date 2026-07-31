@@ -1,7 +1,7 @@
+import { LoggedPressable } from "@/components/atoms/Logged";
 import Constants from "expo-constants";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert, Platform, StyleSheet, View } from "react-native";
-import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
@@ -12,20 +12,20 @@ import {
   type AppModal,
   type AppModalAnchor,
 } from "@/core/appModals";
+import { useFeature } from "@/core/dev/flags";
 import { enrich } from "@/core/enrich/client";
 import { formatReminderTime } from "@/core/notifications/reminderPrefs";
 import {
-  getScheduledSlots,
   remindersEnabled as fetchRemindersEnabled,
+  getScheduledSlots,
   setRemindersEnabled,
   slotLabel,
 } from "@/core/notifications/reminders";
-import { isTimeZoneAuto, setTimeZoneAuto } from "@/core/timezone";
-import type { ScheduledSlot } from "@/domains/mealTiming";
 import {
   buildOnboardingPromptContext,
   defaultOnboardingProfile,
 } from "@/core/onboarding";
+import { isTimeZoneAuto, setTimeZoneAuto } from "@/core/timezone";
 import type { Domain, Entry } from "@/core/types";
 import {
   SavedExerciseRepository,
@@ -38,9 +38,9 @@ import {
 import { SavedRoutineRepository } from "@/data/SavedRoutineRepository";
 import { SettingsRepository } from "@/data/SettingsRepository";
 import { mergeFoodEdit } from "@/domains/food";
+import type { ScheduledSlot } from "@/domains/mealTiming";
 import { foodEditSchema, foodSchema, type FoodData } from "@/domains/schemas";
 import { useColors } from "@/hooks/use-colors";
-import { useFeature } from "@/core/dev/flags";
 import { getLang, t } from "@/i18n";
 import { useAppModalStore } from "@/store/useAppModalStore";
 import { useAppStore, type ThemeMode } from "@/store/useAppStore";
@@ -52,9 +52,11 @@ import { DeveloperSheet } from "./settings/DeveloperSheet";
 import { EstimationBiasSheet } from "./settings/EstimationBiasSheet";
 import { HealthProfileSheet } from "./settings/HealthProfileSheet";
 import { NutritionGoalsSheet } from "./settings/NutritionGoalsSheet";
+import { PantrySheet } from "./settings/PantrySheet";
 import {
   Chevron,
   Divider,
+  formatWeight,
   measureOptionAnchor,
   noop,
   OptionMenu,
@@ -62,7 +64,6 @@ import {
   TINT,
   Toggle,
   ValueTrailing,
-  formatWeight,
   type OptionMenuItem,
 } from "./settings/primitives";
 import { RegisterWeightSheet } from "./settings/RegisterWeightSheet";
@@ -71,7 +72,6 @@ import {
   SavedMealsContent,
   savedMealToEntry,
 } from "./settings/SavedMealsSheet";
-import { PantrySheet } from "./settings/PantrySheet";
 import { SavedRoutinesSheet } from "./settings/SavedRoutinesSheet";
 import {
   AccountCard,
@@ -176,9 +176,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
       void getScheduledSlots().then(setReminderSlots);
       void isTimeZoneAuto().then(setAutoTimezone);
     }
-    void SettingsRepository.get("dev_mode").then(
-      (v) => setDevMode(v === "1"),
-    );
+    void SettingsRepository.get("dev_mode").then((v) => setDevMode(v === "1"));
     void Promise.all([
       SavedRoutineRepository.count("food"),
       SavedRoutineRepository.count("workout"),
@@ -451,328 +449,328 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   };
 
   const settingsBody = (
-          <>
-            <AccountCard />
+    <>
+      <AccountCard />
 
-            <Section label={t("settings.section.goals")}>
-              <GoalsSummary />
-              <Divider />
-              <SettingsRow
-                title={t("settings.goals.manage")}
-                trailing={<Chevron />}
-                onPress={() => openAfterSettingsDismiss("nutrition")}
-              />
-            </Section>
+      <Section label={t("settings.section.goals")}>
+        <GoalsSummary />
+        <Divider />
+        <SettingsRow
+          title={t("settings.goals.manage")}
+          trailing={<Chevron />}
+          onPress={() => openAfterSettingsDismiss("nutrition")}
+        />
+      </Section>
 
-            <Section label={t("settings.section.health")}>
-              <SettingsRow
-                icon="asterisk"
-                iconColor={colors.danger}
-                title={`${formatWeight(profile.weightKg)} ${t("settings.health.currentSuffix")}`}
-                subtitle={t(`activity.${profile.activity}`)}
-                trailing={<Chevron />}
-                onPress={noop}
-              />
-              <Divider />
-              <SettingsRow
-                title={t("settings.health.manage")}
-                trailing={<Chevron />}
-                onPress={() => openAfterSettingsDismiss("health")}
-              />
-            </Section>
+      <Section label={t("settings.section.health")}>
+        <SettingsRow
+          icon="asterisk"
+          iconColor={colors.danger}
+          title={`${formatWeight(profile.weightKg)} ${t("settings.health.currentSuffix")}`}
+          subtitle={t(`activity.${profile.activity}`)}
+          trailing={<Chevron />}
+          onPress={noop}
+        />
+        <Divider />
+        <SettingsRow
+          title={t("settings.health.manage")}
+          trailing={<Chevron />}
+          onPress={() => openAfterSettingsDismiss("health")}
+        />
+      </Section>
 
-            <Section label={t("settings.section.weight")}>
-              <SettingsRow
-                icon="scale"
-                iconColor={TINT.purple}
-                title={formatWeight(profile.weightKg)}
-                subtitle={t("settings.weight.hint")}
-                trailing={<Chevron />}
-                onPress={() => openAfterSettingsDismiss("weight")}
-              />
-            </Section>
+      <Section label={t("settings.section.weight")}>
+        <SettingsRow
+          icon="scale"
+          iconColor={TINT.purple}
+          title={formatWeight(profile.weightKg)}
+          subtitle={t("settings.weight.hint")}
+          trailing={<Chevron />}
+          onPress={() => openAfterSettingsDismiss("weight")}
+        />
+      </Section>
 
-            {/* Both sections always: Settings is one screen for the whole app,
+      {/* Both sections always: Settings is one screen for the whole app,
                 so which tab opened it should not hide half the saved data. */}
-            <Section label={t("settings.section.workout")}>
-              {featureWorkoutMonitor && (
-                <SettingsRow
-                  icon="dumbbell"
-                  iconColor={colors.accent}
-                  title={t("settings.workout.monitor")}
-                  subtitle={t("settings.workout.monitorHint")}
-                  trailing={<Chevron />}
-                  onPress={openWorkoutMonitor}
-                />
-              )}
-              {featureWorkoutMonitor && <Divider />}
-              <SettingsRow
-                icon="bookmark"
-                iconColor={colors.water}
-                title={t("settings.workout.saved")}
-                subtitle={`${savedExercisesCount} ${t("settings.workout.savedCount")}`}
-                trailing={<Chevron />}
-                onPress={openSavedExercises}
+      <Section label={t("settings.section.workout")}>
+        {featureWorkoutMonitor && (
+          <SettingsRow
+            icon="dumbbell"
+            iconColor={colors.accent}
+            title={t("settings.workout.monitor")}
+            subtitle={t("settings.workout.monitorHint")}
+            trailing={<Chevron />}
+            onPress={openWorkoutMonitor}
+          />
+        )}
+        {featureWorkoutMonitor && <Divider />}
+        <SettingsRow
+          icon="bookmark"
+          iconColor={colors.water}
+          title={t("settings.workout.saved")}
+          subtitle={`${savedExercisesCount} ${t("settings.workout.savedCount")}`}
+          trailing={<Chevron />}
+          onPress={openSavedExercises}
+        />
+        <Divider />
+        <SettingsRow
+          icon="calendar"
+          iconColor={colors.protein}
+          title={t("routine.savedWorkouts")}
+          subtitle={`${routineCounts.workout} ${t("routine.savedCount")}`}
+          trailing={<Chevron />}
+          onPress={() => openRoutines("workout")}
+        />
+      </Section>
+
+      <Section label={t("settings.section.meals")}>
+        <SettingsRow
+          icon="utensils"
+          iconColor={colors.carbs}
+          title={t("settings.meals.manage")}
+          subtitle={`${savedMealsCount} ${t("settings.meals.saved")}`}
+          trailing={<Chevron />}
+          onPress={openSavedMeals}
+        />
+        <Divider />
+        {featurePantry && (
+          <SettingsRow
+            icon="apple"
+            iconColor={colors.protein}
+            title={t("pantry.title")}
+            trailing={<Chevron />}
+            onPress={openPantry}
+          />
+        )}
+        {featurePantry && <Divider />}
+        <SettingsRow
+          icon="calendar"
+          iconColor={colors.protein}
+          title={t("routine.savedDiets")}
+          subtitle={`${routineCounts.food} ${t("routine.savedCount")}`}
+          trailing={<Chevron />}
+          onPress={() => openRoutines("food")}
+        />
+      </Section>
+
+      <Section label={t("settings.section.prefs")}>
+        <SettingsRow
+          icon="flame"
+          iconColor={colors.calories}
+          title={t("settings.prefs.bias")}
+          subtitle={t(`bias.${profile.estimationBias}`)}
+          trailing={<Chevron />}
+          onPress={openEstimationBias}
+        />
+      </Section>
+
+      {Platform.OS !== "web" && remindersOn !== null ? (
+        <Section label={t("settings.reminders.title")}>
+          <SettingsRow
+            icon="bell"
+            iconColor={colors.water}
+            title={t("settings.reminders.title")}
+            subtitle={t("settings.reminders.hint")}
+            trailing={
+              <Toggle
+                value={remindersOn}
+                onValueChange={toggleReminders}
+                label={t("settings.reminders.title")}
               />
+            }
+          />
+          {remindersOn && reminderSlots.length ? (
+            <>
               <Divider />
               <SettingsRow
-                icon="calendar"
-                iconColor={colors.protein}
-                title={t("routine.savedWorkouts")}
-                subtitle={`${routineCounts.workout} ${t("routine.savedCount")}`}
-                trailing={<Chevron />}
-                onPress={() => openRoutines("workout")}
+                icon="clock"
+                iconColor={colors.accent}
+                title={t("settings.reminders.schedule")}
+                subtitle={scheduleSummary(reminderSlots)}
               />
-            </Section>
+            </>
+          ) : null}
+        </Section>
+      ) : null}
 
-            <Section label={t("settings.section.meals")}>
-              <SettingsRow
-                icon="utensils"
-                iconColor={colors.carbs}
-                title={t("settings.meals.manage")}
-                subtitle={`${savedMealsCount} ${t("settings.meals.saved")}`}
-                trailing={<Chevron />}
-                onPress={openSavedMeals}
-              />
-              <Divider />
-              {featurePantry && (
-                <SettingsRow
-                  icon="apple"
-                  iconColor={colors.protein}
-                  title={t("pantry.title")}
-                  trailing={<Chevron />}
-                  onPress={openPantry}
-                />
-              )}
-              {featurePantry && <Divider />}
-              <SettingsRow
-                icon="calendar"
-                iconColor={colors.protein}
-                title={t("routine.savedDiets")}
-                subtitle={`${routineCounts.food} ${t("routine.savedCount")}`}
-                trailing={<Chevron />}
-                onPress={() => openRoutines("food")}
-              />
-            </Section>
+      <Section label={t("settings.section.device")}>
+        <View ref={themeRowRef} collapsable={false}>
+          <SettingsRow
+            icon="contrast"
+            iconColor={TINT.indigo}
+            title={t("settings.device.appearance")}
+            select={{
+              value: theme,
+              options: themeOptions,
+              onSelect: (value) => selectTheme(value as ThemeMode),
+            }}
+            onPress={toggleThemeMenu}
+          />
+        </View>
+        <Divider />
+        <SettingsRow
+          icon="globe"
+          iconColor={TINT.magenta}
+          title={t("settings.device.autoTimezone")}
+          trailing={
+            <Toggle
+              value={autoTimezone}
+              onValueChange={toggleAutoTimezone}
+              label={t("settings.device.autoTimezone")}
+            />
+          }
+        />
+      </Section>
 
-            <Section label={t("settings.section.prefs")}>
-              <SettingsRow
-                icon="flame"
-                iconColor={colors.calories}
-                title={t("settings.prefs.bias")}
-                subtitle={t(`bias.${profile.estimationBias}`)}
-                trailing={<Chevron />}
-                onPress={openEstimationBias}
-              />
-            </Section>
-
-            {Platform.OS !== "web" && remindersOn !== null ? (
-              <Section label={t("settings.reminders.title")}>
-                <SettingsRow
-                  icon="bell"
-                  iconColor={colors.water}
-                  title={t("settings.reminders.title")}
-                  subtitle={t("settings.reminders.hint")}
-                  trailing={
-                    <Toggle
-                      value={remindersOn}
-                      onValueChange={toggleReminders}
-                      label={t("settings.reminders.title")}
-                    />
-                  }
-                />
-                {remindersOn && reminderSlots.length ? (
-                  <>
-                    <Divider />
-                    <SettingsRow
-                      icon="clock"
-                      iconColor={colors.accent}
-                      title={t("settings.reminders.schedule")}
-                      subtitle={scheduleSummary(reminderSlots)}
-                    />
-                  </>
-                ) : null}
-              </Section>
-            ) : null}
-
-            <Section label={t("settings.section.device")}>
-              <View ref={themeRowRef} collapsable={false}>
-                <SettingsRow
-                  icon="contrast"
-                  iconColor={TINT.indigo}
-                  title={t("settings.device.appearance")}
-                  select={{
-                    value: theme,
-                    options: themeOptions,
-                    onSelect: (value) => selectTheme(value as ThemeMode),
-                  }}
-                  onPress={toggleThemeMenu}
-                />
-              </View>
-              <Divider />
-              <SettingsRow
-                icon="globe"
-                iconColor={TINT.magenta}
-                title={t("settings.device.autoTimezone")}
-                trailing={
-                  <Toggle
-                    value={autoTimezone}
-                    onValueChange={toggleAutoTimezone}
-                    label={t("settings.device.autoTimezone")}
-                  />
-                }
-              />
-            </Section>
-
-            <Section label={t("settings.section.subscription")}>
-              <View style={styles.subRow}>
-                <View style={settingsStyles.summaryIcon}>
-                  <AppIcon name="crown" color={colors.textTertiary} size={20} />
-                </View>
-                <View style={styles.subText}>
-                  <AppText variant="body" style={settingsStyles.bold}>
-                    {t("settings.sub.none")}
-                  </AppText>
-                  <AppText variant="secondary" color={colors.textSecondary}>
-                    {t("settings.sub.hint")}
-                  </AppText>
-                </View>
-                <LoggedPressable
-                  onPress={noop}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("settings.sub.upgrade")}
-                  style={({ pressed }) => [
-                    styles.upgrade,
-                    pressed && settingsStyles.pressed,
-                  ]}
-                >
-                  <AppText variant="label" color={UPGRADE_FG}>
-                    {t("settings.sub.upgrade")}
-                  </AppText>
-                </LoggedPressable>
-              </View>
-            </Section>
-
-            <Section label={t("settings.section.connect")}>
-              <View style={styles.connectTop}>
-                <View style={styles.cluster}>
-                  {CLUSTER.map((c, i) => (
-                    <View
-                      key={c}
-                      style={[
-                        styles.logo,
-                        {
-                          backgroundColor: c,
-                          borderColor: colors.backgroundElement,
-                        },
-                        i > 0 && styles.logoOverlap,
-                      ]}
-                    />
-                  ))}
-                </View>
-                <AppText variant="secondary" color={colors.textSecondary}>
-                  {t("settings.connect.desc")}
-                </AppText>
-              </View>
-              <Divider />
-              <SettingsRow
-                title={t("settings.connect.instructions")}
-                trailing={<Chevron />}
-                onPress={noop}
-              />
-              <Divider />
-              <SettingsRow
-                title={t("settings.connect.api")}
-                trailing={<ValueTrailing label={apiKeysLabel} />}
-                onPress={openApiKeys}
-              />
-            </Section>
-
-            {__DEV__ ? (
-              <Section label="Developer">
-                <SettingsRow
-                  title="Developer mode"
-                  trailing={
-                    <Toggle
-                      value={devMode}
-                      onValueChange={toggleDevMode}
-                      label="Developer mode"
-                    />
-                  }
-                />
-                {devMode ? (
-                  <>
-                    <Divider />
-                    <SettingsRow
-                      title="Abrir painel"
-                      trailing={<Chevron />}
-                      onPress={openDeveloper}
-                    />
-                  </>
-                ) : null}
-              </Section>
-            ) : null}
-
-            <View
-              style={[
-                settingsStyles.card,
-                { backgroundColor: colors.backgroundElement },
-              ]}
-            >
-              <SettingsRow
-                icon="star"
-                iconColor={TINT.blue}
-                title={t("settings.feedback")}
-                trailing={<Chevron />}
-                onPress={noop}
-              />
-              <Divider />
-              <SettingsRow
-                icon="trash"
-                iconColor={colors.danger}
-                title={t("settings.eraseData")}
-                trailing={<Chevron />}
-                onPress={handleEraseAllData}
-              />
-            </View>
-
-            <Section label={t("settings.section.legal")}>
-              <SettingsRow
-                title={t("settings.legal.terms")}
-                trailing={<Chevron />}
-                onPress={noop}
-              />
-              <Divider />
-              <SettingsRow
-                title={t("settings.legal.privacy")}
-                trailing={<Chevron />}
-                onPress={noop}
-              />
-            </Section>
-
-            <LoggedPressable
-              onPress={handleSignOut}
-              accessibilityRole="button"
-              accessibilityLabel={t("settings.signOut")}
-              style={({ pressed }) => [
-                styles.signOut,
-                { backgroundColor: colors.backgroundElement },
-                pressed && settingsStyles.pressed,
-              ]}
-            >
-              <AppText variant="body" color={colors.danger} style={settingsStyles.bold}>
-                {t("settings.signOut")}
-              </AppText>
-            </LoggedPressable>
-
-            <AppText
-              variant="caption"
-              color={colors.textTertiary}
-              style={styles.version}
-            >
-              {`GymNotes ${Constants.expoConfig?.version ?? ""}`}
+      <Section label={t("settings.section.subscription")}>
+        <View style={styles.subRow}>
+          <View style={settingsStyles.summaryIcon}>
+            <AppIcon name="crown" color={colors.textTertiary} size={20} />
+          </View>
+          <View style={styles.subText}>
+            <AppText variant="body" style={settingsStyles.bold}>
+              {t("settings.sub.none")}
             </AppText>
-          </>
+            <AppText variant="secondary" color={colors.textSecondary}>
+              {t("settings.sub.hint")}
+            </AppText>
+          </View>
+          <LoggedPressable
+            onPress={noop}
+            accessibilityRole="button"
+            accessibilityLabel={t("settings.sub.upgrade")}
+            style={({ pressed }) => [
+              styles.upgrade,
+              pressed && settingsStyles.pressed,
+            ]}
+          >
+            <AppText variant="label" color={UPGRADE_FG}>
+              {t("settings.sub.upgrade")}
+            </AppText>
+          </LoggedPressable>
+        </View>
+      </Section>
+
+      <Section label={t("settings.section.connect")}>
+        <View style={styles.connectTop}>
+          <View style={styles.cluster}>
+            {CLUSTER.map((c, i) => (
+              <View
+                key={c}
+                style={[
+                  styles.logo,
+                  {
+                    backgroundColor: c,
+                    borderColor: colors.backgroundElement,
+                  },
+                  i > 0 && styles.logoOverlap,
+                ]}
+              />
+            ))}
+          </View>
+          <AppText variant="secondary" color={colors.textSecondary}>
+            {t("settings.connect.desc")}
+          </AppText>
+        </View>
+        <Divider />
+        <SettingsRow
+          title={t("settings.connect.instructions")}
+          trailing={<Chevron />}
+          onPress={noop}
+        />
+        <Divider />
+        <SettingsRow
+          title={t("settings.connect.api")}
+          trailing={<ValueTrailing label={apiKeysLabel} />}
+          onPress={openApiKeys}
+        />
+      </Section>
+
+      <Section label="Developer">
+        <SettingsRow
+          title="Developer mode"
+          trailing={
+            <Toggle
+              value={devMode}
+              onValueChange={toggleDevMode}
+              label="Developer mode"
+            />
+          }
+        />
+        <>
+          <Divider />
+          <SettingsRow
+            title="Abrir painel"
+            trailing={<Chevron />}
+            onPress={openDeveloper}
+          />
+        </>
+      </Section>
+
+      <View
+        style={[
+          settingsStyles.card,
+          { backgroundColor: colors.backgroundElement },
+        ]}
+      >
+        <SettingsRow
+          icon="star"
+          iconColor={TINT.blue}
+          title={t("settings.feedback")}
+          trailing={<Chevron />}
+          onPress={noop}
+        />
+        <Divider />
+        <SettingsRow
+          icon="trash"
+          iconColor={colors.danger}
+          title={t("settings.eraseData")}
+          trailing={<Chevron />}
+          onPress={handleEraseAllData}
+        />
+      </View>
+
+      <Section label={t("settings.section.legal")}>
+        <SettingsRow
+          title={t("settings.legal.terms")}
+          trailing={<Chevron />}
+          onPress={noop}
+        />
+        <Divider />
+        <SettingsRow
+          title={t("settings.legal.privacy")}
+          trailing={<Chevron />}
+          onPress={noop}
+        />
+      </Section>
+
+      <LoggedPressable
+        onPress={handleSignOut}
+        accessibilityRole="button"
+        accessibilityLabel={t("settings.signOut")}
+        style={({ pressed }) => [
+          styles.signOut,
+          { backgroundColor: colors.backgroundElement },
+          pressed && settingsStyles.pressed,
+        ]}
+      >
+        <AppText
+          variant="body"
+          color={colors.danger}
+          style={settingsStyles.bold}
+        >
+          {t("settings.signOut")}
+        </AppText>
+      </LoggedPressable>
+
+      <AppText
+        variant="caption"
+        color={colors.textTertiary}
+        style={styles.version}
+      >
+        {`GymNotes ${Constants.expoConfig?.version ?? ""}`}
+      </AppText>
+    </>
   );
 
   /**
@@ -823,7 +821,10 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
             size="full"
             nested={nested}
           >
-            <SavedMealsContent meals={savedMeals} onSelect={openSavedMealDetails} />
+            <SavedMealsContent
+              meals={savedMeals}
+              onSelect={openSavedMealDetails}
+            />
           </SheetFrame>
         );
 
@@ -890,12 +891,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
         );
 
       case "settings.developer":
-        return (
-          <DeveloperSheet
-            visible
-            onClose={closeDeveloper}
-          />
-        );
+        return <DeveloperSheet visible onClose={closeDeveloper} />;
 
       case "settings.routines":
         return (
@@ -968,7 +964,6 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     </>
   );
 }
-
 
 const styles = StyleSheet.create({
   cluster: {
