@@ -824,9 +824,10 @@ export function DayTemplate<TData, TTotals>({
     (action: FoodMediaAction) => {
       Keyboard.dismiss();
       setFoodMediaMenuVisible(false);
+      if (foodGoalsVisible) closeAppModal("food.goals");
       setCameraMode(action);
     },
-    [],
+    [closeAppModal, foodGoalsVisible],
   );
 
   const handlePhotoCaptured = useCallback(
@@ -1238,7 +1239,7 @@ export function DayTemplate<TData, TTotals>({
   // Always-set onPress keeps TotalsDock's Pressable stable (no remount/flicker
   // when the keyboard toggles); the panel just does nothing while typing.
   const onDockPress = () => {
-    if (keyboardVisible) return;
+    if (keyboardVisible || cameraMode) return;
     if (isFood) toggleFoodGoals();
     else toggleWorkoutProgress();
   };

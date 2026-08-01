@@ -38,12 +38,12 @@ test("setDevLimit clears override on <= 0", () => {
   expect(getLimit("maxNotesPerDay")).toBe(LIMIT_DEFAULTS.maxNotesPerDay);
 });
 
-test("getLimit ignores override in release mode", () => {
+test("getLimit respects override regardless of __DEV__", () => {
   const origDev = (global as any).__DEV__;
   (global as any).__DEV__ = false;
 
   useAppStore.getState().setDevLimit("maxNotesPerDay", 5);
-  expect(getLimit("maxNotesPerDay")).toBe(LIMIT_DEFAULTS.maxNotesPerDay);
+  expect(getLimit("maxNotesPerDay")).toBe(5);
 
   (global as any).__DEV__ = origDev;
 });

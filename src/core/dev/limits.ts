@@ -22,15 +22,13 @@ export const LIMIT_DEFAULTS: Record<LimitKey, number> = {
   maxPhotosPerDay: MAX_PHOTOS_PER_DAY,
 };
 
-/** Non-hook resolver for non-React code (CommandBus). Release ALWAYS = default. */
+/** Non-hook resolver for non-React code (CommandBus). */
 export function getLimit(key: LimitKey): number {
-  if (!__DEV__) return LIMIT_DEFAULTS[key];
   return useAppStore.getState().devLimits[key] ?? LIMIT_DEFAULTS[key];
 }
 
-/** Hook for render-time reads (maxLength), reactive to dev changes. Release = default. */
+/** Hook for render-time reads (maxLength), reactive to dev changes. */
 export function useLimit(key: LimitKey): number {
   const devLimits = useAppStore((s) => s.devLimits);
-  if (!__DEV__) return LIMIT_DEFAULTS[key];
   return devLimits[key] ?? LIMIT_DEFAULTS[key];
 }

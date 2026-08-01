@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { glassCircleModifiers } from '@/components/molecules/NativeMenuButton';
 import {
   SwiftButton,
   SwiftHost,
@@ -19,10 +18,8 @@ import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 
 /**
- * The offline pill: an amber glass circle with a slashed-cloud SF Symbol, sitting
- * in the header only while offline. Tapping it opens a native SwiftUI `Popover`
- * (self-anchoring — no manual positioning, unlike a free-floating overlay) that
- * explains the queue. iOS file; Android/web get `OfflineBadge.tsx`.
+ * Offline indicator: bare amber slashed-cloud icon. Tapping opens a native SwiftUI
+ * `Popover` that explains the queue. iOS file; Android/web get `OfflineBadge.tsx`.
  */
 export function OfflineBadge() {
   const colors = useColors();
@@ -31,7 +28,7 @@ export function OfflineBadge() {
 
   return (
     <View style={box}>
-      <SwiftHost style={[styles.frame, box]}>
+      <SwiftHost style={{ width: Metrics.iconButton, height: Metrics.iconButton, alignItems: 'center', justifyContent: 'center' }}>
         <SwiftPopover
           isPresented={open}
           onIsPresentedChange={setOpen}
@@ -42,12 +39,7 @@ export function OfflineBadge() {
               label={t('offline.badge')}
               systemImage="icloud.slash"
               onPress={() => setOpen(true)}
-              // ponytail: size calibrated by NativeMenuButton's recipe; if still off
-              // vs the settings button, try controlSize('large') instead.
-              modifiers={[
-                ...glassCircleModifiers(Metrics.iconButton),
-                swiftForegroundStyle(colors.accent),
-              ]}
+              modifiers={[swiftForegroundStyle(colors.accent)]}
             />
           </SwiftPopover.Trigger>
           <SwiftPopover.Content>
@@ -81,12 +73,3 @@ export function OfflineBadge() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  frame: {
-    width: Metrics.iconButton,
-    height: Metrics.iconButton,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

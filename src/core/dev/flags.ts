@@ -11,7 +11,6 @@ export * from "./flagDefs";
  */
 export function useFeature(flag: FeatureFlag): boolean {
   const devFlags = useAppStore((s) => s.devFlags);
-  if (!__DEV__) return true;
   return devFlags[flag] ?? true;
 }
 
@@ -22,6 +21,5 @@ export function useFeature(flag: FeatureFlag): boolean {
  */
 export function useScopeEnabled(domain: "food" | "workout"): boolean {
   const devFlags = useAppStore((s) => s.devFlags);
-  if (!__DEV__) return true;
   return getScopeEnabled(devFlags, domain);
 }

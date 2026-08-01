@@ -23,7 +23,7 @@ interface CapturedFoodPhoto {
 
 // ponytail: tune on device — must show enough preview to frame food/barcode
 // without pushing the dock/composer off-screen on smaller phones.
-const CAMERA_PREVIEW_HEIGHT = 320;
+const CAMERA_BLOCK_HEIGHT = 460;
 
 const thumbnailRotations = ['-8deg', '5deg', '-4deg'] as const;
 
@@ -186,7 +186,53 @@ export function FoodCameraBlock({
 
   return (
     <GlassSurface glass="regular" style={styles.panel}>
-      {/* Header */}
+      {/* Camera fills the block edge-to-edge */}
+      {permission?.granted ? (
+        <>
+          <CameraView
+            key={`${mode}-${scanSession}`}
+            ref={(node) => {
+              cameraRef.current = node;
+            }}
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            active
+            onBarcodeScanned={isBarcode ? handleBarcode : undefined}
+            barcodeScannerSettings={{
+              barcodeTypes: [...BARCODE_TYPES],
+            }}
+          />
+          {isBarcode ? (
+            <GlassSurface glass="regular" style={styles.hint}>
+              <AppText
+                variant="body"
+                color={scanNotice === 'notFound' ? colors.danger : '#FFFFFF'}>
+                {scanNotice === 'notFound'
+                  ? t('media.noBarcodeFound')
+                  : scanNotice === 'unsupported'
+                    ? t('media.galleryScanUnsupported')
+                    : t('media.scanHint')}
+              </AppText>
+            </GlassSurface>
+          ) : null}
+        </>
+      ) : (
+        <View style={styles.permissionCard}>
+          <AppText variant="body" color="#FFFFFF">
+            {t('media.cameraPermission')}
+          </AppText>
+          <LoggedPressable
+            onPress={() => void requestPermission()}
+            accessibilityRole="button"
+            accessibilityLabel={t('media.allowCamera')}>
+            <AppText variant="label" color={colors.accent}>
+              {t('media.allowCamera')}
+            </AppText>
+          </LoggedPressable>
+        </View>
+      )}
+
+      {/* Header — overlaid on top */}
       <View style={styles.header}>
         <GlassSurface glass="regular" style={styles.titlePill}>
           <AppText variant="label" color="#FFFFFF">
@@ -200,55 +246,7 @@ export function FoodCameraBlock({
         </LoggedPressable>
       </View>
 
-      {/* Camera preview */}
-      <View style={styles.previewBox}>
-        {permission?.granted ? (
-          <>
-            <CameraView
-              key={`${mode}-${scanSession}`}
-              ref={(node) => {
-                cameraRef.current = node;
-              }}
-              style={StyleSheet.absoluteFill}
-              facing="back"
-              active
-              onBarcodeScanned={isBarcode ? handleBarcode : undefined}
-              barcodeScannerSettings={{
-                barcodeTypes: [...BARCODE_TYPES],
-              }}
-            />
-            {isBarcode ? (
-              <GlassSurface glass="regular" style={styles.hint}>
-                <AppText
-                  variant="body"
-                  color={scanNotice === 'notFound' ? colors.danger : '#FFFFFF'}>
-                  {scanNotice === 'notFound'
-                    ? t('media.noBarcodeFound')
-                    : scanNotice === 'unsupported'
-                      ? t('media.galleryScanUnsupported')
-                      : t('media.scanHint')}
-                </AppText>
-              </GlassSurface>
-            ) : null}
-          </>
-        ) : (
-          <View style={styles.permissionCard}>
-            <AppText variant="body" color="#FFFFFF">
-              {t('media.cameraPermission')}
-            </AppText>
-            <LoggedPressable
-              onPress={() => void requestPermission()}
-              accessibilityRole="button"
-              accessibilityLabel={t('media.allowCamera')}>
-              <AppText variant="label" color={colors.accent}>
-                {t('media.allowCamera')}
-              </AppText>
-            </LoggedPressable>
-          </View>
-        )}
-      </View>
-
-      {/* Controls */}
+      {/* Controls — overlaid on bottom */}
       {permission?.granted ? (
         <View style={styles.captureControls}>
           <View style={styles.gallerySlot}>
@@ -303,19 +301,24 @@ export function FoodCameraBlock({
 
 const styles = StyleSheet.create({
   panel: {
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four,
-    paddingBottom: Spacing.five,
+    // ponytail: tune CAMERA_BLOCK_HEIGHT on device — tall enough to frame
+    // food and small enough to leave room for the keyboard/dock below.
+    height: CAMERA_BLOCK_HEIGHT,
     borderRadius: Radii.xl,
     overflow: 'hidden',
-    // ponytail: tune on device — the panel must feel at home among
-    // FoodGoalsSheet and WorkoutProgressSheet, not wider or narrower.
   },
   header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    // ponytail: tune insets on device
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.four,
+    zIndex: 1,
   },
   iconButton: {
     width: Metrics.iconButton,
@@ -331,33 +334,36 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     overflow: 'hidden',
   },
-  previewBox: {
-    // ponytail: tune CAMERA_PREVIEW_HEIGHT on device — tall enough to frame
-    // food and small enough to leave room for the keyboard/dock below.
-    height: CAMERA_PREVIEW_HEIGHT,
-    borderRadius: Radii.lg,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   hint: {
     position: 'absolute',
-    bottom: Spacing.three,
+    // ponytail: tune bottom inset on device — must sit above the controls row
+    bottom: 80,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.two,
     overflow: 'hidden',
+    alignSelf: 'center',
+    zIndex: 1,
   },
   permissionCard: {
-    borderRadius: Radii.lg,
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: Spacing.four,
     gap: Spacing.three,
-    alignItems: 'center',
   },
   captureControls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    // ponytail: tune insets on device
+    paddingHorizontal: Spacing.four,
+    paddingBottom: Spacing.five,
+    zIndex: 1,
   },
   gallerySlot: {
     width: 104,
@@ -406,6 +412,8 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     borderWidth: 5,
     borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   shutterInner: {
     width: 54,
