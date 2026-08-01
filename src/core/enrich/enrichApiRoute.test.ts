@@ -1,4 +1,5 @@
 import { POST } from '@/app/api/enrich+api';
+import { MAX_PHOTOS_PER_NOTE } from '@/constants/limits';
 
 const originalFetch = global.fetch;
 const originalApiKey = process.env.DEEPSEEK_API_KEY;
@@ -177,4 +178,40 @@ test('an empty image key falls back to the user chat key, not to ours', async ()
   });
 
   expect(authOf(fetchMock, 0)).toBe('Bearer chat-key');
+});
+
+function mediaN(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `m${i}`,
+    kind: 'foodPhoto',
+    base64: 'AAAA',
+  })) as { id: string; kind: 'foodPhoto' | 'menuPhoto'; base64: string }[];
+}
+
+test('media: MAX_PHOTOS_PER_NOTE photos validates (200)', async () => {
+  process.env.DEEPSEEK_API_KEY = 'test-key';
+  const fetchMock = okFetch();
+  global.fetch = fetchMock as typeof fetch;
+
+  const res = await post({
+    text: 'refeicao',
+    domain: 'food',
+    locale: 'pt-BR',
+    media: mediaN(MAX_PHOTOS_PER_NOTE),
+  });
+
+  expect(res.status).toBe(200);
+});
+
+test('media: MAX_PHOTOS_PER_NOTE + 1 photos is rejected (400)', async () => {
+  process.env.DEEPSEEK_API_KEY = 'test-key';
+
+  const res = await post({
+    text: 'refeicao',
+    domain: 'food',
+    locale: 'pt-BR',
+    media: mediaN(MAX_PHOTOS_PER_NOTE + 1),
+  });
+
+  expect(res.status).toBe(400);
 });

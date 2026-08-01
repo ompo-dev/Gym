@@ -24,7 +24,7 @@ export function useDay(domain: Domain) {
   }, [domain, day.date, setEntries]);
 
   const addEntry = useCallback(
-    (text: string, media?: EntryMediaAttachment[]) => void bus.addEntry(text, domain, media),
+    (text: string, media?: EntryMediaAttachment[]) => bus.addEntry(text, domain, media),
     [domain],
   );
   /** Returns false when no plan could be produced — the screen decides the copy. */

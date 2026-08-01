@@ -3,6 +3,7 @@ import { create } from 'zustand';
 
 import { todayISO } from '@/core/date';
 import { DEFAULT_FLAGS, type FeatureFlag, type FeatureFlags } from '@/core/dev/flags';
+import { type DevLimits, type LimitKey } from '@/core/dev/limits';
 import { log } from '@/core/log';
 import type { ApiKeyMode, ApiKeys } from '@/core/enrich/types';
 import {
@@ -39,7 +40,10 @@ interface AppState {
   isOffline: boolean;
   /** Dev feature flags, persisted as JSON blob under "dev_flags". */
   devFlags: FeatureFlags;
+  /** Dev numeric limits, persisted as JSON blob under "dev_limits". */
+  devLimits: DevLimits;
   setFeature: (flag: FeatureFlag, value: boolean) => void;
+  setDevLimit: (key: LimitKey, value: number | undefined) => void;
   setOffline: (offline: boolean) => void;
   setApiKeys: (patch: Partial<ApiKeys>) => Promise<void>;
   setDate: (domain: Domain, date: string) => void;
@@ -64,6 +68,7 @@ const API_MODE_KEY = 'api_mode';
 const API_KEY_CHAT_KEY = 'api_key_chat';
 const API_KEY_IMAGE_KEY = 'api_key_image';
 const DEV_FLAGS_KEY = 'dev_flags';
+const DEV_LIMITS_KEY = 'dev_limits';
 
 const defaultApiKeys = (): ApiKeys => ({ mode: 'managed', chat: '', image: '' });
 
@@ -100,6 +105,7 @@ export const useAppStore = create<AppState>((set) => ({
   apiKeys: defaultApiKeys(),
   isOffline: false,
   devFlags: { ...DEFAULT_FLAGS },
+  devLimits: {},
 
   setOffline: (offline) =>
     set((s) => (s.isOffline === offline ? {} : { isOffline: offline })),
@@ -108,6 +114,14 @@ export const useAppStore = create<AppState>((set) => ({
     const next = { ...useAppStore.getState().devFlags, [flag]: value };
     set({ devFlags: next });
     void SettingsRepository.set(DEV_FLAGS_KEY, JSON.stringify(next));
+  },
+
+  setDevLimit: (key, value) => {
+    const next = { ...useAppStore.getState().devLimits };
+    if (value === undefined || !Number.isFinite(value) || value <= 0) delete next[key];
+    else next[key] = Math.floor(value);
+    set({ devLimits: next });
+    void SettingsRepository.set(DEV_LIMITS_KEY, JSON.stringify(next));
   },
 
   setDate: (domain, date) => {
@@ -149,6 +163,7 @@ export const useAppStore = create<AppState>((set) => ({
         storedChatKey,
         storedImageKey,
         storedDevFlags,
+        storedDevLimits,
       ] = await Promise.all([
         SettingsRepository.get(THEME_KEY),
         SettingsRepository.get(LANG_KEY),
@@ -158,6 +173,7 @@ export const useAppStore = create<AppState>((set) => ({
         SettingsRepository.get(API_KEY_CHAT_KEY),
         SettingsRepository.get(API_KEY_IMAGE_KEY),
         SettingsRepository.get(DEV_FLAGS_KEY),
+        SettingsRepository.get(DEV_LIMITS_KEY),
       ]);
       const theme = isThemeMode(storedTheme) ? storedTheme : 'system';
       const lang = isLang(storedLang) ? storedLang : defaultLang;
@@ -174,6 +190,7 @@ export const useAppStore = create<AppState>((set) => ({
           image: storedImageKey ?? '',
         },
         devFlags: parseDevFlags(storedDevFlags),
+        devLimits: parseDevLimits(storedDevLimits),
       });
     } catch {
       applyTheme('system');
@@ -277,6 +294,21 @@ function parseDevFlags(value: string | null): FeatureFlags {
     return { ...DEFAULT_FLAGS, ...parsed };
   } catch {
     return { ...DEFAULT_FLAGS };
+  }
+}
+
+function parseDevLimits(value: string | null): DevLimits {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const out: DevLimits = {};
+    for (const key of Object.keys(parsed)) {
+      const v = Number(parsed[key]);
+      if (Number.isFinite(v) && v > 0) (out as Record<string, number>)[key] = v;
+    }
+    return out;
+  } catch {
+    return {};
   }
 }
 

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
+import { MAX_PHOTOS_PER_NOTE } from '@/constants/limits';
 import { DeepSeekTransportError, runEnrichEngine } from '@/core/enrich/deepseek';
+import { checkRateLimit } from '@/core/enrich/rateLimit';
 import { ENRICH_INTENTS } from '@/core/enrich/types';
 import { foodSchema } from '@/domains/schemas';
 
@@ -36,7 +38,7 @@ const RequestSchema = z.object({
   keys: KeysSchema.optional(),
   intent: z.enum(ENRICH_INTENTS).default('parse'),
   currentFood: foodSchema.optional(),
-  media: z.array(MediaSchema).max(6).optional(),
+  media: z.array(MediaSchema).max(MAX_PHOTOS_PER_NOTE).optional(),
   context: z.string().max(120).optional(),
   userContext: z.string().max(1000).optional(),
   locale: z.string().max(10).optional(),
@@ -56,6 +58,23 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (input.intent === 'purchase' && input.domain !== 'food') {
     return json({ ok: false, error: 'Invalid request' }, 400);
+  }
+
+  // Managed key = we pay, so guard it. On EAS Hosting (Cloudflare)
+  // `cf-connecting-ip` is always set by CF and cannot be spoofed by the
+  // client; absent means local/dev (not behind CF) — skip.
+  if (!keys) {
+    const ip = request.headers.get('cf-connecting-ip');
+    if (ip) {
+      const verdict = checkRateLimit(ip, Date.now());
+      if (!verdict.ok) {
+        console.warn('[enrich] rate limited', { ip, retryAfterSec: verdict.retryAfterSec });
+        return Response.json(
+          { ok: false, error: 'Rate limited' },
+          { status: 429, headers: { 'Retry-After': String(verdict.retryAfterSec) } },
+        );
+      }
+    }
   }
 
   // A user key never falls back to ours: if they opted out of the managed key,

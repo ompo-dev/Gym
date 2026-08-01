@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Keyboard, Platform, StyleSheet, View } from "react-native";
+import { Alert, Keyboard, Platform, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -37,6 +37,8 @@ import { NotesList } from "@/components/organisms/NotesList";
 import { SaveRoutineSheet } from "@/components/organisms/SaveRoutineSheet";
 import { TotalsDock } from "@/components/organisms/TotalsDock";
 import { WorkoutProgressSheet } from "@/components/organisms/WorkoutProgressSheet";
+import { notesForDate, photosForDate } from "@/constants/limits";
+import { getLimit } from "@/core/dev/limits";
 import { Metrics, Radii, Spacing } from "@/constants/theme";
 import { APP_MODAL_TRANSITION_MS, canOpenAppModal } from "@/core/appModals";
 import type { Command } from "@/core/command/Command";
@@ -641,6 +643,14 @@ export function DayTemplate<TData, TTotals>({
 
   const handleAddEntry = useCallback(
     (text: string) => {
+      const count = notesForDate(
+        [useAppStore.getState().food, useAppStore.getState().workout],
+        date,
+      );
+      if (count >= getLimit('maxNotesPerDay')) {
+        Alert.alert(t('limit.dailyNotes'));
+        return;
+      }
       if (!isFood) {
         // "monte um treino pra semana" is a request, not a log. Detected
         // locally so an ordinary note never pays for a round trip.
@@ -827,6 +837,27 @@ export function DayTemplate<TData, TTotals>({
       base64?: string;
       mimeType?: string;
     }) => {
+      // ponytail: draftPhotos reads the closed-over state, so two captures
+      // fired before a re-render could allow one extra — harmless for a modal
+      // that captures one shot at a time.
+      const draftPhotos = foodMediaDrafts.filter(
+        (d) => d.kind !== "barcode",
+      ).length;
+      if (draftPhotos >= getLimit('maxPhotosPerNote')) {
+        Alert.alert(t("limit.photosPerNote"));
+        return;
+      }
+      const dayPhotos = photosForDate(
+        [
+          useAppStore.getState().food,
+          useAppStore.getState().workout,
+        ],
+        date,
+      );
+      if (dayPhotos + draftPhotos >= getLimit('maxPhotosPerDay')) {
+        Alert.alert(t("limit.photosPerDay"));
+        return;
+      }
       setFoodMediaDrafts((current) => [
         ...current,
         {
@@ -839,7 +870,7 @@ export function DayTemplate<TData, TTotals>({
         },
       ]);
     },
-    [],
+    [foodMediaDrafts, date],
   );
 
   const openPendingBarcodeDraft = useCallback(() => {

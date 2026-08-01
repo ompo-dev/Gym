@@ -12,6 +12,7 @@ import {
 import { AppText } from '@/components/atoms/AppText';
 import { LoggedTextInput } from '@/components/atoms/Logged';
 import { NoteRow } from '@/components/molecules/NoteRow';
+import { useLimit } from '@/core/dev/limits';
 import { Spacing } from '@/constants/theme';
 import { COMPOSER_TRAY } from '@/core/appModals';
 import type { Entry } from '@/core/types';
@@ -67,6 +68,7 @@ function NewNoteInput({
   onBlur?: () => void;
 }) {
   const colors = useColors();
+  const noteMaxChars = useLimit('noteMaxChars');
   const [text, setText] = useState('');
 
   const submit = () => {
@@ -103,6 +105,7 @@ function NewNoteInput({
         placeholderTextColor={colors.textSecondary}
         returnKeyType="done"
         submitBehavior="submit"
+        maxLength={noteMaxChars}
         style={[styles.newInput, { color: colors.text }]}
         accessibilityLabel={placeholder}
       />

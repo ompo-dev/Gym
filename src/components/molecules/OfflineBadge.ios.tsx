@@ -12,6 +12,7 @@ import {
   swiftForegroundStyle,
   swiftFrame,
   swiftPadding,
+  swiftFixedSize,
 } from '@/components/onboarding/onboardingNative';
 import { Metrics } from '@/constants/theme';
 import { useColors } from '@/hooks/use-colors';
@@ -41,7 +42,12 @@ export function OfflineBadge() {
               label={t('offline.badge')}
               systemImage="icloud.slash"
               onPress={() => setOpen(true)}
-              modifiers={glassCircleModifiers(Metrics.iconButton, colors.accent)}
+              // ponytail: size calibrated by NativeMenuButton's recipe; if still off
+              // vs the settings button, try controlSize('large') instead.
+              modifiers={[
+                ...glassCircleModifiers(Metrics.iconButton),
+                swiftForegroundStyle(colors.accent),
+              ]}
             />
           </SwiftPopover.Trigger>
           <SwiftPopover.Content>
@@ -49,7 +55,7 @@ export function OfflineBadge() {
               spacing={6}
               modifiers={[
                 swiftPadding({ top: 16, bottom: 16, leading: 18, trailing: 18 }),
-                swiftFrame({ maxWidth: 260 }),
+                swiftFrame({ width: 240 }),
               ]}
             >
               <SwiftText
@@ -60,7 +66,12 @@ export function OfflineBadge() {
               >
                 {t('offline.title')}
               </SwiftText>
-              <SwiftText modifiers={[swiftForegroundStyle(colors.textSecondary)]}>
+              <SwiftText
+                modifiers={[
+                  swiftForegroundStyle(colors.textSecondary),
+                  swiftFixedSize({ horizontal: false, vertical: true }),
+                ]}
+              >
                 {t('offline.body')}
               </SwiftText>
             </SwiftVStack>

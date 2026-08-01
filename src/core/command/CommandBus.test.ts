@@ -1,6 +1,7 @@
 import type { EnrichRequest, EnrichResponse } from '@/core/enrich/types';
 import type { Domain, Entry } from '@/core/types';
 
+import { MAX_NOTES_PER_DAY, NOTE_MAX_CHARS } from '@/constants/limits';
 import { type BusDeps, CommandBus } from './CommandBus';
 
 const TODAY = '2026-07-13';
@@ -816,4 +817,44 @@ test('resumePending re-drives stuck notes, skipping media and done', async () =>
   // Nothing pending now → a second sweep is a no-op (idempotent).
   expect(await bus.resumePending()).toBe(0);
   expect(enrichFn).toHaveBeenCalledTimes(2);
+});
+
+// ---- usage caps -------------------------------------------------------------
+
+test('addEntry returns false and adds nothing when combined food+workout count is at the daily cap', async () => {
+  const { bus, day } = harness(async () => foodOk());
+  // Fill to exactly the cap across both domains.
+  day.food.entries = Array.from({ length: MAX_NOTES_PER_DAY - 2 }, (_, i) => ({
+    id: `f${i}`, date: TODAY, domain: 'food' as const, text: 'food', status: 'done' as const, data: null, error: null, createdAt: 1,
+  }));
+  day.workout.entries = [
+    { id: 'w1', date: TODAY, domain: 'workout' as const, text: 'w1', status: 'done' as const, data: null, error: null, createdAt: 1 },
+    { id: 'w2', date: TODAY, domain: 'workout' as const, text: 'w2', status: 'done' as const, data: null, error: null, createdAt: 1 },
+  ];
+
+  const added = await bus.addEntry('burger', 'food');
+  expect(added).toBe(false);
+  // The 28 food + 2 workout entries stay — nothing new appended.
+  expect(day.food.entries).toHaveLength(MAX_NOTES_PER_DAY - 2);
+  expect(day.workout.entries).toHaveLength(2);
+});
+
+test('addEntry returns true and adds when below the daily cap', async () => {
+  const { bus, day } = harness(async () => foodOk());
+  day.food.entries = Array.from({ length: MAX_NOTES_PER_DAY - 1 }, (_, i) => ({
+    id: `f${i}`, date: TODAY, domain: 'food' as const, text: 'food', status: 'done' as const, data: null, error: null, createdAt: 1,
+  }));
+
+  const added = await bus.addEntry('burger', 'food');
+  expect(added).toBe(true);
+  expect(day.food.entries).toHaveLength(MAX_NOTES_PER_DAY);
+});
+
+test('addEntry truncates a note longer than NOTE_MAX_CHARS to NOTE_MAX_CHARS', async () => {
+  const { bus, day } = harness(async () => foodOk());
+  const long = 'x'.repeat(200);
+  await bus.addEntry(long, 'food');
+  await flush();
+  expect(day.food.entries[0].text.length).toBe(NOTE_MAX_CHARS);
+  expect(day.food.entries[0].text).toBe('x'.repeat(NOTE_MAX_CHARS));
 });

@@ -25,6 +25,7 @@ export {
   buttonBorderShape as swiftButtonBorderShape,
   buttonStyle as swiftButtonStyle,
   controlSize as swiftControlSize,
+  fixedSize as swiftFixedSize,
   font as swiftFont,
   foregroundStyle as swiftForegroundStyle,
   frame as swiftFrame,

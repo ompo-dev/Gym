@@ -9,6 +9,7 @@ import { AppText } from "@/components/atoms/AppText";
 import { SettingsRow } from "@/components/molecules/SettingsRow";
 import { todayISO, setDevDayOffset, getDevDayOffset } from "@/core/date";
 import { FEATURE_FLAGS } from "@/core/dev/flags";
+import { LIMIT_DEFAULTS, LIMIT_KEYS } from "@/core/dev/limits";
 import { buildMockEntries } from "@/core/dev/mockData";
 import { getLogBuffer, clearLogBuffer, logConfig } from "@/core/log";
 import {
@@ -50,6 +51,13 @@ const FEATURE_LABELS: FeatureLabel = {
   offlineForce: "Forçar offline",
 };
 
+const LIMIT_LABELS: Record<string, string> = {
+  noteMaxChars: "Caracteres por nota",
+  maxNotesPerDay: "Notas por dia",
+  maxPhotosPerNote: "Fotos por nota",
+  maxPhotosPerDay: "Fotos por dia",
+};
+
 export function DeveloperSheet({
   visible,
   onClose,
@@ -67,6 +75,8 @@ export function DeveloperSheet({
 
   const devFlags = useAppStore((s) => s.devFlags);
   const setFeature = useAppStore((s) => s.setFeature);
+  const devLimits = useAppStore((s) => s.devLimits);
+  const setDevLimit = useAppStore((s) => s.setDevLimit);
 
   const seed = async () => {
     const domains: ("food" | "workout")[] = [];
@@ -398,6 +408,40 @@ export function DeveloperSheet({
         ))}
       </Section>
 
+      {/* ---- Limits ---- */}
+      <Section label="Limites">
+        {LIMIT_KEYS.map((key) => (
+          <SettingsRow
+            key={key}
+            title={LIMIT_LABELS[key]}
+            trailing={
+              <TextInput
+                value={
+                  devLimits[key] !== undefined
+                    ? String(devLimits[key])
+                    : ""
+                }
+                onChangeText={(text) => {
+                  if (text === "") {
+                    setDevLimit(key, undefined);
+                  } else {
+                    const n = parseInt(text, 10);
+                    if (Number.isFinite(n)) setDevLimit(key, n);
+                  }
+                }}
+                placeholder={String(LIMIT_DEFAULTS[key])}
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="number-pad"
+                style={[
+                  styles.limitInput,
+                  { backgroundColor: colors.surfaceMuted, color: colors.text },
+                ]}
+              />
+            }
+          />
+        ))}
+      </Section>
+
       {/* ---- Phase 5: Logs ---- */}
       <Section label="Logs">
         <SettingsRow
@@ -505,5 +549,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 15,
+  },
+  limitInput: {
+    borderRadius: Radii.sm,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    fontSize: 15,
+    width: 72,
+    textAlign: "right",
   },
 });

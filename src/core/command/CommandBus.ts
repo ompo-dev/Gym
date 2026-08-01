@@ -1,6 +1,8 @@
 import { Lru } from '@/core/cache/lru';
 import { log } from '@/core/log';
 import { normalizeForEnrich } from '@/core/enrich/normalize';
+import { notesForDate } from '@/constants/limits';
+import { getLimit } from '@/core/dev/limits';
 import type { EnrichRequest, EnrichResponse } from '@/core/enrich/types';
 import type { Domain, Entry, EntryMediaAttachment } from '@/core/types';
 import { hashKey, newId, normalizeText } from '@/core/utils';
@@ -161,11 +163,18 @@ export class CommandBus {
   ): Command | null {
     const trimmed = text.trim();
     if (!trimmed) return null;
+    const capped = trimmed.slice(0, getLimit('noteMaxChars'));
+    const targetDate = date ?? this.deps.store.getDay(domain).date;
+    const count = notesForDate(
+      [this.deps.store.getDay('food'), this.deps.store.getDay('workout')],
+      targetDate,
+    );
+    if (count >= getLimit('maxNotesPerDay')) return null;
     const entry: Entry = {
       id: newId(),
-      date: date ?? this.deps.store.getDay(domain).date,
+      date: targetDate,
       domain,
-      text: trimmed,
+      text: capped,
       media: media?.length ? media : undefined,
       status: data ? 'done' : 'thinking',
       data: data ?? null,
@@ -181,10 +190,11 @@ export class CommandBus {
     domain: Domain,
     media?: EntryMediaAttachment[],
     date?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     log.note(`add ${domain}`, { chars: text.trim().length, media: media?.length ?? 0, date });
     const cmd = this.createAddEntry(text, domain, media, date);
-    if (cmd) await this.run(cmd);
+    if (cmd) { await this.run(cmd); return true; }
+    return false;
   }
 
   /** Returns the command so the caller can undo exactly this delete. */

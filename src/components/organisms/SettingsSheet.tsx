@@ -697,14 +697,16 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
             />
           }
         />
-        <>
-          <Divider />
-          <SettingsRow
-            title="Abrir painel"
-            trailing={<Chevron />}
-            onPress={openDeveloper}
-          />
-        </>
+        {devMode ? (
+          <>
+            <Divider />
+            <SettingsRow
+              title="Abrir painel"
+              trailing={<Chevron />}
+              onPress={openDeveloper}
+            />
+          </>
+        ) : null}
       </Section>
 
       <View

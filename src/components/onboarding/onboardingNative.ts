@@ -24,6 +24,7 @@ export const SwiftVStack: any = undefined;
 export const swiftButtonBorderShape: any = undefined;
 export const swiftButtonStyle: any = undefined;
 export const swiftControlSize: any = undefined;
+export const swiftFixedSize: any = undefined;
 export const swiftFont: any = undefined;
 export const swiftForegroundStyle: any = undefined;
 export const swiftFrame: any = undefined;

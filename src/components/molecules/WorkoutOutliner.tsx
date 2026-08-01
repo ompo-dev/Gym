@@ -29,6 +29,7 @@ import {
   serializeWorkoutLines,
   WORKOUT_METRIC_COLORS,
 } from '@/domains/workout';
+import { useLimit } from '@/core/dev/limits';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 
@@ -254,6 +255,7 @@ export function WorkoutOutliner({
   onExerciseAutoFocused,
 }: WorkoutOutlinerProps) {
   const colors = useColors();
+  const noteMaxChars = useLimit('noteMaxChars');
   const [lines, setLines] = useState<string[]>(() => workoutLinesFromEntry(entry));
   const [focused, setFocused] = useState<number | null>(null);
   const [pendingFocus, setPendingFocus] = useState<number | null>(null);
@@ -584,6 +586,7 @@ export function WorkoutOutliner({
             blurOnSubmit={false}
             submitBehavior="submit"
             returnKeyType="next"
+            maxLength={noteMaxChars}
             placeholder={t('workout.exercisePlaceholder')}
             placeholderTextColor={colors.textTertiary}
             style={[styles.exerciseInput, { color: accent }]}
