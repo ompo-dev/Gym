@@ -49,6 +49,12 @@ const FEATURE_LABELS: FeatureLabel = {
   workoutMonitor: "Monitor de treino",
   aiEdit: "Editar com IA",
   offlineForce: "Forçar offline",
+  barcode: "Código de barras",
+  reminders: "Lembretes",
+  weight: "Peso",
+  recipes: "Receitas",
+  food: "Comida (aba)",
+  workout: "Treino (aba)",
 };
 
 const LIMIT_LABELS: Record<string, string> = {
@@ -72,6 +78,7 @@ export function DeveloperSheet({
   const [notifTitle, setNotifTitle] = useState("");
   const [notifBody, setNotifBody] = useState("");
   const [verbose, setVerbose] = useState(logConfig.verbose);
+  const [capture, setCapture] = useState(logConfig.capture);
 
   const devFlags = useAppStore((s) => s.devFlags);
   const setFeature = useAppStore((s) => s.setFeature);
@@ -204,6 +211,11 @@ export function DeveloperSheet({
   const toggleVerbose = (v: boolean) => {
     logConfig.verbose = v;
     setVerbose(v);
+  };
+
+  const toggleCapture = (v: boolean) => {
+    logConfig.capture = v;
+    setCapture(v);
   };
 
   // ---- estado ---------------------------------------------------------------
@@ -452,6 +464,20 @@ export function DeveloperSheet({
               value={verbose}
               onValueChange={toggleVerbose}
               label="Verbose"
+            />
+          }
+        />
+
+        <Divider />
+
+        <SettingsRow
+          title="Capturar logs"
+          subtitle="Grava no buffer de memória (padrão: dev sim, release não)"
+          trailing={
+            <Toggle
+              value={capture}
+              onValueChange={toggleCapture}
+              label="Capturar logs"
             />
           }
         />

@@ -20,7 +20,7 @@ interface FoodEntryActionMenuProps {
   anchor?: FoodEntryActionMenuAnchor | null;
   mealSaved?: boolean;
   onClose: () => void;
-  onSaveMeal: () => void;
+  onSaveMeal?: () => void;
   onEditWithAi?: () => void;
   onEditManually: () => void;
   onDelete: () => void;
@@ -147,7 +147,7 @@ export function FoodEntryActionMenu({
               label={mealSaved ? t('details.mealSaved') : t('details.saveMeal')}
               iconColor={mealSaved ? '#FFFFFF' : undefined}
               iconFill={mealSaved ? '#FFFFFF' : undefined}
-              onPress={onSaveMeal}
+              onPress={onSaveMeal!}
             />
             <ActionRow
               icon="pencil"

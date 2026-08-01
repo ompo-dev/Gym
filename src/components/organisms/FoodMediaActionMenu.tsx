@@ -5,6 +5,7 @@ import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Radii, Spacing } from '@/constants/theme';
+import { useFeature } from '@/core/dev/flags';
 import type { FoodMediaAction } from '@/core/types';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
@@ -25,11 +26,14 @@ export function FoodMediaActionMenu({
   onSelect: (action: FoodMediaAction) => void;
 }) {
   const colors = useColors();
+  const featureBarcode = useFeature('barcode');
   if (!visible) return null;
 
   return (
     <GlassSurface glass="regular" style={styles.menu}>
-      {(Object.keys(actionMeta) as FoodMediaAction[]).map((action) => (
+      {(Object.keys(actionMeta) as FoodMediaAction[])
+        .filter((a) => a !== 'barcode' || featureBarcode)
+        .map((action) => (
         <LoggedPressable
           key={action}
           onPress={() => onSelect(action)}

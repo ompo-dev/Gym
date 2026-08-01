@@ -1,4 +1,4 @@
-import { _setOnForTest, clearLogBuffer, getLogBuffer, log } from "./log";
+import { _setOnForTest, clearLogBuffer, getLogBuffer, log, logConfig } from "./log";
 
 // Enable the ring buffer push path (console stays quiet because emit only logs
 // to console when ON is true — we set it true just for the ring buffer path).
@@ -52,4 +52,14 @@ test("log with undefined meta stores no meta field", () => {
   const buffer = getLogBuffer();
   expect(buffer.length).toBeGreaterThanOrEqual(1);
   expect(buffer[0].meta).toBeUndefined();
+});
+
+test("captures to the ring when ON is false but logConfig.capture is true", () => {
+  _setOnForTest(false);      // ON off (no console)
+  logConfig.capture = true;  // ring capture on
+  clearLogBuffer();
+  log.note("hello");
+  expect(getLogBuffer()).toHaveLength(1);
+  // restore for the other tests:
+  _setOnForTest(true);
 });

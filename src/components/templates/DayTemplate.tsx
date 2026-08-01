@@ -344,10 +344,11 @@ export function DayTemplate<TData, TTotals>({
   config: DomainConfig<TData, TTotals>;
 }) {
   useAppStore((s) => s.lang);
-  const isOffline = useAppStore((s) => s.isOffline);
+  const isOffline = useAppStore((s) => s.isOffline || s.devFlags.offlineForce);
   const featureCamera = useFeature("camera");
   const featureSavedMeals = useFeature("savedMeals");
   const featureSavedExercises = useFeature("savedExercises");
+  const featurePantry = useFeature("pantry");
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const {
@@ -1319,10 +1320,10 @@ export function DayTemplate<TData, TTotals>({
             onEdit={editEntry}
             onDelete={handleDelete}
             onRetry={retryEntry}
-            onSaveExercise={!isFood ? handleSaveWorkoutExercise : undefined}
-            savedExerciseEntryIds={!isFood ? savedExerciseEntryIds : undefined}
+            onSaveExercise={!isFood && featureSavedExercises ? handleSaveWorkoutExercise : undefined}
+            savedExerciseEntryIds={!isFood && featureSavedExercises ? savedExerciseEntryIds : undefined}
             onOpenFoodDetails={isFood ? openFoodEntryDetails : undefined}
-            onOpenPantry={isFood ? openPantry : undefined}
+            onOpenPantry={isFood && featurePantry ? openPantry : undefined}
           />
         </View>
 
@@ -1484,7 +1485,7 @@ export function DayTemplate<TData, TTotals>({
         selectedFoodMealSaved={selectedFoodMealSaved}
         reasoningLoadingId={foodReasoningLoadingId}
         onDeleteFoodEntry={handleDeleteFoodEntry}
-        onSaveMeal={handleSaveMeal}
+        onSaveMeal={featureSavedMeals ? handleSaveMeal : undefined}
         onSaveNutrition={handleSaveFoodNutrition}
         onAiEdit={handleFoodAiEdit}
         onPhoto={handlePhotoCaptured}

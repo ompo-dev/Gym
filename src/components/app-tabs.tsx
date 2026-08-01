@@ -8,6 +8,7 @@ import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { LoggedPressable } from '@/components/atoms/Logged';
 import { Radii, Spacing } from '@/constants/theme';
+import { useScopeEnabled } from '@/core/dev/flags';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 import { useAppStore } from '@/store/useAppStore';
@@ -34,6 +35,8 @@ const TAB_META: Record<string, { icon: AppIconName; label: () => string }> = {
 function IosTabBar({ state, navigation }: BottomTabBarProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const food = useScopeEnabled('food');
+  const workout = useScopeEnabled('workout');
 
   return (
     <View
@@ -41,6 +44,8 @@ function IosTabBar({ state, navigation }: BottomTabBarProps) {
       pointerEvents="box-none">
       <GlassSurface glass="regular" isInteractive style={styles.bar}>
         {state.routes.map((route, index) => {
+          if (route.name === 'index' && !food) return null;
+          if (route.name === 'workout' && !workout) return null;
           const meta = TAB_META[route.name];
           if (!meta) return null;
           const focused = state.index === index;

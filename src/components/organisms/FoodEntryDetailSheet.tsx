@@ -153,6 +153,7 @@ export function FoodEntryDetailSheet({
 }: FoodEntryDetailSheetProps) {
   const colors = useColors();
   const featureAiEdit = useFeature("aiEdit");
+  const featureRecipes = useFeature("recipes");
   const profile = useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
   const enabledMicros = enabledMicronutrients(profile);
   const microStats = MICRO_STATS.filter((item) => enabledMicros.includes(item.key));
@@ -308,23 +309,25 @@ export function FoodEntryDetailSheet({
   const useNativeMenu = hasActions && IOS_NATIVE_ENABLED && SwiftMenu && SwiftButton;
   const nativeMenu = useNativeMenu ? (
     <NativeMenuButton systemImage="ellipsis" label={t('details.actions')} marginRight>
-      {SwiftGroup ? (
-        <SwiftGroup modifiers={[swiftMenuActionDismissBehavior?.('disabled')].filter(Boolean)}>
+      {onSaveMeal ? (
+        SwiftGroup ? (
+          <SwiftGroup modifiers={[swiftMenuActionDismissBehavior?.('disabled')].filter(Boolean)}>
+            <SwiftButton
+              label={saveMealLabel}
+              systemImage={mealSaved ? 'bookmark.fill' : 'bookmark'}
+              modifiers={[swiftMenuActionDismissBehavior?.('disabled')].filter(Boolean)}
+              onPress={handleSaveMeal}
+            />
+          </SwiftGroup>
+        ) : (
           <SwiftButton
             label={saveMealLabel}
             systemImage={mealSaved ? 'bookmark.fill' : 'bookmark'}
             modifiers={[swiftMenuActionDismissBehavior?.('disabled')].filter(Boolean)}
             onPress={handleSaveMeal}
           />
-        </SwiftGroup>
-      ) : (
-        <SwiftButton
-          label={saveMealLabel}
-          systemImage={mealSaved ? 'bookmark.fill' : 'bookmark'}
-          modifiers={[swiftMenuActionDismissBehavior?.('disabled')].filter(Boolean)}
-          onPress={handleSaveMeal}
-        />
-      )}
+        )
+      ) : null}
       <SwiftMenu label={t('details.editNutrition')} systemImage="pencil">
         {featureAiEdit && (
           <SwiftButton
@@ -383,7 +386,7 @@ export function FoodEntryDetailSheet({
                 anchor={menuAnchor}
                 mealSaved={mealSaved}
                 onClose={closeMenu}
-                onSaveMeal={handleSaveMeal}
+                onSaveMeal={onSaveMeal ? handleSaveMeal : undefined}
                 onEditWithAi={
                   featureAiEdit
                     ? () => openAfterMenu(aiEditId)
@@ -621,7 +624,7 @@ export function FoodEntryDetailSheet({
               </View>
             </View>
 
-            {data.recipe ? (
+            {featureRecipes && data.recipe ? (
               <View style={styles.section}>
                 <FoodRecipeCard recipe={data.recipe} />
               </View>

@@ -8,6 +8,12 @@ export const FEATURE_FLAGS = [
   "workoutMonitor",
   "aiEdit",
   "offlineForce",
+  "barcode",
+  "reminders",
+  "weight",
+  "recipes",
+  "food",
+  "workout",
 ] as const;
 
 export type FeatureFlag = (typeof FEATURE_FLAGS)[number];
@@ -21,6 +27,12 @@ export const DEFAULT_FLAGS: FeatureFlags = {
   workoutMonitor: true,
   aiEdit: true,
   offlineForce: false,
+  barcode: true,
+  reminders: true,
+  weight: true,
+  recipes: true,
+  food: true,
+  workout: true,
 };
 
 /**
@@ -32,4 +44,25 @@ export function useFeature(flag: FeatureFlag): boolean {
   const devFlags = useAppStore((s) => s.devFlags);
   if (!__DEV__) return true;
   return devFlags[flag] ?? true;
+}
+
+export function getScopeEnabled(
+  devFlags: Partial<Record<FeatureFlag, boolean>>,
+  domain: "food" | "workout",
+): boolean {
+  const food = devFlags.food ?? true;
+  const workout = devFlags.workout ?? true;
+  if (!food && !workout) return true;
+  return domain === "food" ? food : workout;
+}
+
+/**
+ * Read a scope-level flag (food / workout). In release, always true. In dev,
+ * never allows BOTH scopes to be hidden — that would strand the user in a
+ * redirect loop. If both are off, both are shown as a fallback.
+ */
+export function useScopeEnabled(domain: "food" | "workout"): boolean {
+  const devFlags = useAppStore((s) => s.devFlags);
+  if (!__DEV__) return true;
+  return getScopeEnabled(devFlags, domain);
 }

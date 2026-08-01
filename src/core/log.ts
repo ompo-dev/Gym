@@ -15,8 +15,6 @@
 // the logs are a debugging stream for `expo start`, not noise for the test
 // runner. `NODE_ENV === 'test'` is what jest sets and Metro never does.
 //
-// `_setOnForTest` lets the log buffer test push entries through emit without
-// spewing console noise — it only flips the ring-buffer path, not the console.
 let ON =
   typeof __DEV__ !== 'undefined' &&
   __DEV__ &&
@@ -25,6 +23,7 @@ let ON =
 /** Test-only: enable the ring buffer so log.<category>() pushes to it. */
 export function _setOnForTest(on: boolean): void {
   ON = on;
+  logConfig.capture = on;
 }
 
 export type LogCategory =
@@ -42,8 +41,12 @@ export type LogCategory =
  * Per-letter and per-scroll-frame logging is a firehose that drowns the useful
  * lines. It is off by default and flipped on only when you are chasing an input
  * or scroll bug. Everything else logs regardless.
+ *
+ * `capture` controls the ring buffer independently of `ON` (console output).
+ * Defaults to the same dev-detection so dev builds capture out of the box, but
+ * can be toggled in the dev panel to capture in internal/release builds too.
  */
-export const logConfig = { verbose: false };
+export const logConfig = { verbose: false, capture: ON };
 
 const ICON: Record<LogCategory, string> = {
   nav: '🧭',
@@ -105,13 +108,16 @@ export function clearLogBuffer(): void {
 }
 
 function emit(category: LogCategory, event: string, meta?: unknown): void {
-  if (!ON) return;
-  const head = `${stamp()} ${ICON[category]} [${category}] ${event}`;
-  if (meta === undefined) console.log(head);
-  else console.log(head, meta);
+  // Console output: dev terminal only.
+  if (ON) {
+    const head = `${stamp()} ${ICON[category]} [${category}] ${event}`;
+    if (meta === undefined) console.log(head);
+    else console.log(head, meta);
+  }
 
-  // Push clipped entry into the ring buffer. The clip is done HERE, on push,
-  // so the ring never holds a reference to the original (potentially huge) meta.
+  // Ring buffer: independently controlled via logConfig.capture. Pushes even
+  // when ON is false (e.g. internal build with capture toggled on).
+  if (!logConfig.capture) return;
   if (ring.length >= RING_CAPACITY) ring.shift();
   ring.push({ ts: stamp(), category, event, meta: clipMeta(meta) });
 }

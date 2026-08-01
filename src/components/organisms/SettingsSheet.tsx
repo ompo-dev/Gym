@@ -109,6 +109,10 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const eraseAllData = useAppStore((s) => s.eraseAllData);
   const featurePantry = useFeature("pantry");
   const featureWorkoutMonitor = useFeature("workoutMonitor");
+  const featureSavedMeals = useFeature("savedMeals");
+  const featureSavedExercises = useFeature("savedExercises");
+  const featureReminders = useFeature("reminders");
+  const featureWeight = useFeature("weight");
   const profile =
     useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
   const settingsStack = visible
@@ -479,16 +483,18 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
         />
       </Section>
 
-      <Section label={t("settings.section.weight")}>
-        <SettingsRow
-          icon="scale"
-          iconColor={TINT.purple}
-          title={formatWeight(profile.weightKg)}
-          subtitle={t("settings.weight.hint")}
-          trailing={<Chevron />}
-          onPress={() => openAfterSettingsDismiss("weight")}
-        />
-      </Section>
+      {featureWeight ? (
+        <Section label={t("settings.section.weight")}>
+          <SettingsRow
+            icon="scale"
+            iconColor={TINT.purple}
+            title={formatWeight(profile.weightKg)}
+            subtitle={t("settings.weight.hint")}
+            trailing={<Chevron />}
+            onPress={() => openAfterSettingsDismiss("weight")}
+          />
+        </Section>
+      ) : null}
 
       {/* Both sections always: Settings is one screen for the whole app,
                 so which tab opened it should not hide half the saved data. */}
@@ -504,15 +510,19 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
           />
         )}
         {featureWorkoutMonitor && <Divider />}
-        <SettingsRow
-          icon="bookmark"
-          iconColor={colors.water}
-          title={t("settings.workout.saved")}
-          subtitle={`${savedExercisesCount} ${t("settings.workout.savedCount")}`}
-          trailing={<Chevron />}
-          onPress={openSavedExercises}
-        />
-        <Divider />
+        {featureSavedExercises && (
+          <>
+            <SettingsRow
+              icon="bookmark"
+              iconColor={colors.water}
+              title={t("settings.workout.saved")}
+              subtitle={`${savedExercisesCount} ${t("settings.workout.savedCount")}`}
+              trailing={<Chevron />}
+              onPress={openSavedExercises}
+            />
+            <Divider />
+          </>
+        )}
         <SettingsRow
           icon="calendar"
           iconColor={colors.protein}
@@ -524,15 +534,19 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
       </Section>
 
       <Section label={t("settings.section.meals")}>
-        <SettingsRow
-          icon="utensils"
-          iconColor={colors.carbs}
-          title={t("settings.meals.manage")}
-          subtitle={`${savedMealsCount} ${t("settings.meals.saved")}`}
-          trailing={<Chevron />}
-          onPress={openSavedMeals}
-        />
-        <Divider />
+        {featureSavedMeals && (
+          <>
+            <SettingsRow
+              icon="utensils"
+              iconColor={colors.carbs}
+              title={t("settings.meals.manage")}
+              subtitle={`${savedMealsCount} ${t("settings.meals.saved")}`}
+              trailing={<Chevron />}
+              onPress={openSavedMeals}
+            />
+            <Divider />
+          </>
+        )}
         {featurePantry && (
           <SettingsRow
             icon="apple"
@@ -564,7 +578,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
         />
       </Section>
 
-      {Platform.OS !== "web" && remindersOn !== null ? (
+      {featureReminders && Platform.OS !== "web" && remindersOn !== null ? (
         <Section label={t("settings.reminders.title")}>
           <SettingsRow
             icon="bell"

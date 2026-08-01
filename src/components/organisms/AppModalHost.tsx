@@ -31,7 +31,7 @@ interface AppModalHostProps {
   selectedFoodMealSaved: boolean;
   reasoningLoadingId: string | null;
   onDeleteFoodEntry: (entry: Entry) => void;
-  onSaveMeal: (entry: Entry) => Promise<void> | void;
+  onSaveMeal?: (entry: Entry) => Promise<void> | void;
   onSaveNutrition: (entry: Entry, text: string, data: FoodData) => Promise<void> | void;
   onAiEdit: (entry: Entry, instruction: string) => Promise<void> | void;
   onPhoto: (photo: CapturedFoodPhoto) => void;

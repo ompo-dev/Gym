@@ -16,6 +16,8 @@ import {
 import type { MealType } from '@/domains/schemas';
 import { t } from '@/i18n';
 
+import { useAppStore } from '@/store/useAppStore';
+
 import { shouldNudgeLapsed } from './reminderPrefs';
 
 const ENABLED_KEY = 'reminders_enabled';
@@ -69,6 +71,7 @@ export function slotLabel(type: MealType): string {
 }
 
 export async function remindersEnabled(): Promise<boolean> {
+  if (__DEV__ && !useAppStore.getState().devFlags.reminders) return false;
   return (await SettingsRepository.get(ENABLED_KEY)) === '1';
 }
 
