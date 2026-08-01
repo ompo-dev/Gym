@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 
-import type { FoodMediaAction, Domain, Entry } from '@/core/types';
+import type { Domain, Entry } from '@/core/types';
 import type { AppModal } from '@/core/appModals';
 import type { FoodData } from '@/domains/schemas';
 import type { SavedMeal } from '@/data/SavedMealRepository';
@@ -12,18 +12,10 @@ import type {
 import { useAppModalStore } from '@/store/useAppModalStore';
 
 import { FoodEntryDetailSheet } from './FoodEntryDetailSheet';
-import { FoodMediaCaptureSheet } from './FoodMediaCaptureSheet';
 import { FoodNutritionEditSheet } from './FoodNutritionEditSheet';
 import { SavedExercisesSheet } from './settings/SavedExercisesSheet';
 import { SavedMealsSheet } from './settings/SavedMealsSheet';
 import { SettingsSheet } from './SettingsSheet';
-
-type CapturedFoodPhoto = {
-  kind: Extract<FoodMediaAction, 'foodPhoto' | 'menuPhoto'>;
-  uri: string;
-  base64?: string;
-  mimeType?: string;
-};
 
 interface AppModalHostProps {
   domain: Domain;
@@ -34,13 +26,6 @@ interface AppModalHostProps {
   onSaveMeal?: (entry: Entry) => Promise<void> | void;
   onSaveNutrition: (entry: Entry, text: string, data: FoodData) => Promise<void> | void;
   onAiEdit: (entry: Entry, instruction: string) => Promise<void> | void;
-  onPhoto: (photo: CapturedFoodPhoto) => void;
-  /** Already attached, so the camera strip and the tray agree on what exists. */
-  mediaDrafts: { uri?: string }[];
-  /** `imageUri` is the frame the code was read from — it survived only because
-   *  JS ignores extra arguments; the type used to stop at `code`. */
-  onBarcode: (code: string, imageUri?: string) => void;
-  onFoodCaptureDismiss: () => void;
   onSaveBarcodeFood: (text: string, data: FoodData) => Promise<void> | void;
   onSelectSavedMeals: (meals: SavedMeal[]) => void;
   onSelectSavedExercises: (workouts: SavedExercise[]) => void;
@@ -64,10 +49,6 @@ export function AppModalHost({
   onSaveMeal,
   onSaveNutrition,
   onAiEdit,
-  onPhoto,
-  mediaDrafts,
-  onBarcode,
-  onFoodCaptureDismiss,
   onSaveBarcodeFood,
   onSelectSavedMeals,
   onSelectSavedExercises,
@@ -169,20 +150,6 @@ export function AppModalHost({
           />
         );
       }
-
-      case 'food.mediaCapture':
-        return (
-          <FoodMediaCaptureSheet
-            visible
-            mode={item.mode}
-            onClose={() => closeAppModal('food.mediaCapture')}
-            onDismiss={onFoodCaptureDismiss}
-            onPhoto={onPhoto}
-            onBarcode={onBarcode}
-            drafts={mediaDrafts}
-            nested={nested}
-          />
-        );
 
       case 'food.barcodeNutritionEdit':
         return (

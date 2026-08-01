@@ -28,6 +28,7 @@ import {
 import { AppModalHost } from "@/components/organisms/AppModalHost";
 import { DayHeader } from "@/components/organisms/DayHeader";
 import { FoodGoalsSheet } from "@/components/organisms/FoodGoalsSheet";
+import { FoodCameraBlock } from "@/components/organisms/FoodCameraBlock";
 import { FoodMediaActionMenu } from "@/components/organisms/FoodMediaActionMenu";
 import {
   buildBarcodeText,
@@ -373,6 +374,7 @@ export function DayTemplate<TData, TTotals>({
     string | null
   >(null);
   const [foodMediaMenuVisible, setFoodMediaMenuVisible] = useState(false);
+  const [cameraMode, setCameraMode] = useState<FoodMediaAction | null>(null);
   const [foodMediaDrafts, setFoodMediaDrafts] = useState<FoodMediaDraft[]>([]);
   const [savedExerciseEntryIds, setSavedExerciseEntryIds] = useState<
     Set<string>
@@ -820,15 +822,11 @@ export function DayTemplate<TData, TTotals>({
 
   const handleSelectFoodMedia = useCallback(
     (action: FoodMediaAction) => {
-      if (!canOpenAppModal("day.root", "food.mediaCapture")) return;
+      Keyboard.dismiss();
       setFoodMediaMenuVisible(false);
-      replaceAppModal({
-        id: "food.mediaCapture",
-        domain: "food",
-        mode: action,
-      });
+      setCameraMode(action);
     },
-    [replaceAppModal],
+    [],
   );
 
   const handlePhotoCaptured = useCallback(
@@ -877,7 +875,7 @@ export function DayTemplate<TData, TTotals>({
   const openPendingBarcodeDraft = useCallback(() => {
     const draft = pendingBarcodeDraft.current;
     if (!draft || !barcodeCaptureDismissed.current) return;
-    if (!canOpenAppModal("food.mediaCapture", "food.barcodeNutritionEdit"))
+    if (!canOpenAppModal("day.root", "food.barcodeNutritionEdit"))
       return;
     if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
     pendingBarcodeDraft.current = null;
@@ -892,7 +890,7 @@ export function DayTemplate<TData, TTotals>({
       barcodeLookupRun.current = run;
       barcodeCaptureDismissed.current = false;
       pendingBarcodeDraft.current = null;
-      closeAppModal("food.mediaCapture");
+      setCameraMode(null);
       barcodeTimer.current = setTimeout(() => {
         barcodeCaptureDismissed.current = true;
         openPendingBarcodeDraft();
@@ -915,13 +913,8 @@ export function DayTemplate<TData, TTotals>({
         openPendingBarcodeDraft();
       })();
     },
-    [closeAppModal, openPendingBarcodeDraft],
+    [openPendingBarcodeDraft],
   );
-
-  const handleFoodCaptureDismiss = useCallback(() => {
-    barcodeCaptureDismissed.current = true;
-    openPendingBarcodeDraft();
-  }, [openPendingBarcodeDraft]);
 
   const handleSaveBarcodeFood = useCallback(
     async (text: string, data: FoodData) => {
@@ -950,13 +943,9 @@ export function DayTemplate<TData, TTotals>({
       // time, and the thumbnail strip beside the shutter — which is fed by
       // exactly these drafts — could never show a single one, because the
       // camera was always gone by the time the draft existed.
-      replaceAppModal({
-        id: "food.mediaCapture",
-        domain: "food",
-        mode: "barcode",
-      });
+      setCameraMode("barcode");
     },
-    [barcodeDraft?.imageUri, replaceAppModal],
+    [barcodeDraft?.imageUri],
   );
 
   const handleDeleteFoodEntry = useCallback(
@@ -1346,6 +1335,15 @@ export function DayTemplate<TData, TTotals>({
                   date={date}
                 />
               ) : null}
+              {isFood && cameraMode ? (
+                <FoodCameraBlock
+                  mode={cameraMode}
+                  drafts={foodMediaDrafts}
+                  onPhoto={handlePhotoCaptured}
+                  onBarcode={handleBarcodeScanned}
+                  onClose={() => setCameraMode(null)}
+                />
+              ) : null}
               {!isFood ? (
                 <WorkoutProgressSheet
                   date={date}
@@ -1488,10 +1486,6 @@ export function DayTemplate<TData, TTotals>({
         onSaveMeal={featureSavedMeals ? handleSaveMeal : undefined}
         onSaveNutrition={handleSaveFoodNutrition}
         onAiEdit={handleFoodAiEdit}
-        onPhoto={handlePhotoCaptured}
-        mediaDrafts={foodMediaDrafts}
-        onBarcode={handleBarcodeScanned}
-        onFoodCaptureDismiss={handleFoodCaptureDismiss}
         onSaveBarcodeFood={handleSaveBarcodeFood}
         onSelectSavedMeals={handleSelectSavedMeals}
         onSelectSavedExercises={handleSelectSavedExercises}

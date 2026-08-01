@@ -1,9 +1,8 @@
-import { CameraView, scanFromURLAsync, useCameraPermissions, type BarcodeScanningResult, } from 'expo-camera';
+import { CameraView, scanFromURLAsync, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Modal, Platform, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useEffect, useRef, useState } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 
 import { LoggedPressable } from '@/components/atoms/Logged';
 import { AppIcon } from '@/components/atoms/AppIcon';
@@ -21,6 +20,10 @@ interface CapturedFoodPhoto {
   base64?: string;
   mimeType?: string;
 }
+
+// ponytail: tune on device — must show enough preview to frame food/barcode
+// without pushing the dock/composer off-screen on smaller phones.
+const CAMERA_PREVIEW_HEIGHT = 320;
 
 const thumbnailRotations = ['-8deg', '5deg', '-4deg'] as const;
 
@@ -42,50 +45,34 @@ const BARCODE_TYPES = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'] a
  */
 const GALLERY_READS_BARCODES = Platform.OS !== 'ios';
 
-export function FoodMediaCaptureSheet({
-  visible,
+export function FoodCameraBlock({
   mode,
   onClose,
-  onDismiss,
   onPhoto,
   onBarcode,
   drafts,
-  nested,
 }: {
-  visible: boolean;
-  mode: FoodMediaAction | null;
+  mode: FoodMediaAction;
   onClose: () => void;
-  onDismiss?: () => void;
   onPhoto: (photo: CapturedFoodPhoto) => void;
   /** `imageUri` is the frame it was read from — the note shows it. */
   onBarcode: (code: string, imageUri?: string) => void;
   /** What is already attached — the strip beside the shutter reads this. */
   drafts: { uri?: string }[];
-  /** Sheet stacked on top of this one — see `SheetFrame`'s `nested`. */
-  nested?: ReactNode;
 }) {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const cameraRef = useRef<CameraView | null>(null);
-  const visibleRef = useRef(false);
   const scannedRef = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
-  const [activeMode, setActiveMode] = useState<FoodMediaAction | null>(mode);
   const [scanSession, setScanSession] = useState(0);
   const [scanNotice, setScanNotice] = useState<'none' | 'notFound' | 'unsupported'>('none');
-  const currentMode = mode ?? activeMode;
-  const isBarcode = currentMode === 'barcode';
+  const isBarcode = mode === 'barcode';
 
   useEffect(() => {
-    if (mode) setActiveMode(mode);
-  }, [mode]);
-
-  useEffect(() => {
-    visibleRef.current = visible;
     scannedRef.current = false;
     setScanNotice('none');
-    if (visible && mode) setScanSession((current) => current + 1);
-  }, [visible, mode]);
+    setScanSession((current) => current + 1);
+  }, [mode]);
 
   // Derived, not stored. The local copy this replaces was wiped every time the
   // sheet lost visibility — which is exactly what the system gallery does when
@@ -94,7 +81,7 @@ export function FoodMediaCaptureSheet({
   const hiddenCount = drafts.filter((draft) => draft.uri).length - capturedUris.length;
 
   /**
-   * Once per sheet. A delivered code closes this modal, and the live scanner
+   * Once per session. A delivered code closes the block, and the live scanner
    * fires many times a second — claimed before the picture is taken, because
    * that wait is exactly the window it keeps firing in.
    */
@@ -117,13 +104,12 @@ export function FoodMediaCaptureSheet({
   };
 
   const takePhoto = async () => {
-    if (!currentMode) return;
     setScanNotice('none');
     try {
       const camera = cameraRef.current;
       if (!camera) return;
       const photo = await camera.takePictureAsync({ base64: !isBarcode, quality: 0.45 });
-      if (!visibleRef.current || !photo?.uri) return;
+      if (!photo?.uri) return;
       // In scan mode the shutter is a manual retry of the reader, not a way to
       // attach a picture: it used to file the barcode frame as a meal photo,
       // silently adding an unreadable image to the note.
@@ -131,7 +117,7 @@ export function FoodMediaCaptureSheet({
         if (!(await scanStill(photo.uri))) setScanNotice('notFound');
         return;
       }
-      const kind = currentMode === 'menuPhoto' ? 'menuPhoto' : 'foodPhoto';
+      const kind = mode === 'menuPhoto' ? 'menuPhoto' : 'foodPhoto';
       onPhoto({ kind, uri: photo.uri, base64: photo.base64, mimeType: 'image/jpeg' });
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
@@ -140,7 +126,6 @@ export function FoodMediaCaptureSheet({
   };
 
   const pickFromGallery = async () => {
-    if (!currentMode) return;
     setScanNotice('none');
     // Say so before the picker, not after: making someone browse for a photo
     // that can never be read is the same dead end with extra steps.
@@ -148,8 +133,8 @@ export function FoodMediaCaptureSheet({
       setScanNotice('unsupported');
       return;
     }
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       // One code per scan: the nutrition sheet reviews a single product, so
@@ -176,7 +161,7 @@ export function FoodMediaCaptureSheet({
       return;
     }
 
-    const kind = currentMode === 'menuPhoto' ? 'menuPhoto' : 'foodPhoto';
+    const kind = mode === 'menuPhoto' ? 'menuPhoto' : 'foodPhoto';
     result.assets.forEach((asset) => {
       if (!asset.uri) return;
       onPhoto({
@@ -199,153 +184,133 @@ export function FoodMediaCaptureSheet({
       .catch(() => onBarcode(result.data));
   };
 
-  if (!currentMode) return null;
-
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={onClose}
-      onDismiss={() => {
-        if (!visible) setActiveMode(null);
-        onDismiss?.();
-      }}>
-      <View style={[styles.root, { backgroundColor: colors.background }]}>
-        {permission?.granted ? (
-          <CameraView
-            key={`${currentMode}-${scanSession}`}
-            ref={(node) => {
-              cameraRef.current = node;
-            }}
-            style={StyleSheet.absoluteFill}
-            facing="back"
-            active={visible}
-            onBarcodeScanned={isBarcode ? handleBarcode : undefined}
-            barcodeScannerSettings={{
-              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
-            }}
-          />
-        ) : null}
+    <GlassSurface glass="regular" style={styles.panel}>
+      {/* Header */}
+      <View style={styles.header}>
+        <GlassSurface glass="regular" style={styles.titlePill}>
+          <AppText variant="label" color="#FFFFFF">
+            {isBarcode ? t('media.scanBarcode') : mode === 'foodPhoto' ? t('media.foodPhoto') : t('media.menuPhoto')}
+          </AppText>
+        </GlassSurface>
+        <LoggedPressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('common.close')}>
+          <GlassSurface glass="regular" isInteractive style={styles.iconButton}>
+            <AppIcon name="x" color="#FFFFFF" size={22} />
+          </GlassSurface>
+        </LoggedPressable>
+      </View>
 
-        <View
-          style={[
-            styles.overlay,
-            {
-              paddingTop: insets.top + Spacing.two,
-              paddingBottom: insets.bottom + Spacing.five,
-            },
-          ]}>
-          <View style={styles.header}>
-            <LoggedPressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('common.close')}>
-              <GlassSurface glass="regular" isInteractive style={styles.iconButton}>
-                <AppIcon name="x" color="#FFFFFF" size={22} />
+      {/* Camera preview */}
+      <View style={styles.previewBox}>
+        {permission?.granted ? (
+          <>
+            <CameraView
+              key={`${mode}-${scanSession}`}
+              ref={(node) => {
+                cameraRef.current = node;
+              }}
+              style={StyleSheet.absoluteFill}
+              facing="back"
+              active
+              onBarcodeScanned={isBarcode ? handleBarcode : undefined}
+              barcodeScannerSettings={{
+                barcodeTypes: [...BARCODE_TYPES],
+              }}
+            />
+            {isBarcode ? (
+              <GlassSurface glass="regular" style={styles.hint}>
+                <AppText
+                  variant="body"
+                  color={scanNotice === 'notFound' ? colors.danger : '#FFFFFF'}>
+                  {scanNotice === 'notFound'
+                    ? t('media.noBarcodeFound')
+                    : scanNotice === 'unsupported'
+                      ? t('media.galleryScanUnsupported')
+                      : t('media.scanHint')}
+                </AppText>
+              </GlassSurface>
+            ) : null}
+          </>
+        ) : (
+          <View style={styles.permissionCard}>
+            <AppText variant="body" color="#FFFFFF">
+              {t('media.cameraPermission')}
+            </AppText>
+            <LoggedPressable
+              onPress={() => void requestPermission()}
+              accessibilityRole="button"
+              accessibilityLabel={t('media.allowCamera')}>
+              <AppText variant="label" color={colors.accent}>
+                {t('media.allowCamera')}
+              </AppText>
+            </LoggedPressable>
+          </View>
+        )}
+      </View>
+
+      {/* Controls */}
+      {permission?.granted ? (
+        <View style={styles.captureControls}>
+          <View style={styles.gallerySlot}>
+            {capturedUris.length > 0 ? (
+              <View style={styles.thumbnailRow}>
+                {capturedUris.map((uri, index) => (
+                  <Image
+                    key={`${uri}-${index}`}
+                    source={{ uri }}
+                    style={[
+                      styles.thumbnail,
+                      index > 0 && styles.thumbnailOverlap,
+                      {
+                        transform: [{ rotate: thumbnailRotations[index] }],
+                        zIndex: 3 - index,
+                      },
+                    ]}
+                    contentFit="cover"
+                  />
+                ))}
+                {hiddenCount > 0 ? (
+                  <GlassSurface glass="regular" style={styles.moreBadge}>
+                    <AppText variant="caption" color="#FFFFFF">
+                      +{hiddenCount}
+                    </AppText>
+                  </GlassSurface>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+          <LoggedPressable onPress={takePhoto} accessibilityRole="button" accessibilityLabel={t('media.takePhoto')}>
+            <View style={styles.shutterOuter}>
+              <View style={styles.shutterInner} />
+            </View>
+          </LoggedPressable>
+          <View style={[styles.gallerySlot, styles.gallerySlotEnd]}>
+            <LoggedPressable
+              onPress={() => void pickFromGallery()}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={t('media.openGallery')}>
+              <GlassSurface glass="regular" isInteractive style={styles.galleryButton}>
+                <AppIcon name="images" color="#FFFFFF" size={24} />
               </GlassSurface>
             </LoggedPressable>
-            <GlassSurface glass="regular" style={styles.titlePill}>
-              <AppText variant="label" color="#FFFFFF">
-                {isBarcode ? t('media.scanBarcode') : currentMode === 'foodPhoto' ? t('media.foodPhoto') : t('media.menuPhoto')}
-              </AppText>
-            </GlassSurface>
           </View>
-
-          <View style={styles.center}>
-            {!permission ? null : permission.granted ? (
-              isBarcode ? (
-                <GlassSurface glass="regular" style={styles.hint}>
-                  <AppText
-                    variant="body"
-                    color={scanNotice === 'notFound' ? colors.danger : '#FFFFFF'}>
-                    {scanNotice === 'notFound'
-                      ? t('media.noBarcodeFound')
-                      : scanNotice === 'unsupported'
-                        ? t('media.galleryScanUnsupported')
-                        : t('media.scanHint')}
-                  </AppText>
-                </GlassSurface>
-              ) : null
-            ) : (
-              <GlassSurface glass="regular" style={styles.permissionCard}>
-                <AppText variant="body" color="#FFFFFF">
-                  {t('media.cameraPermission')}
-                </AppText>
-                <LoggedPressable
-                  onPress={() => void requestPermission()}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('media.allowCamera')}>
-                  <AppText variant="label" color={colors.accent}>
-                    {t('media.allowCamera')}
-                  </AppText>
-                </LoggedPressable>
-              </GlassSurface>
-            )}
-          </View>
-
-          {permission?.granted ? (
-            <View style={styles.footer}>
-              <View style={styles.captureControls}>
-                <View style={styles.gallerySlot}>
-                  {capturedUris.length > 0 ? (
-                    <View style={styles.thumbnailRow}>
-                      {capturedUris.map((uri, index) => (
-                        <Image
-                          key={`${uri}-${index}`}
-                          source={{ uri }}
-                          style={[
-                            styles.thumbnail,
-                            index > 0 && styles.thumbnailOverlap,
-                            {
-                              transform: [{ rotate: thumbnailRotations[index] }],
-                              zIndex: 3 - index,
-                            },
-                          ]}
-                          contentFit="cover"
-                        />
-                      ))}
-                      {hiddenCount > 0 ? (
-                        <GlassSurface glass="regular" style={styles.moreBadge}>
-                          <AppText variant="caption" color="#FFFFFF">
-                            +{hiddenCount}
-                          </AppText>
-                        </GlassSurface>
-                      ) : null}
-                    </View>
-                  ) : null}
-                </View>
-                <LoggedPressable onPress={takePhoto} accessibilityRole="button" accessibilityLabel={t('media.takePhoto')}>
-                  <View style={styles.shutterOuter}>
-                    <View style={styles.shutterInner} />
-                  </View>
-                </LoggedPressable>
-                <View style={[styles.gallerySlot, styles.gallerySlotEnd]}>
-                  <LoggedPressable
-                    onPress={() => void pickFromGallery()}
-                    hitSlop={10}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('media.openGallery')}>
-                    <GlassSurface glass="regular" isInteractive style={styles.galleryButton}>
-                      <AppIcon name="images" color="#FFFFFF" size={24} />
-                    </GlassSurface>
-                  </LoggedPressable>
-                </View>
-              </View>
-            </View>
-          ) : null}
         </View>
-      </View>
-      {nested}
-    </Modal>
+      ) : null}
+    </GlassSurface>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: 'space-between',
+  panel: {
+    gap: Spacing.three,
     paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.four,
+    paddingBottom: Spacing.five,
+    borderRadius: Radii.xl,
+    overflow: 'hidden',
+    // ponytail: tune on device — the panel must feel at home among
+    // FoodGoalsSheet and WorkoutProgressSheet, not wider or narrower.
   },
   header: {
     flexDirection: 'row',
@@ -366,13 +331,21 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     overflow: 'hidden',
   },
-  center: {
+  previewBox: {
+    // ponytail: tune CAMERA_PREVIEW_HEIGHT on device — tall enough to frame
+    // food and small enough to leave room for the keyboard/dock below.
+    height: CAMERA_PREVIEW_HEIGHT,
+    borderRadius: Radii.lg,
+    overflow: 'hidden',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   hint: {
+    position: 'absolute',
+    bottom: Spacing.three,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
+    paddingVertical: Spacing.two,
     overflow: 'hidden',
   },
   permissionCard: {
@@ -380,13 +353,8 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     gap: Spacing.three,
     alignItems: 'center',
-    overflow: 'hidden',
-  },
-  footer: {
-    width: '100%',
   },
   captureControls: {
-    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -438,8 +406,6 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     borderWidth: 5,
     borderColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   shutterInner: {
     width: 54,

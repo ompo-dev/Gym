@@ -31,6 +31,13 @@ describe('app modal registry', () => {
     // Not a link: reaching this one goes through settings.weightControl.
     expect(canOpenAppModal('settings.nutritionGoals', 'settings.registerWeight')).toBe(false);
   });
+
+  it('barcode chain is reachable inline (no camera modal in the graph)', () => {
+    // The inline camera block opens this directly — must be in day.root's links.
+    expect(canOpenAppModal('day.root', 'food.barcodeNutritionEdit')).toBe(true);
+    // The modal id was removed; no stale gate should pass this.
+    expect(canOpenAppModal('day.root', 'food.mediaCapture' as AppModalId)).toBe(false);
+  });
 });
 
 /**

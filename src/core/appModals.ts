@@ -1,6 +1,6 @@
 import type { FoodData } from '@/domains/schemas';
 
-import type { Domain, FoodMediaAction } from './types';
+import type { Domain } from './types';
 
 export const APP_MODAL_TRANSITION_MS = 10;
 
@@ -44,7 +44,6 @@ export type AppModalId =
   | "food.actionMenu"
   | "food.aiEdit"
   | "food.nutritionEdit"
-  | "food.mediaCapture"
   | "food.barcodeNutritionEdit"
   | "food.mediaDraftTray"
   | "workout.progress"
@@ -85,7 +84,6 @@ export const APP_MODAL_LABELS: Record<AppModalId, string> = {
   "food.actionMenu": "Menu da refeição",
   "food.aiEdit": "Editar com IA",
   "food.nutritionEdit": "Editar nutrição",
-  "food.mediaCapture": "Capturar alimento",
   "food.barcodeNutritionEdit": "Nutrição por código de barras",
   "food.mediaDraftTray": "Mídias adicionadas",
   "workout.progress": "Progresso do treino",
@@ -108,7 +106,7 @@ export const APP_MODAL_LINKS: Partial<
     "food.goals",
     "food.savedMealPicker",
     "food.entryDetail",
-    "food.mediaCapture",
+    "food.barcodeNutritionEdit",
     "food.mediaDraftTray",
     "workout.progress",
     "workout.savedExercisePicker",
@@ -151,7 +149,6 @@ export const APP_MODAL_LINKS: Partial<
   ],
   "food.entryDetail": ["food.actionMenu", "food.aiEdit", "food.nutritionEdit"],
   "food.actionMenu": ["food.aiEdit", "food.nutritionEdit"],
-  "food.mediaCapture": ["food.barcodeNutritionEdit"],
   "onboarding.root": [
     "onboarding.picker",
     "onboarding.birthDatePicker",
@@ -206,7 +203,6 @@ export type AppModal =
   | { id: "food.actionMenu"; domain: "food"; entryId: string; anchor: AppModalAnchor | null }
   | { id: "food.aiEdit"; domain: "food"; entryId: string }
   | { id: "food.nutritionEdit"; domain: "food"; entryId: string }
-  | { id: "food.mediaCapture"; domain: "food"; mode: FoodMediaAction }
   | { id: "food.barcodeNutritionEdit"; domain: "food"; draft: BarcodeNutritionDraft }
   /**
    * `ownerId` names which tray this is. Every note with photos mounts one, and
