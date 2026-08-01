@@ -1,39 +1,8 @@
 import { useAppStore } from "@/store/useAppStore";
 
-export const FEATURE_FLAGS = [
-  "camera",
-  "savedMeals",
-  "savedExercises",
-  "pantry",
-  "workoutMonitor",
-  "aiEdit",
-  "offlineForce",
-  "barcode",
-  "reminders",
-  "weight",
-  "recipes",
-  "food",
-  "workout",
-] as const;
+import { type FeatureFlag, getScopeEnabled } from "./flagDefs";
 
-export type FeatureFlag = (typeof FEATURE_FLAGS)[number];
-export type FeatureFlags = Record<FeatureFlag, boolean>;
-
-export const DEFAULT_FLAGS: FeatureFlags = {
-  camera: true,
-  savedMeals: true,
-  savedExercises: true,
-  pantry: true,
-  workoutMonitor: true,
-  aiEdit: true,
-  offlineForce: false,
-  barcode: true,
-  reminders: true,
-  weight: true,
-  recipes: true,
-  food: true,
-  workout: true,
-};
+export * from "./flagDefs";
 
 /**
  * Read a feature flag. In release builds, ALWAYS returns true — no flag can
@@ -44,16 +13,6 @@ export function useFeature(flag: FeatureFlag): boolean {
   const devFlags = useAppStore((s) => s.devFlags);
   if (!__DEV__) return true;
   return devFlags[flag] ?? true;
-}
-
-export function getScopeEnabled(
-  devFlags: Partial<Record<FeatureFlag, boolean>>,
-  domain: "food" | "workout",
-): boolean {
-  const food = devFlags.food ?? true;
-  const workout = devFlags.workout ?? true;
-  if (!food && !workout) return true;
-  return domain === "food" ? food : workout;
 }
 
 /**

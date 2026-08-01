@@ -2,7 +2,7 @@ import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
 import { todayISO } from '@/core/date';
-import { DEFAULT_FLAGS, type FeatureFlag, type FeatureFlags } from '@/core/dev/flags';
+import { DEFAULT_FLAGS, type FeatureFlag, type FeatureFlags } from '@/core/dev/flagDefs';
 import { type DevLimits, type LimitKey } from '@/core/dev/limits';
 import { log } from '@/core/log';
 import type { ApiKeyMode, ApiKeys } from '@/core/enrich/types';
