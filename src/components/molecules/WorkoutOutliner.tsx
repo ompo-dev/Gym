@@ -16,6 +16,7 @@ import { EntryMeta } from '@/components/molecules/EntryMeta';
 import { ThinkingIndicator } from '@/components/molecules/ThinkingIndicator';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
 import { ENRICH_UNCONFIGURED } from '@/core/enrich/types';
+import { normalizeEditableText } from '@/core/utils';
 import type { Entry, EntryStatus } from '@/core/types';
 import type { WorkoutData, WorkoutSet } from '@/domains/schemas';
 import {
@@ -423,7 +424,8 @@ export function WorkoutOutliner({
       onDelete(entry);
       return;
     }
-    if (text !== entry.text) {
+    const currentText = serializeWorkoutLines(workoutLinesFromEntry(entry));
+    if (normalizeEditableText(text) !== normalizeEditableText(currentText)) {
       pendingCommit.current = text;
       onEdit(entry, text);
     }

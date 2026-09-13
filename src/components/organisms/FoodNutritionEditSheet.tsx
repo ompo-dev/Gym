@@ -21,6 +21,7 @@ import { t } from '@/i18n';
 import { useAppStore } from '@/store/useAppStore';
 
 import { DraftPreview } from './FoodMediaDraftTray';
+import { expandPhotoCutouts } from '@/core/food/photo-cutouts';
 import { SheetFrame } from './SheetFrame';
 
 interface EditableItem {
@@ -235,7 +236,8 @@ function NutrientInput({
 
 function mediaForItem(media: EntryMediaAttachment[] | undefined, item: EditableItem) {
   if (!media?.length || !item.mediaId) return null;
-  return media.find((attachment) => attachment.id === item.mediaId) ?? null;
+  return expandPhotoCutouts(media).find((attachment) => attachment.id === item.mediaId)
+    ?? media.find((attachment) => attachment.id === item.mediaId) ?? null;
 }
 
 export const FoodNutritionEditContent = forwardRef<FoodNutritionEditHandle, Omit<FoodNutritionEditSheetProps, 'visible'>>(

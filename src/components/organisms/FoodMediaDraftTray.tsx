@@ -4,9 +4,11 @@ import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
+import { FoodCutout } from '@/components/atoms/FoodCutout';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Radii, Spacing } from '@/constants/theme';
 import { canOpenAppModal } from '@/core/appModals';
+import { expandPhotoCutouts } from '@/core/food/photo-cutouts';
 import type { EntryMediaAttachment } from '@/core/types';
 import type { FoodData } from '@/domains/schemas';
 import { useColors } from '@/hooks/use-colors';
@@ -39,6 +41,10 @@ export function DraftPreview({
   const colors = useColors();
 
   if (draft.uri) {
+    const cutout = draft.cutouts?.[0];
+    if (cutout && draft.width && draft.height) return (
+      <FoodCutout uri={draft.uri} imageWidth={draft.width} imageHeight={draft.height} cutout={cutout} width={size} height={size} />
+    );
     return <Image source={{ uri: draft.uri }} style={[styles.preview, { width: size, height: size }]} contentFit="cover" />;
   }
 
@@ -65,7 +71,8 @@ export function DraftStack({
   overlap?: number;
   showMore?: boolean;
 }) {
-  const visibleDrafts = drafts.slice(0, 3);
+  const thumbnails = expandPhotoCutouts(drafts);
+  const visibleDrafts = thumbnails.slice(0, 3);
   if (visibleDrafts.length === 0) return null;
 
   return (
@@ -87,10 +94,10 @@ export function DraftStack({
           <DraftPreview draft={draft} size={size} />
         </View>
       ))}
-      {showMore && drafts.length > 3 ? (
+      {showMore && thumbnails.length > 3 ? (
         <GlassSurface glass="regular" style={styles.moreBadge}>
           <AppText variant="caption" color="#FFFFFF">
-            +{drafts.length - 3}
+            +{thumbnails.length - 3}
           </AppText>
         </GlassSurface>
       ) : null}
@@ -144,7 +151,7 @@ export function FoodMediaDraftTray({
         keyboardAwareScroll>
         {drafts.map((draft) => (
           <View key={draft.id} style={styles.row}>
-            <DraftPreview draft={draft} size={48} />
+            <DraftStack drafts={[draft]} size={48} overlap={-28} showMore />
             <View style={styles.content}>
               <AppText variant="caption" color={colors.textSecondary}>
                 {draftLabel(draft.kind)}

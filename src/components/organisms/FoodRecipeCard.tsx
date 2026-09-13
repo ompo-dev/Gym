@@ -82,49 +82,30 @@ export function FoodRecipeCard({ recipe }: FoodRecipeCardProps) {
               <AppText variant="body" style={styles.lineText}>
                 {[item.quantity, item.unit, item.label].filter(Boolean).join(' ')}
               </AppText>
-              {owned ? (
-                <AppText variant="caption" color={colors.success}>
-                  {t('recipe.have')}
-                </AppText>
-              ) : null}
+              <AppText variant="caption" color={owned ? colors.success : colors.accent}>
+                {owned
+                  ? t('recipe.have')
+                  : item.estimatedCostCents !== undefined
+                    ? formatMoney(item.estimatedCostCents / 100)
+                    : t('recipe.needBuy')}
+              </AppText>
             </View>
           );
         })}
-      </GlassSurface>
-
-      {missing.length ? (
-        <GlassSurface glass="regular" style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <AppIcon name="scale" color={colors.accentStrong} size={15} />
-            <AppText variant="label" color={colors.accentStrong}>
-              {t('recipe.toBuy')}
-            </AppText>
-          </View>
-          {missing.map((item, index) => (
-            <View key={`missing-${item.label}-${index}`} style={styles.line}>
-              <View style={[styles.bullet, { borderWidth: 1.5, borderColor: colors.accent }]} />
-              <AppText variant="body" style={styles.lineText}>
-                {[item.quantity, item.unit, item.label].filter(Boolean).join(' ')}
-              </AppText>
-              {item.estimatedCostCents !== undefined ? (
-                <AppText variant="caption" color={colors.textSecondary}>
-                  {formatMoney(item.estimatedCostCents / 100)}
-                </AppText>
-              ) : null}
-            </View>
-          ))}
           {/* Suppressed when any price is unknown: a partial total reads as the
               whole cost, and it is not. */}
-          {totalCents !== null ? (
+          {missing.length && totalCents !== null ? (
             <View style={[styles.totalRow, { borderTopColor: colors.border }]}>
-              <AppText variant="label" color={colors.textSecondary}>
-                {t('recipe.estimated')}
-              </AppText>
+              <View style={styles.totalLabel}>
+                <AppIcon name="scale" color={colors.accentStrong} size={15} />
+                <AppText variant="label" color={colors.accentStrong}>
+                  {t('recipe.toBuy')}
+                </AppText>
+              </View>
               <AppText variant="value">{formatMoney(totalCents / 100)}</AppText>
             </View>
           ) : null}
         </GlassSurface>
-      ) : null}
 
       <GlassSurface glass="regular" style={styles.section}>
         <AppText variant="label" color={colors.textSecondary}>
@@ -215,6 +196,11 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: Spacing.two,
     marginTop: Spacing.one,
+  },
+  totalLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
   },
   step: {
     flexDirection: 'row',

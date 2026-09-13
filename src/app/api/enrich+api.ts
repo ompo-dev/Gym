@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 import { MAX_PHOTOS_PER_NOTE } from '@/constants/limits';
 import { DeepSeekTransportError, runEnrichEngine } from '@/core/enrich/deepseek';
+import {
+  resolveProviderCredential,
+  type AiProviderId,
+  type ProviderCredential,
+} from '@/core/enrich/providers';
 import { checkRateLimit } from '@/core/enrich/rateLimit';
 import { ENRICH_INTENTS } from '@/core/enrich/types';
 import { foodSchema } from '@/domains/schemas';
@@ -9,7 +14,7 @@ import { foodSchema } from '@/domains/schemas';
 import type { EnrichResponse } from '@/core/enrich/types';
 
 /**
- * Server-side proxy for DeepSeek, so the managed key lives ONLY here (never in
+ * Server-side proxy for AI providers, so managed keys live ONLY here (never in
  * the app bundle). Runs on the Metro dev server in dev and on EAS Hosting
  * (Cloudflare Workers) in production - both expose `process.env`.
  *
@@ -23,7 +28,7 @@ const MediaSchema = z.object({
   kind: z.enum(['foodPhoto', 'menuPhoto']),
   mimeType: z.string().max(64).optional(),
   base64: z.string().min(1).max(2_500_000),
-  description: z.string().max(500).optional(),
+  description: z.string().max(24_000).optional(),
 });
 
 /** Bring-your-own-key. Absent means the caller is on the managed key. */
@@ -46,6 +51,27 @@ const RequestSchema = z.object({
 
 const json = (body: EnrichResponse, status = 200): Response =>
   Response.json(body, { status });
+
+const envKey = (provider: AiProviderId): string | undefined => {
+  switch (provider) {
+    case 'deepseek':
+      return process.env.DEEPSEEK_API_KEY;
+    case 'gemini':
+      return process.env.GEMINI_API_KEY;
+    case 'openai':
+      return process.env.OPENAI_API_KEY;
+    case 'anthropic':
+      return process.env.ANTHROPIC_API_KEY;
+  }
+};
+
+function managedCredential(providers: AiProviderId[]): ProviderCredential | null {
+  for (const provider of providers) {
+    const key = envKey(provider)?.trim();
+    if (key) return { provider, key };
+  }
+  return null;
+}
 
 export async function POST(request: Request): Promise<Response> {
   const parsedInput = RequestSchema.safeParse(await request.json().catch(() => null));
@@ -77,19 +103,42 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
+  const hasMedia = Boolean(input.media?.length);
+  const chatCredential = keys
+    ? resolveProviderCredential(keys.chat, 'deepseek')
+    : managedCredential(['deepseek', 'openai', 'anthropic', 'gemini']);
+  const imageCredential = keys
+    ? resolveProviderCredential(
+        keys.image || keys.chat,
+        keys.image ? 'gemini' : (chatCredential?.provider ?? 'deepseek'),
+      )
+    : hasMedia
+      ? managedCredential(['gemini', 'openai', 'anthropic'])
+      : chatCredential;
+
   // A user key never falls back to ours: if they opted out of the managed key,
-  // a bad key must fail loudly rather than quietly spend our quota. The image
-  // key falls back to their chat key, which is the same key for most people.
-  const managedKey = process.env.DEEPSEEK_API_KEY;
-  const chatKey = keys?.chat ?? managedKey;
-  const imageKey = keys ? keys.image || keys.chat : managedKey;
-  if (!chatKey || !imageKey) {
-    if (!keys) console.error('[enrich] DEEPSEEK_API_KEY is not set');
+  // a bad key must fail loudly rather than quietly spend our quota. Managed
+  // image calls prefer Gemini, then GPT/Anthropic when those env keys exist.
+  if (!chatCredential || !imageCredential) {
+    if (!keys) {
+      console.error('[enrich] AI provider key is not set', {
+        needsVision: hasMedia,
+        chatEnv: 'DEEPSEEK_API_KEY | OPENAI_API_KEY | ANTHROPIC_API_KEY | GEMINI_API_KEY',
+        visionEnv: 'GEMINI_API_KEY | OPENAI_API_KEY | ANTHROPIC_API_KEY',
+      });
+    }
     return json({ ok: false, error: 'Server not configured' }, 500);
   }
 
   try {
-    return json(await runEnrichEngine(input, { chat: chatKey, image: imageKey }));
+    return json(
+      await runEnrichEngine(input, {
+        chat: chatCredential.key,
+        image: imageCredential.key,
+        chatProvider: chatCredential.provider,
+        imageProvider: imageCredential.provider,
+      }),
+    );
   } catch (e) {
     console.error('[enrich] request failed', e);
     const status = e instanceof DeepSeekTransportError ? 503 : 502;

@@ -3,10 +3,24 @@ import { MAX_PHOTOS_PER_NOTE } from '@/constants/limits';
 
 const originalFetch = global.fetch;
 const originalApiKey = process.env.DEEPSEEK_API_KEY;
+const originalGeminiKey = process.env.GEMINI_API_KEY;
+const originalOpenAIKey = process.env.OPENAI_API_KEY;
+const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
+
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
 
 afterEach(() => {
   global.fetch = originalFetch;
-  process.env.DEEPSEEK_API_KEY = originalApiKey;
+  restoreEnv('DEEPSEEK_API_KEY', originalApiKey);
+  restoreEnv('GEMINI_API_KEY', originalGeminiKey);
+  restoreEnv('OPENAI_API_KEY', originalOpenAIKey);
+  restoreEnv('ANTHROPIC_API_KEY', originalAnthropicKey);
 });
 
 test('enrich disables thinking for strict JSON responses', async () => {
@@ -121,6 +135,9 @@ test('user keys work even when the server has no managed key configured', async 
 
 test('no managed key and no user key is a configuration error, not a silent pass', async () => {
   delete process.env.DEEPSEEK_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
   const fetchMock = okFetch();
   global.fetch = fetchMock as typeof fetch;
 
@@ -132,20 +149,33 @@ test('no managed key and no user key is a configuration error, not a silent pass
 
 test('the image key signs the vision call while the chat key signs the parse call', async () => {
   process.env.DEEPSEEK_API_KEY = 'managed-key';
-  const fetchMock = jest.fn(async () =>
-    Response.json({
+  const fetchMock = jest.fn(async (url: RequestInfo | URL) => {
+    if (String(url).includes('generativelanguage.googleapis.com')) {
+      return Response.json({
+        output_text: JSON.stringify({ descriptions: [{ id: 'm1', description: 'um prato' }] }),
+      });
+    }
+    return Response.json({
       choices: [
         {
           message: {
             content: JSON.stringify({
-              descriptions: [{ id: 'm1', description: 'um prato' }],
-              items: [],
+              items: [
+                {
+                  label: 'almoco',
+                  calories: 500,
+                  protein: 25,
+                  carbs: 60,
+                  fat: 12,
+                  waterMl: 0,
+                },
+              ],
             }),
           },
         },
       ],
-    }),
-  );
+    });
+  });
   global.fetch = fetchMock as typeof fetch;
 
   await post({
@@ -156,7 +186,11 @@ test('the image key signs the vision call while the chat key signs the parse cal
     media: [{ id: 'm1', kind: 'foodPhoto', base64: 'AAAA' }],
   });
 
-  expect(authOf(fetchMock, 0)).toBe('Bearer image-key'); // vision pass first
+  const visionInit = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    'https://generativelanguage.googleapis.com/v1beta/interactions',
+  );
+  expect(visionInit.headers['x-goog-api-key']).toBe('image-key');
   expect(authOf(fetchMock, 1)).toBe('Bearer chat-key');
 });
 
@@ -190,7 +224,32 @@ function mediaN(n: number) {
 
 test('media: MAX_PHOTOS_PER_NOTE photos validates (200)', async () => {
   process.env.DEEPSEEK_API_KEY = 'test-key';
-  const fetchMock = okFetch();
+  process.env.GEMINI_API_KEY = 'gemini-key';
+  const fetchMock = jest.fn(async (url: RequestInfo | URL) => {
+    if (String(url).includes('generativelanguage.googleapis.com')) {
+      return Response.json({ output_text: JSON.stringify({ descriptions: [] }) });
+    }
+    return Response.json({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              items: [
+                {
+                  label: 'refeicao',
+                  calories: 300,
+                  protein: 20,
+                  carbs: 30,
+                  fat: 10,
+                  waterMl: 0,
+                },
+              ],
+            }),
+          },
+        },
+      ],
+    });
+  });
   global.fetch = fetchMock as typeof fetch;
 
   const res = await post({

@@ -1,7 +1,11 @@
-import { hashKey, newId, normalizeText } from './utils';
+import { hashKey, newId, normalizeEditableText, normalizeText } from './utils';
 
 test('normalizeText trims, lowercases, and collapses whitespace', () => {
   expect(normalizeText('  In  N   Out ')).toBe('in n out');
+});
+
+test('normalizeEditableText ignores harmless edit formatting', () => {
+  expect(normalizeEditableText('  Bike  06:19 / km  ')).toBe('bike 6:19/km');
 });
 
 test('hashKey is stable and disambiguates by part', () => {

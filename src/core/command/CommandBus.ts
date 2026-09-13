@@ -5,7 +5,7 @@ import { notesForDate } from '@/constants/limits';
 import { getLimit } from '@/core/dev/limits';
 import type { EnrichRequest, EnrichResponse } from '@/core/enrich/types';
 import type { Domain, Entry, EntryMediaAttachment } from '@/core/types';
-import { hashKey, newId, normalizeText } from '@/core/utils';
+import { hashKey, newId, normalizeEditableText, normalizeText } from '@/core/utils';
 import { ONBOARDING_FIELDS, parseOnboardingText } from '@/domains/onboardingNotes';
 import {
   type EnrichData,
@@ -35,6 +35,101 @@ const CACHE_SIZE = 200;
 // toast can still be offering; the cap just stops the stack growing forever.
 const MAX_UNDO = 20;
 const MAX_EXERCISE_NAME = 60;
+
+function todayFoodContext(entries: Entry[], date: string, excludeId: string): string {
+  const meals = entries.filter((entry) => {
+    if (entry.id === excludeId) return false;
+    if (entry.status !== 'done') return false;
+    return Boolean(entry.data && 'items' in entry.data);
+  });
+
+  if (!meals.length) return `Today food already logged (${date}): none.`;
+
+  const totals = meals.reduce(
+    (sum, entry) => {
+      const data = entry.data as FoodData;
+      for (const item of data.items) {
+        sum.calories += item.calories ?? 0;
+        sum.protein += item.protein ?? 0;
+        sum.carbs += item.carbs ?? 0;
+        sum.fat += item.fat ?? 0;
+        sum.waterMl += item.waterMl ?? 0;
+      }
+      return sum;
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0 },
+  );
+  const mealTexts = meals
+    .slice(-8)
+    .map((meal) => meal.text.trim().replace(/\s+/g, ' ').slice(0, 80))
+    .filter(Boolean)
+    .join('; ');
+
+  return [
+    `Today food already logged (${date}): ${Math.round(totals.calories)} kcal, ` +
+      `${Math.round(totals.protein)}g protein, ${Math.round(totals.carbs)}g carbs, ` +
+      `${Math.round(totals.fat)}g fat, ${Math.round(totals.waterMl)}ml water.`,
+    mealTexts ? `Logged meals: ${mealTexts}.` : undefined,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function shouldIncludeFoodDayContext(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /\b(dieta|diet|alimentacao|alimentar|alimenta|cardapio|plano|planej|complete|completar|restante|falta|fechar|bater|meta|macro|macros|caloria|calorias|proteina|carbo|carboidrato|carboidratos|gordura|gorduras|refeicao|refeicoes|dia todo|janta livre|jantar livre|ate o cafe|cafe da tarde)\b/.test(
+    normalized,
+  );
+}
+
+function stripPlanPrefix(text: string): string {
+  return text.replace(/^\s*plano\s*[-:]\s*/i, '').trim() || text.trim();
+}
+
+function hasPlanPrefix(text: string): boolean {
+  return /^\s*plano\s*[-:]/i.test(text);
+}
+
+function isFoodPlanRequest(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /\b(crie|criar|cria|monte|montar|monta|gere|gerar|gera|planeje|planejar|planeja|complete|completar|fecha|fechar|bater|quero)\b/.test(
+    normalized,
+  ) && shouldIncludeFoodDayContext(text);
+}
+
+function isFuturePurchaseRequest(text: string): boolean {
+  const normalized = normalizeText(text);
+  if (/\b(comprei|comprado)\b/.test(normalized)) return false;
+  return /\b(comprar|lista de compras|preciso comprar|vou comprar|mercado)\b/.test(normalized);
+}
+
+function isPastPurchaseText(text: string): boolean {
+  return /\b(comprei|comprado)\b/.test(normalizeText(text));
+}
+
+function foodPlannedMeta(text: string, data: EnrichData): Partial<Entry> | undefined {
+  if (!('items' in data || 'purchase' in data)) return undefined;
+  const isRecipe = 'items' in data && Boolean(data.recipe);
+  const eatenText = /\b(comi|comendo|almocei|jantei)\b/.test(normalizeText(text));
+  const planned =
+    isFoodPlanRequest(text) ||
+    (isRecipe && !eatenText) ||
+    ('purchase' in data && isFuturePurchaseRequest(text));
+  return planned ? { planned: true, completedAt: null } : undefined;
+}
+
+function splitNotePlannedMeta(
+  noteText: string,
+  parentText: string,
+  data: EnrichData,
+  planned?: boolean,
+): Partial<Entry> | undefined {
+  if (planned || hasPlanPrefix(noteText)) return { planned: true, completedAt: null };
+  if (isFoodPlanRequest(parentText) && !('purchase' in data && isPastPurchaseText(noteText))) {
+    return { planned: true, completedAt: null };
+  }
+  return foodPlannedMeta(noteText, data);
+}
 
 /**
  * Entry.error is diagnostic only — no screen renders it, the UI keys off
@@ -160,6 +255,7 @@ export class CommandBus {
     date?: string,
     /** Already known — skips enrichment entirely. See {@link AddEntryCommand}. */
     data?: EnrichData,
+    meta?: Pick<Entry, 'planned' | 'completedAt'>,
   ): Command | null {
     const trimmed = text.trim();
     if (!trimmed) return null;
@@ -176,6 +272,8 @@ export class CommandBus {
       domain,
       text: capped,
       media: media?.length ? media : undefined,
+      planned: meta?.planned ? true : undefined,
+      completedAt: meta?.planned ? meta.completedAt ?? null : undefined,
       status: data ? 'done' : 'thinking',
       data: data ?? null,
       error: null,
@@ -206,7 +304,7 @@ export class CommandBus {
   /** Change an entry's text and re-enrich it (notes-block editing). */
   async editEntry(entry: Entry, newText: string): Promise<void> {
     const trimmed = newText.trim();
-    if (!trimmed || trimmed === entry.text) return;
+    if (!trimmed || normalizeEditableText(trimmed) === normalizeEditableText(entry.text)) return;
     log.note(`edit ${entry.domain}`, { id: entry.id, chars: trimmed.length });
     await this.run(new EditEntryCommand(this, entry, trimmed));
   }
@@ -323,7 +421,18 @@ export class CommandBus {
     // food that was never eaten. The note goes to the model either way, so
     // asking it what the note *is* costs a field, not a request.
     const intent = entry.domain === 'food' ? 'foodAuto' : undefined;
-    const userContext = await this.userContext(entry.domain);
+    const baseUserContext = await this.userContext(entry.domain);
+    const userContext =
+      entry.domain === 'food'
+        ? [
+            baseUserContext,
+            shouldIncludeFoodDayContext(entry.text)
+              ? todayFoodContext(this.deps.store.getDay('food').entries, entry.date, entry.id)
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : baseUserContext;
     const normalizedCacheText =
       entry.domain === 'workout'
         ? normalizeForEnrich(entry.text, { domain: entry.domain, locale })
@@ -335,7 +444,11 @@ export class CommandBus {
 
     const cached = this.cache.get(key);
     if (cached) {
-      await this.applyResolved(entry, cached);
+      await this.applyResolved(
+        entry,
+        cached,
+        entry.domain === 'food' ? foodPlannedMeta(entry.text, cached) : undefined,
+      );
       return;
     }
 
@@ -590,7 +703,15 @@ export class CommandBus {
             'items' in note.data
               ? { ...note.data, items: attachPantryProvenance(note.data.items, pantry) }
               : note.data;
-          const cmd = this.createAddEntry(note.text, entry.domain, undefined, entry.date, data);
+          const text = stripPlanPrefix(note.text);
+          const cmd = this.createAddEntry(
+            text,
+            entry.domain,
+            undefined,
+            entry.date,
+            data,
+            splitNotePlannedMeta(note.text, entry.text, data, note.planned),
+          );
           return cmd ? [cmd] : [];
         });
         if (commands.length) {
@@ -623,7 +744,7 @@ export class CommandBus {
           ? ({ ...parsedData, items: attachPantryProvenance(parsedData.items, pantry) } as FoodData)
           : parsedData;
       this.cache.set(key, data);
-      await this.applyResolved(entry, data);
+      await this.applyResolved(entry, data, foodPlannedMeta(entry.text, data));
     } catch {
       this.inflight.delete(key);
       if (this.cancelled.has(entry.id)) return;
@@ -679,7 +800,11 @@ export class CommandBus {
     else setTimeout(fn, delay);
   }
 
-  private async applyResolved(entry: Entry, data: EnrichData): Promise<void> {
+  private async applyResolved(
+    entry: Entry,
+    data: EnrichData,
+    meta?: Partial<Entry>,
+  ): Promise<void> {
     this.attempts.delete(entry.id);
     const items =
       'items' in data ? data.items.length : 'purchase' in data ? data.purchase.length : undefined;
@@ -689,7 +814,7 @@ export class CommandBus {
       items,
       recipe: 'recipe' in data && data.recipe ? true : undefined,
     });
-    await this.patch(entry.domain, entry.id, { status: 'done', data, error: null });
+    await this.patch(entry.domain, entry.id, { status: 'done', data, error: null, ...meta });
     this.deps.onResolved?.();
   }
 

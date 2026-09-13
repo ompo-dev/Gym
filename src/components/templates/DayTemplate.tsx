@@ -40,7 +40,7 @@ import { TotalsDock } from "@/components/organisms/TotalsDock";
 import { WorkoutProgressSheet } from "@/components/organisms/WorkoutProgressSheet";
 import { notesForDate, photosForDate } from "@/constants/limits";
 import { getLimit } from "@/core/dev/limits";
-import { Metrics, Radii, Spacing } from "@/constants/theme";
+import { BottomTabInset, Metrics, Radii, Spacing } from "@/constants/theme";
 import { APP_MODAL_TRANSITION_MS, canOpenAppModal } from "@/core/appModals";
 import type { Command } from "@/core/command/Command";
 import { ENRICH_ERROR } from "@/core/command/CommandBus";
@@ -50,6 +50,8 @@ import type {
   EnrichMediaInput,
 } from "@/core/enrich/types";
 import { lookupOpenFoodFactsProduct } from "@/core/food/openFoodFacts";
+import { expandPhotoCutouts, selectedPhotoDescription } from "@/core/food/photo-cutouts";
+import type { CapturedFoodPhoto } from "@/core/food/scan-photo";
 import { buildOnboardingPromptContext } from "@/core/onboarding";
 import type {
   Entry,
@@ -97,9 +99,9 @@ import { useAppStore } from "@/store/useAppStore";
 
 const UNDO_MS = 4_000;
 // Space reserved below the footer for the floating tab bar.
-// Android uses a custom floating glass pill (~60 px tall). iOS gets its height
-// from the native tab bar + safe area, so the clearance is just the gap above it.
-const TAB_BAR_CLEARANCE = Platform.OS === "android" ? 90 : 20;
+// Android and web use the custom floating glass pill; iOS gets its height from
+// the native tab bar + safe area, so the clearance is just the gap above it.
+const TAB_BAR_CLEARANCE = Platform.OS === "ios" ? 20 : BottomTabInset;
 // The dock finishes shrinking (and the buttons finish revealing) over the first
 // 150 px of keyboard rise, then the keyboard keeps rising underneath. Kept below
 // the shortest real keyboard (~216 px) so `progress` always reaches 1 — a larger
@@ -164,7 +166,7 @@ function buildFoodMediaText(drafts: FoodMediaDraft[]): string {
 
 function fallbackFoodMediaText(drafts: FoodMediaDraft[]): string {
   const text = drafts
-    .map((draft) => draft.description.trim() || draft.data?.items[0]?.label)
+    .map((draft) => draft.cutouts?.map((item) => item.label).join(', ') || draft.description.trim() || draft.data?.items[0]?.label)
     .filter(Boolean)
     .join(", ");
   return text || (drafts.length > 0 ? t("media.photosAdded") : "");
@@ -173,11 +175,14 @@ function fallbackFoodMediaText(drafts: FoodMediaDraft[]): string {
 function mediaForEntry(
   drafts: FoodMediaDraft[],
 ): EntryMediaAttachment[] | undefined {
-  const media = drafts.map(({ id, kind, uri, description }) => ({
+  const media = drafts.map(({ id, kind, uri, description, width, height, cutouts }) => ({
     id,
     kind,
     uri,
     description,
+    width,
+    height,
+    cutouts,
   }));
   return media.length ? media : undefined;
 }
@@ -191,7 +196,7 @@ function mediaForAi(drafts: FoodMediaDraft[]): EnrichMediaInput[] | undefined {
         kind: draft.kind,
         base64: draft.base64,
         mimeType: draft.mimeType,
-        description: draft.description.trim() || undefined,
+        description: selectedPhotoDescription(draft).trim() || undefined,
       },
     ];
   });
@@ -204,7 +209,7 @@ function withGeneratedDescriptions(
 ): EntryMediaAttachment[] | undefined {
   if (!media?.length || !descriptions?.length) return media;
   return media.map((item) => {
-    if (item.description.trim()) return item;
+    if (item.description.trim() || item.cutouts?.length) return item;
     const generated = descriptions
       .find((description) => description.id === item.id)
       ?.description.trim();
@@ -636,6 +641,15 @@ export function DayTemplate<TData, TTotals>({
     [isFood],
   );
 
+  const handleTogglePlannedEntry = useCallback((entry: Entry, completed: boolean) => {
+    const completedAt = completed ? Date.now() : null;
+    const updated: Entry = { ...entry, planned: true, completedAt };
+    useAppStore.getState().upsertEntry(entry.domain, updated);
+    void EntryRepository.update(entry.id, { planned: true, completedAt }).catch(() => {
+      useAppStore.getState().upsertEntry(entry.domain, entry);
+    });
+  }, []);
+
   const handleUndo = useCallback(() => {
     const pending = undoCommand.current;
     undoCommand.current = null;
@@ -760,7 +774,7 @@ export function DayTemplate<TData, TTotals>({
           return;
         }
 
-        const describedFoodPhotoMedia = describedMedia?.filter(
+        const describedFoodPhotoMedia = describedMedia && expandPhotoCutouts(describedMedia).filter(
           (item) => item.kind !== "barcode",
         );
         const parsedItems = parsedFood?.items ?? [];
@@ -831,12 +845,7 @@ export function DayTemplate<TData, TTotals>({
   );
 
   const handlePhotoCaptured = useCallback(
-    (photo: {
-      kind: "foodPhoto" | "menuPhoto";
-      uri: string;
-      base64?: string;
-      mimeType?: string;
-    }) => {
+    (photo: CapturedFoodPhoto) => {
       // ponytail: draftPhotos reads the closed-over state, so two captures
       // fired before a re-render could allow one extra — harmless for a modal
       // that captures one shot at a time.
@@ -866,7 +875,10 @@ export function DayTemplate<TData, TTotals>({
           uri: photo.uri,
           base64: photo.base64,
           mimeType: photo.mimeType,
-          description: "",
+          description: photo.description ?? "",
+          width: photo.width,
+          height: photo.height,
+          cutouts: photo.cutouts,
         },
       ]);
     },
@@ -1307,9 +1319,13 @@ export function DayTemplate<TData, TTotals>({
               )
             }
             onAdd={handleAddEntry}
+            onAddMedia={isFood && featureCamera && Platform.OS === "web"
+              ? () => setFoodMediaMenuVisible((current) => !current)
+              : undefined}
             onEdit={editEntry}
             onDelete={handleDelete}
             onRetry={retryEntry}
+            onTogglePlanned={isFood ? handleTogglePlannedEntry : undefined}
             onSaveExercise={!isFood && featureSavedExercises ? handleSaveWorkoutExercise : undefined}
             savedExerciseEntryIds={!isFood && featureSavedExercises ? savedExerciseEntryIds : undefined}
             onOpenFoodDetails={isFood ? openFoodEntryDetails : undefined}
@@ -1352,7 +1368,7 @@ export function DayTemplate<TData, TTotals>({
                   visible={workoutProgressVisible}
                 />
               ) : null}
-              {keyboardVisible && isFood && !IOS_NATIVE_ENABLED ? (
+              {(keyboardVisible || Platform.OS === "web") && isFood && !IOS_NATIVE_ENABLED ? (
                 <FoodMediaActionMenu
                   visible={foodMediaMenuVisible}
                   onSelect={handleSelectFoodMedia}
@@ -1381,7 +1397,7 @@ export function DayTemplate<TData, TTotals>({
               >
                 {isFood ? (
                   <>
-                    {featureCamera && (
+                    {featureCamera && Platform.OS !== "web" && (
                       <Animated.View style={[styles.dockButtonSlot, b0Style]}>
                         {IOS_NATIVE_ENABLED ? (
                           <NativeMenuButton

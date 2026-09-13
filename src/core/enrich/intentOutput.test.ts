@@ -79,6 +79,31 @@ describe('foodAuto output gate', () => {
     expect(parsed.success).toBe(true);
   });
 
+  test('accepts a diet-plan split with several planned meals and a recipe', () => {
+    const parsed = schema.safeParse({
+      notes: [
+        { text: 'Cafe da manha', planned: true, data: { ...meal('omelete'), mealType: 'breakfast' } },
+        { text: 'Almoco', planned: true, data: { ...meal('arroz frango'), mealType: 'lunch' } },
+        {
+          text: 'receita de bolo de banana',
+          planned: true,
+          data: {
+            ...meal('bolo de banana'),
+            mealType: 'afternoonSnack',
+            recipe: {
+              servings: 8,
+              totalMinutes: 45,
+              ingredients: [{ label: 'banana', quantity: 3, unit: 'unidade' }],
+              steps: [{ text: 'Misture e asse ate firmar.', minutes: 35 }],
+            },
+          },
+        },
+        { text: 'Jantar', planned: true, data: { ...meal('sopa'), mealType: 'dinner' } },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
   test('still accepts a single meal and a single purchase', () => {
     expect(schema.safeParse(meal('frango')).success).toBe(true);
     expect(

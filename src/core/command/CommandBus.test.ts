@@ -112,6 +112,19 @@ test('editing an entry re-enriches with the new text', async () => {
   expect(enrichFn).toHaveBeenCalledTimes(2); // burger, then salad
 });
 
+test('editing only whitespace or leading zero formatting does not re-enrich', async () => {
+  const enrichFn = jest.fn(async () => ({ ok: true as const, data: workoutOk() }));
+  const { bus, day } = harness(enrichFn);
+  await bus.addEntry('bike 6:19/km', 'workout');
+  await flush();
+
+  await bus.editEntry(day.workout.entries[0], '  bike 06:19 / km  ');
+  await flush();
+
+  expect(day.workout.entries[0].text).toBe('bike 6:19/km');
+  expect(enrichFn).toHaveBeenCalledTimes(1);
+});
+
 test('identical text is enriched only once (cache / in-flight dedup)', async () => {
   const enrichFn = jest.fn(async () => foodOk());
   const { bus } = harness(enrichFn);
@@ -136,8 +149,33 @@ test('food enrich includes the local user nutrition context', async () => {
   expect(enrichFn).toHaveBeenCalledWith(
     expect.objectContaining({
       domain: 'food',
-userContext: 'targets=2518 kcal, water 3450ml\nconsiderations=vegetarian',
+      userContext: 'targets=2518 kcal, water 3450ml\nconsiderations=vegetarian',
     }));
+});
+
+test('food enrich includes meals already logged today so diet plans can complete targets', async () => {
+  const enrichFn = jest.fn(async () => foodOk());
+  const { bus } = harness(enrichFn, {
+    getUserContext: () => 'targets=2500 kcal, protein 180g',
+  });
+
+  await bus.addEntry('almoço pronto', 'food');
+  await flush();
+  await bus.addEntry('complete minha dieta ate o cafe da tarde', 'food');
+  await flush();
+
+  expect(enrichFn).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      userContext: expect.stringContaining(
+        `Today food already logged (${TODAY}): 620 kcal, 30g protein, 40g carbs, 35g fat, 0ml water.`,
+      ),
+    }),
+  );
+  expect(enrichFn).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      userContext: expect.stringContaining('Logged meals: almoço pronto.'),
+    }),
+  );
 });
 
 test('food enrich preserves hydration returned by the AI', async () => {
@@ -536,6 +574,64 @@ test('a mixed note splits into one note per action', async () => {
   expect(day.food.entries).toHaveLength(1);
   expect(day.food.entries[0].text).toBe('comprei 5kg de arroz e comi frango');
   expect(day.food.entries[0].status).toBe('error');
+});
+
+test('a diet-plan request can split into purchase, recipe, and planned meals', async () => {
+  const { bus, day } = harness(async () => ({
+    ok: true as const,
+    data: {
+      notes: [
+        { text: 'comprei banana', data: { purchase: [{ label: 'banana', price: 10 }] } },
+        {
+          text: 'receita de bolo de banana',
+          planned: true,
+          data: {
+            items: [{ label: 'bolo de banana', calories: 280, protein: 6, carbs: 42, fat: 9 }],
+            mealType: 'afternoonSnack',
+            recipe: {
+              servings: 8,
+              totalMinutes: 45,
+              ingredients: [{ label: 'banana', quantity: 3, unit: 'unidade' }],
+              steps: [{ text: 'Amasse as bananas e misture a massa.', minutes: 10 }],
+            },
+          },
+        },
+        {
+          text: 'Plano - cafe da manha: omelete com banana',
+          data: {
+            items: [{ label: 'omelete com banana', calories: 420, protein: 28, carbs: 35, fat: 18 }],
+            mealType: 'breakfast',
+          },
+        },
+        {
+          text: 'almoco: arroz, feijao e frango',
+          planned: true,
+          data: {
+            items: [{ label: 'arroz feijao frango', calories: 700, protein: 55, carbs: 78, fat: 14 }],
+            mealType: 'lunch',
+          },
+        },
+      ],
+    },
+  }));
+
+  await bus.addEntry(
+    'comprei banana de 10 reais, quero receita de bolo de banana e complete minha dieta ate o cafe da tarde',
+    'food',
+  );
+  await flush();
+
+  expect(day.food.entries).toHaveLength(4);
+  expect(day.food.entries[0].data && 'purchase' in day.food.entries[0].data).toBe(true);
+  expect(day.food.entries[0].planned).toBeUndefined();
+  expect(day.food.entries[1].data && 'items' in day.food.entries[1].data).toBe(true);
+  expect(day.food.entries[1].data && 'recipe' in day.food.entries[1].data).toBe(true);
+  expect(day.food.entries[1].planned).toBe(true);
+  expect(day.food.entries[2].text).toBe('cafe da manha: omelete com banana');
+  expect(day.food.entries[2].planned).toBe(true);
+  expect(day.food.entries[2].data && 'items' in day.food.entries[2].data).toBe(true);
+  expect(day.food.entries[3].planned).toBe(true);
+  expect(day.food.entries[3].data && 'items' in day.food.entries[3].data).toBe(true);
 });
 
 // Two eating occasions in one note — "almocei arroz e frango e jantei arroz e

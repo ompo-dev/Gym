@@ -186,10 +186,11 @@ export const foodMultiSchema = z.object({
       z.object({
         text: z.string().trim().min(1).max(500),
         data: foodEntrySchema,
+        planned: z.boolean().optional().catch(undefined),
       }),
     )
     .min(1)
-    .max(8),
+    .max(12),
 });
 export type FoodMultiData = z.infer<typeof foodMultiSchema>;
 

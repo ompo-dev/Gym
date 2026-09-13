@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 
 import { AppText } from '@/components/atoms/AppText';
-import { LoggedTextInput } from '@/components/atoms/Logged';
+import { LoggedPressable, LoggedTextInput } from '@/components/atoms/Logged';
+import { AppIcon } from '@/components/atoms/AppIcon';
 import { NoteRow } from '@/components/molecules/NoteRow';
 import { useLimit } from '@/core/dev/limits';
 import { Spacing } from '@/constants/theme';
@@ -18,6 +19,7 @@ import { COMPOSER_TRAY } from '@/core/appModals';
 import type { Entry } from '@/core/types';
 import type { DomainConfig } from '@/domains/types';
 import { useColors } from '@/hooks/use-colors';
+import { t } from '@/i18n';
 
 import { FoodMediaDraftTray, type FoodMediaDraft } from './FoodMediaDraftTray';
 
@@ -30,9 +32,11 @@ interface NotesListProps<TData, TTotals> {
   onChangeMediaDescription?: (id: string, description: string) => void;
   onRemoveMediaDraft?: (id: string) => void;
   onAdd: (text: string) => void;
+  onAddMedia?: () => void;
   onEdit: (entry: Entry, text: string) => void;
   onDelete: (entry: Entry) => void;
   onRetry: (entry: Entry) => void;
+  onTogglePlanned?: (entry: Entry, completed: boolean) => void;
   onSaveExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
   savedExerciseEntryIds?: Set<string>;
   onOpenFoodDetails?: (entry: Entry) => void;
@@ -55,6 +59,7 @@ function NewNoteInput({
   onRemoveMediaDraft,
   onFocus,
   onBlur,
+  onAddMedia,
 }: {
   placeholder: string;
   onAdd: (text: string) => void;
@@ -66,6 +71,7 @@ function NewNoteInput({
   onRemoveMediaDraft?: (id: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
+  onAddMedia?: () => void;
 }) {
   const colors = useColors();
   const noteMaxChars = useLimit('noteMaxChars');
@@ -109,6 +115,11 @@ function NewNoteInput({
         style={[styles.newInput, { color: colors.text }]}
         accessibilityLabel={placeholder}
       />
+      {onAddMedia ? <LoggedPressable onPress={onAddMedia} accessibilityRole="button"
+        accessibilityLabel={t('media.addAttachment')}
+        style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+        <AppIcon name="camera" size={21} color={colors.textSecondary} />
+      </LoggedPressable> : null}
     </View>
   );
 }
@@ -119,12 +130,14 @@ export function NotesList<TData, TTotals>({
   keyboardVisible,
   canAddEmpty,
   mediaDrafts,
+  onAddMedia,
   onChangeMediaDescription,
   onRemoveMediaDraft,
   onAdd,
   onEdit,
   onDelete,
   onRetry,
+  onTogglePlanned,
   onSaveExercise,
   savedExerciseEntryIds,
   onOpenFoodDetails,
@@ -346,6 +359,7 @@ export function NotesList<TData, TTotals>({
               onEdit={onEdit}
               onDelete={onDelete}
               onRetry={onRetry}
+              onTogglePlanned={config.id === 'food' ? onTogglePlanned : undefined}
               onSaveExercise={
                 config.id === 'workout' ? onSaveExercise : undefined
               }
@@ -399,6 +413,7 @@ export function NotesList<TData, TTotals>({
           <NewNoteInput
             placeholder={config.placeholder}
             onAdd={onAdd}
+            onAddMedia={onAddMedia}
             showBullet={config.id === 'workout'}
             inputRef={newInputRef}
             canAddEmpty={canAddEmpty}

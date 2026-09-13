@@ -51,6 +51,7 @@ import { ApiKeysSheet } from "./settings/ApiKeysSheet";
 import { DeveloperSheet } from "./settings/DeveloperSheet";
 import { EstimationBiasSheet } from "./settings/EstimationBiasSheet";
 import { HealthProfileSheet } from "./settings/HealthProfileSheet";
+import { LegalDocumentSheet } from "./settings/LegalDocumentSheet";
 import { NutritionGoalsSheet } from "./settings/NutritionGoalsSheet";
 import { PantrySheet } from "./settings/PantrySheet";
 import {
@@ -231,6 +232,16 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
   const openApiKeys = () => {
     if (!canOpenAppModal("settings.root", "settings.apiKeys")) return;
     openAppModal({ id: "settings.apiKeys", domain });
+  };
+
+  const openTerms = () => {
+    if (!canOpenAppModal("settings.root", "settings.terms")) return;
+    openAppModal({ id: "settings.terms", domain });
+  };
+
+  const openPrivacy = () => {
+    if (!canOpenAppModal("settings.root", "settings.privacy")) return;
+    openAppModal({ id: "settings.privacy", domain });
   };
 
   const openDeveloper = () => {
@@ -750,13 +761,13 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
         <SettingsRow
           title={t("settings.legal.terms")}
           trailing={<Chevron />}
-          onPress={noop}
+          onPress={openTerms}
         />
         <Divider />
         <SettingsRow
           title={t("settings.legal.privacy")}
           trailing={<Chevron />}
-          onPress={noop}
+          onPress={openPrivacy}
         />
       </Section>
 
@@ -903,6 +914,26 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
           <ApiKeysSheet
             visible
             onClose={() => closeAppModal("settings.apiKeys")}
+          />
+        );
+
+      case "settings.terms":
+        return (
+          <LegalDocumentSheet
+            visible
+            kind="terms"
+            onClose={() => closeAppModal("settings.terms")}
+            nested={nested}
+          />
+        );
+
+      case "settings.privacy":
+        return (
+          <LegalDocumentSheet
+            visible
+            kind="privacy"
+            onClose={() => closeAppModal("settings.privacy")}
+            nested={nested}
           />
         );
 

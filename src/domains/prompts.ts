@@ -36,6 +36,7 @@ export const promptByDomain: Record<Domain, string> = {
     'List ONE object per distinct food or drink component.',
     'Set "mealType" to which eating occasion this note records, read ONLY from the words, NEVER from any clock time (a lunch can be logged late at night). One of: "breakfast", "morningSnack", "lunch", "afternoonSnack", "dinner", "nightSnack", "preWorkout", "postWorkout". "almoço/almocei" is lunch; "janta/jantei/ceia" is dinner; "café da manhã" is breakfast; "lanche" is a snack (pick morning/afternoon/night by the words if stated); "pré-treino/antes do treino" is preWorkout; "pós-treino/depois do treino" is postWorkout. Omit mealType only when the words genuinely give no occasion.',
     'If attached image descriptions include media ids, return exactly ONE food/drink item per attached image with that mediaId. Estimate the whole visible food/drink in that image as that item. Foods typed only in text may omit mediaId.',
+    'For segmented photos with selected items and individual mediaIds, this rule applies to EACH selected item instead: use its exact individual mediaId, never the parent image id. Excluded objects are not consumed. Do not combine or double-count selected items.',
     'When text and attached images are provided together, include BOTH the typed foods/drinks and the image foods/drinks; do not replace or ignore one source with the other.',
     'Users may write with typos, shorthand, mixed languages, arithmetic, and messy separators.',
     'Expand common pt-BR and en-US food abbreviations into clear full labels whenever the meaning is obvious.',
@@ -188,7 +189,32 @@ export const recipePrompt = [
 ].join(' ');
 
 /**
- * One note, three possible meanings, decided by the model rather than by us.
+ * A diet plan is still stored as normal food entries. There is no special
+ * planned/eaten flag today, so the safest contract is: one generated meal per
+ * note, with mealType set, and a recipe object only when the user asked for it.
+ */
+export const dietPlanPrompt = [
+  'You are a nutrition coach building food entries for a requested diet plan.',
+  'Return ONLY a JSON object of the shape { "notes": [ { "text": string, "planned": true, "data": <MEAL | RECIPE | PURCHASE> } ] }.',
+  'For every planned eating occasion, create one MEAL note. Use mealType: breakfast, morningSnack, lunch, afternoonSnack, dinner, nightSnack, preWorkout, or postWorkout when it fits.',
+  'Default to 4 meals when the user asks for a day plan without specifying count or schedule: breakfast, lunch, afternoonSnack, and dinner.',
+  'Honor explicit limits: "ate o cafe da tarde" means generate only meals through afternoonSnack; "janta livre" means do not generate dinner; "so almoco e janta" means only lunch and dinner; a requested number of meals overrides the 4-meal default.',
+  'Use the user nutrition context as the target. If it includes meals already logged today and the user says complete, restante, falta, fechar, bater meta, or similar, plan only what remains after those logged meals.',
+  'If no logged meals are listed, assume you are planning from zero for the requested period.',
+  'Keep total generated calories, protein, carbs, fat, water and tracked micronutrients as close as practical to the user targets, while keeping meals realistic.',
+  'Never prescribe a food the user listed as an allergy or intolerance. Avoid dislikes unless there is no good alternative.',
+  'Pantry/fridge rules match recipes: "apenas", "somente", "only" is a hard constraint; "com o que tenho", "aproveitando", "using" is a preference. If the note records groceries bought in the same text, treat them as available for later recipe/plan actions in that same answer.',
+  'Every note created by this plan MUST include "planned": true, including recipe notes or shopping/purchase notes that are tasks for later.',
+  'Keep each planned meal text short and standalone, for example "Cafe da manha: omelete com banana". Do not prefix text with "Plano -"; the app has a separate planned checkbox.',
+  'Do NOT include a recipe object for ordinary planned meals unless the user explicitly asked for that recipe or cooking instructions.',
+  'If the user also asks for a recipe, split it as its own RECIPE note in addition to the planned meals, and set planned true when the recipe belongs to the plan.',
+  'If the user also records a purchase, split it as a PURCHASE note too. Never turn a purchase into calories eaten. Use planned true only for future shopping tasks, not for groceries the user says they already bought.',
+  'Set every MEAL/RECIPE reasoning to 1-3 sentences explaining target fit and pantry choices. Set confidence to an integer from 0 to 100.',
+  'Respond with JSON only, no prose.',
+].join(' ');
+
+/**
+ * One note, several possible meanings, decided by the model rather than by us.
  *
  * This replaces a local regex allowlist. That allowlist had to know every verb
  * a person might use, and it did not: "me de uma receita" missed because the
@@ -196,7 +222,7 @@ export const recipePrompt = [
  * food nobody ate. The note was already being sent to the model — asking it to
  * also say *what the note is* costs one field, not one request.
  *
- * Built from the three prompts below rather than restating them, so a rule
+ * Built from the prompts below rather than restating them, so a rule
  * fixed in `purchasePrompt` cannot silently stay broken in here.
  */
 export const foodRouterPrompt = [
@@ -206,16 +232,20 @@ export const foodRouterPrompt = [
   // picked ONE branch and silently dropped the rest: "comprei batatas e comi
   // repolho" came back as a meal of cabbage, and the groceries vanished.
   'STEP 1: count the distinct actions in the note. STEP 2: answer.',
-  'EXACTLY ONE action — answer in that action\'s bare shape (MEAL, PURCHASE or RECIPE below).',
-  'MORE THAN ONE action — you MUST return { "notes": [ { "text": string, "data": <MEAL | RECIPE | PURCHASE> } ] }, one entry per action, and never wrap a single action in "notes".',
+  'EXACTLY ONE action — answer in that action\'s bare shape (MEAL, PURCHASE or RECIPE below), except DIET PLAN always returns notes because it creates planned meals.',
+  'MORE THAN ONE action — you MUST return { "notes": [ { "text": string, "planned": boolean | null, "data": <MEAL | RECIPE | PURCHASE> } ] }, one entry per action or planned meal, and never wrap a single non-plan action in "notes".',
   'NEVER drop an action. If answering in one shape would force you to ignore part of the note, that note is a SPLIT.',
   'Example: "comprei batatas e comi repolho" is TWO actions — a PURCHASE of batatas and a LOG of repolho. Answering with only the cabbage loses the shopping.',
   'Two eating occasions are TWO actions even when BOTH are LOGs: "almocei arroz com frango e na janta comi arroz com ovo" is a lunch MEAL and a dinner MEAL — split into two MEAL notes, each carrying only its own foods. Do not merge separate meals into one.',
+  'A full-day or partial-day diet request is a DIET PLAN, not a eaten LOG. It still becomes MEAL notes so the day can show the plan.',
+  'Example: "crie uma dieta pro dia de hoje com o que tenho na geladeira e tambem crie uma receita de bolo" is a DIET PLAN plus a RECIPE — return planned meal notes and one separate cake recipe note, with planned true on generated plan/recipe notes.',
+  'Example: "comprei banana de 10 reais, quero uma receita de bolo de banana e complete minha dieta ate o cafe da tarde pois a janta vai ser livre" is PURCHASE plus RECIPE plus DIET PLAN — return the banana purchase, one banana cake recipe, and only the meals needed through afternoonSnack. The already-bought banana purchase is not planned; the generated recipe and meals are planned.',
   'Each split note carries its OWN "text": the fragment it covers, rewritten to stand alone.',
   'Decide from meaning, never from keywords: people type casually, with typos, without accents, and mixing Portuguese and English.',
   'LOG — the note records food or drink they ate, are eating, or are recording as eaten. Answer in the MEAL shape.',
   'PURCHASE — the note records groceries they BOUGHT. Nothing was eaten. Answer in the PURCHASE shape.',
   'RECIPE — the note ASKS you to produce, suggest, invent or plan a dish, meal or menu. Answer in the MEAL shape and ALSO include the "recipe" object.',
+  'DIET PLAN — the note ASKS you to create, complete, montar, fechar or plan the user\'s diet/day/meals around their targets. Answer in the DIET PLAN shape.',
   'A note that asks for something to be made is a RECIPE even when it names an ingredient the person already owns.',
   'Attached image descriptions belong to whichever branch you choose: a photo of groceries or a receipt is a PURCHASE, a photo of a plate is a LOG, and photos sent with a request are ingredients for the RECIPE.',
   'A short note next to a photo refers TO that photo. "receita com isso", "quanto tem aqui", "com isso" and the like point at the attached images — never answer as if the note had named no food at all.',
@@ -228,11 +258,14 @@ export const foodRouterPrompt = [
   // This used to say "treat it as RECIPE", which threw the purchase away — the
   // exact drop STEP 1 exists to prevent. Buying and asking are two actions.
   'A note that records a purchase AND asks for a dish is TWO actions: split it into a PURCHASE and a RECIPE.',
+  'A note that records a purchase, asks for a recipe and asks to complete the diet is THREE action groups: PURCHASE, RECIPE and DIET PLAN. Return all of them.',
   'When the person ate something they had bought or had in the pantry, that is still ONE action, a MEAL. Return the MEAL shape — the app reconciles it against the fridge, you do not.',
   '=== MEAL shape ===',
   promptByDomain.food,
   '=== RECIPE — the MEAL shape plus this ===',
   recipePrompt,
+  '=== DIET PLAN shape ===',
+  dietPlanPrompt,
   '=== PURCHASE shape ===',
   purchasePrompt,
 ].join(' ');

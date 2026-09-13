@@ -1,12 +1,31 @@
-import { memo, type ReactNode, useEffect, useState } from 'react';
+import { memo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+
+import { AppIcon } from '@/components/atoms/AppIcon';
 import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppText } from '@/components/atoms/AppText';
 import { EntryMeta } from '@/components/molecules/EntryMeta';
 import { ThinkingIndicator } from '@/components/molecules/ThinkingIndicator';
 import { WorkoutOutliner } from '@/components/molecules/WorkoutOutliner';
-import { Spacing } from '@/constants/theme';
+import {
+  IOS_NATIVE_ENABLED,
+  SwiftHost,
+  SwiftToggle,
+  swiftControlSize,
+  swiftFrame,
+  swiftLabelStyle,
+  swiftLabelsHidden,
+  swiftTint,
+  swiftToggleStyle,
+} from '@/components/onboarding/onboardingNative';
+import { Radii, Spacing } from '@/constants/theme';
 import { ENRICH_UNCONFIGURED } from '@/core/enrich/types';
 import type { Entry } from '@/core/types';
 import { foodNoteKind, sumFoodData } from '@/domains/food';
@@ -25,6 +44,7 @@ interface NoteRowProps<TData, TTotals> {
   onEdit: (entry: Entry, text: string) => void;
   onDelete: (entry: Entry) => void;
   onRetry: (entry: Entry) => void;
+  onTogglePlanned?: (entry: Entry, completed: boolean) => void;
   onSaveExercise?: (entry: Entry, saved: boolean) => Promise<boolean> | boolean | void;
   exerciseSaved?: boolean;
   onOpenFoodDetails?: (entry: Entry) => void;
@@ -34,6 +54,80 @@ interface NoteRowProps<TData, TTotals> {
   onFocusWorkoutLine?: (layout: { screenY: number; height: number }) => void;
   autoFocusWorkoutExercise?: boolean;
   onWorkoutExerciseAutoFocused?: () => void;
+}
+
+function PlannedCheckButton({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const colors = useColors();
+  const progress = useSharedValue(checked ? 1 : 0);
+
+  useEffect(() => {
+    progress.value = withTiming(checked ? 1 : 0, {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [checked, progress]);
+
+  const buttonAnim = useAnimatedStyle(() => ({
+    transform: [{ scale: 0.92 + progress.value * 0.08 }],
+  }));
+  const checkAnim = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ scale: 0.65 + progress.value * 0.35 }],
+  }));
+
+  if (IOS_NATIVE_ENABLED && SwiftHost && SwiftToggle) {
+    return (
+      <View style={styles.planCheckSlot}>
+        <SwiftHost style={styles.swiftPlanCheckHost}>
+          <SwiftToggle
+            isOn={checked}
+            onIsOnChange={onChange}
+            label={t('plan.toggle')}
+            systemImage={checked ? 'checkmark.circle.fill' : 'circle'}
+            modifiers={[
+              swiftToggleStyle?.('button'),
+              swiftControlSize?.('regular'),
+              swiftLabelStyle?.('iconOnly'),
+              swiftLabelsHidden?.(),
+              swiftTint?.(colors.success),
+              swiftFrame?.({ width: 30, height: 30 }),
+            ].filter(Boolean)}
+          />
+        </SwiftHost>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.planCheckSlot}>
+      <LoggedPressable
+        onPress={() => onChange(!checked)}
+        hitSlop={10}
+        accessibilityRole="checkbox"
+        accessibilityLabel={t('plan.toggle')}
+        accessibilityState={{ checked }}>
+        <Animated.View
+          style={[
+            styles.planCheckButton,
+            {
+              borderColor: checked ? colors.success : colors.border,
+              backgroundColor: checked ? colors.success : 'transparent',
+            },
+            buttonAnim,
+          ]}>
+          <Animated.View style={checkAnim}>
+            <AppIcon name="check" color="#FFFFFF" size={18} />
+          </Animated.View>
+        </Animated.View>
+      </LoggedPressable>
+    </View>
+  );
 }
 
 function isFoodData(data: Entry['data']): data is FoodData {
@@ -114,17 +208,37 @@ function FoodRow<TData, TTotals>({
   onEdit,
   onDelete,
   onRetry,
+  onTogglePlanned,
   onOpenFoodDetails,
   onOpenPantry,
 }: NoteRowProps<TData, TTotals>) {
   const colors = useColors();
   const [text, setText] = useState(entry.text);
+  const deletedRef = useRef(false);
+  const completed = Boolean(entry.completedAt);
+  const completeProgress = useSharedValue(completed ? 1 : 0);
 
-  useEffect(() => setText(entry.text), [entry.text]);
+  useEffect(() => {
+    setText(entry.text);
+    deletedRef.current = false;
+  }, [entry.id, entry.text]);
+
+  useEffect(() => {
+    completeProgress.value = withTiming(completed ? 1 : 0, {
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [completed, completeProgress]);
+
+  const rowDoneStyle = useAnimatedStyle(() => ({
+    opacity: 1 - completeProgress.value * 0.34,
+  }));
 
   const commit = () => {
+    if (deletedRef.current) return;
     const trimmed = text.trim();
     if (!trimmed) {
+      deletedRef.current = true;
       onDelete(entry);
       return;
     }
@@ -137,17 +251,33 @@ function FoodRow<TData, TTotals>({
   const foodCalories = foodData ? Math.round(sumFoodData(foodData).calories) : null;
 
   return (
-    <View style={styles.rowTop}>
+    <Animated.View style={[styles.rowTop, rowDoneStyle]}>
+      {entry.planned ? (
+        <PlannedCheckButton
+          checked={completed}
+          onChange={(next) => onTogglePlanned?.(entry, next)}
+        />
+      ) : null}
       {leading}
-      <TextInput
-        value={text}
-        onChangeText={setText}
-        onEndEditing={commit}
-        multiline
-        scrollEnabled={false}
-        style={[styles.input, { color: colors.text }]}
-        accessibilityLabel={entry.text}
-      />
+      <View style={styles.inputWrap}>
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          onBlur={commit}
+          onEndEditing={commit}
+          multiline
+          scrollEnabled={false}
+          style={[
+            styles.input,
+            {
+              color: colors.text,
+              textDecorationLine: completed ? 'line-through' : 'none',
+              textDecorationColor: colors.textSecondary,
+            },
+          ]}
+          accessibilityLabel={entry.text}
+        />
+      </View>
 
       <View style={styles.right}>
         {kind ? (
@@ -174,7 +304,7 @@ function FoodRow<TData, TTotals>({
           <StatusBadge entry={entry} config={config} onRetry={onRetry} />
         )}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -188,6 +318,7 @@ function NoteRowInner<TData, TTotals>(props: NoteRowProps<TData, TTotals>) {
     onEdit,
     onDelete,
     onRetry,
+    onTogglePlanned,
     onSaveExercise,
     exerciseSaved,
     onFocusNewWorkoutExercise,
@@ -217,7 +348,7 @@ function NoteRowInner<TData, TTotals>(props: NoteRowProps<TData, TTotals>) {
           onExerciseAutoFocused={onWorkoutExerciseAutoFocused}
         />
       ) : (
-        <FoodRow {...props} />
+        <FoodRow {...props} onTogglePlanned={onTogglePlanned} />
       )}
     </View>
   );
@@ -250,6 +381,32 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 24,
     padding: 0,
+  },
+  inputWrap: {
+    flex: 1,
+    minHeight: NOTE_MIN_HEIGHT,
+    justifyContent: 'flex-start',
+  },
+  planCheckSlot: {
+    width: 30,
+    minHeight: NOTE_MIN_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 1,
+  },
+  planCheckButton: {
+    width: 28,
+    height: 28,
+    borderRadius: Radii.pill,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swiftPlanCheckHost: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   right: {
     alignItems: 'flex-end',

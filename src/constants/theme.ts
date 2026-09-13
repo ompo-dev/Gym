@@ -70,24 +70,50 @@ export const Colors = {
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
+const Poppins = {
+  regular: "Poppins_400Regular",
+  medium: "Poppins_500Medium",
+  semibold: "Poppins_600SemiBold",
+  bold: "Poppins_700Bold",
+  extraBold: "Poppins_800ExtraBold",
+} as const;
+
 export const Fonts = Platform.select({
   ios: {
     sans: "system-ui",
     serif: "ui-serif",
     rounded: "ui-rounded",
     mono: "ui-monospace",
+    regular: "system-ui",
+    medium: "system-ui",
+    semibold: "system-ui",
+    bold: "system-ui",
+    extraBold: "system-ui",
+  },
+  android: {
+    sans: Poppins.regular,
+    serif: Poppins.regular,
+    rounded: Poppins.regular,
+    mono: "monospace",
+    ...Poppins,
   },
   default: {
     sans: "normal",
     serif: "serif",
     rounded: "normal",
     mono: "monospace",
+    regular: "normal",
+    medium: "normal",
+    semibold: "normal",
+    bold: "normal",
+    extraBold: "normal",
   },
   web: {
-    sans: "var(--font-display)",
+    sans: Poppins.regular,
     serif: "var(--font-serif)",
-    rounded: "var(--font-rounded)",
+    rounded: Poppins.regular,
     mono: "var(--font-mono)",
+    ...Poppins,
   },
 });
 
@@ -122,5 +148,6 @@ export const Metrics = {
   rowMinHeight: 56,
 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
+export const BottomTabInset =
+  Platform.select({ ios: 50, android: 105, web: 105 }) ?? 105;
 export const MaxContentWidth = 800;

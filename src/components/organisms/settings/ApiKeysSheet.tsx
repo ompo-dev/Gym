@@ -130,7 +130,7 @@ export function ApiKeysSheet({
             label={t("settings.api.imageKey")}
             hint={t("settings.api.imageKeyHint")}
             value={draft.image}
-            placeholder={t("settings.api.sameAsChat")}
+            placeholder="gemini:AIza..."
             onChange={(image) => setDraft((current) => ({ ...current, image }))}
           />
         </Section>

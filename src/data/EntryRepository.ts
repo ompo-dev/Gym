@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { log } from '@/core/log';
+import { persistedPhotoFields } from '@/core/food/photo-cutouts';
 import type { Domain, Entry, EntryMediaAttachment, EntryMediaKind, EntryStatus } from '@/core/types';
 import { type EnrichData, schemaByDomain } from '@/domains/schemas';
 
@@ -14,6 +15,8 @@ interface Row {
   domain: string;
   text: string;
   media: string | null;
+  planned: number | null;
+  completedAt: number | null;
   status: string;
   data: string | null;
   error: string | null;
@@ -51,6 +54,7 @@ function parseMedia(raw: string | null): EntryMediaAttachment[] | undefined {
           kind: record.kind,
           uri: typeof record.uri === 'string' ? record.uri : undefined,
           description: typeof record.description === 'string' ? record.description : '',
+          ...persistedPhotoFields(record),
         },
       ];
     });
@@ -72,6 +76,8 @@ function toEntry(r: Row): Entry {
     domain,
     text: r.text,
     media: parseMedia(r.media),
+    planned: r.planned === 1 ? true : undefined,
+    completedAt: typeof r.completedAt === 'number' ? r.completedAt : null,
     status,
     data,
     error: r.error,
@@ -82,14 +88,16 @@ function toEntry(r: Row): Entry {
 function insertRow(db: SQLiteDatabase, entry: Entry): Promise<unknown> {
   return db.runAsync(
     `INSERT OR REPLACE INTO entries
-       (id, date, domain, text, media, status, data, error, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, date, domain, text, media, planned, completedAt, status, data, error, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id,
       entry.date,
       entry.domain,
       entry.text,
       entry.media?.length ? JSON.stringify(entry.media) : null,
+      entry.planned ? 1 : null,
+      entry.completedAt ?? null,
       entry.status,
       entry.data ? JSON.stringify(entry.data) : null,
       entry.error,
@@ -190,6 +198,14 @@ export const EntryRepository = {
     if (patch.media !== undefined) {
       sets.push('media = ?');
       params.push(patch.media.length ? JSON.stringify(patch.media) : null);
+    }
+    if (patch.planned !== undefined) {
+      sets.push('planned = ?');
+      params.push(patch.planned ? 1 : null);
+    }
+    if (patch.completedAt !== undefined) {
+      sets.push('completedAt = ?');
+      params.push(patch.completedAt ?? null);
     }
     if (patch.error !== undefined) {
       sets.push('error = ?');

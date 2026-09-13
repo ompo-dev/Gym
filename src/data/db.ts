@@ -15,6 +15,8 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
           domain TEXT NOT NULL,
           text TEXT NOT NULL,
           media TEXT,
+          planned INTEGER,
+          completedAt INTEGER,
           status TEXT NOT NULL,
           data TEXT,
           error TEXT,
@@ -57,6 +59,12 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
       const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(entries)');
       if (!columns.some((column) => column.name === 'media')) {
         await db.execAsync('ALTER TABLE entries ADD COLUMN media TEXT;');
+      }
+      if (!columns.some((column) => column.name === 'planned')) {
+        await db.execAsync('ALTER TABLE entries ADD COLUMN planned INTEGER;');
+      }
+      if (!columns.some((column) => column.name === 'completedAt')) {
+        await db.execAsync('ALTER TABLE entries ADD COLUMN completedAt INTEGER;');
       }
       const savedMealColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(saved_meals)');
       if (!savedMealColumns.some((column) => column.name === 'media')) {

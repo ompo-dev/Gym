@@ -11,6 +11,7 @@ import { registerEnrichDrain } from '@/core/background/enrichDrain';
 import { bus } from '@/core/command/bus';
 import { installErrorLogging, log } from '@/core/log';
 import { startConnectivityWatch } from '@/core/net/connectivity';
+import { installDefaultFontFamily, useAppFonts } from '@/core/fonts';
 import { initReminders } from '@/core/notifications/reminders';
 import { useCommandLink } from '@/core/siri/useCommandLink';
 import { useWidgetSync } from '@/core/widgets/useWidgetSync';
@@ -19,11 +20,13 @@ import { useAppStore } from '@/store/useAppStore';
 // Once, at import: every uncaught error and rejection now flows through the
 // same logger as the rest of the app, in the Metro terminal.
 installErrorLogging();
+installDefaultFontFamily();
 
 export default function RootLayout() {
   const hydratePrefs = useAppStore((s) => s.hydratePrefs);
   const prefsLoaded = useAppStore((s) => s.prefsLoaded);
   const onboardingDone = useAppStore((s) => s.onboardingDone);
+  const fontsLoaded = useAppFonts();
 
   // Siri / Shortcuts commands. Only once the app is past onboarding, so a
   // cold-start command has real tabs to land on.
@@ -55,7 +58,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      {!prefsLoaded ? (
+      {!prefsLoaded || !fontsLoaded ? (
         <View style={{ flex: 1, backgroundColor: Colors.dark.background }} />
       ) : onboardingDone ? (
         <AppTabs />

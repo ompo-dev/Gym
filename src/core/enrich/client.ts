@@ -4,6 +4,7 @@ import { log } from '@/core/log';
 import { useAppStore } from '@/store/useAppStore';
 
 import { DeepSeekTransportError, runEnrichEngine } from './deepseek';
+import { resolveProviderCredential } from './providers';
 
 import { ENRICH_UNCONFIGURED } from './types';
 
@@ -36,9 +37,10 @@ export class NetworkError extends Error {}
  * network — five silent retries and a "try again" button, in an app that had
  * nowhere to try.
  */
-function apiBase(): string | null {
+export function apiBase(): string | null {
   const explicit = process.env.EXPO_PUBLIC_API_URL;
   if (explicit) return explicit.replace(/\/+$/, '');
+  if (typeof window !== 'undefined' && window.location?.origin) return window.location.origin;
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) return `http://${hostUri.split('/')[0]}`;
   return null;
@@ -69,10 +71,17 @@ async function enrichDirect(
   signal: AbortSignal,
 ): Promise<EnrichResponse> {
   const { keys: _ignored, ...input } = req;
+  const chat = resolveProviderCredential(keys.chat, 'deepseek');
+  const image = resolveProviderCredential(keys.image || keys.chat, keys.image ? 'gemini' : chat.provider);
   try {
     return await runEnrichEngine(
       { ...input, intent: req.intent ?? 'parse' },
-      { chat: keys.chat, image: keys.image || keys.chat },
+      {
+        chat: chat.key,
+        image: image.key,
+        chatProvider: chat.provider,
+        imageProvider: image.provider,
+      },
       signal,
     );
   } catch (e) {

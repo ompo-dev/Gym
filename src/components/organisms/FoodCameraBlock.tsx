@@ -1,7 +1,7 @@
 import { CameraView, scanFromURLAsync, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
 import { LoggedPressable } from '@/components/atoms/Logged';
@@ -10,16 +10,11 @@ import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
 import type { FoodMediaAction } from '@/core/types';
+import type { CapturedFoodPhoto } from '@/core/food/scan-photo';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 import { latestThumbnails } from './FoodMediaDraftTray';
-
-interface CapturedFoodPhoto {
-  kind: Extract<FoodMediaAction, 'foodPhoto' | 'menuPhoto'>;
-  uri: string;
-  base64?: string;
-  mimeType?: string;
-}
+import { FoodPhotoReview } from './FoodPhotoReview';
 
 // ponytail: tune on device — must show enough preview to frame food/barcode
 // without pushing the dock/composer off-screen on smaller phones.
@@ -65,8 +60,17 @@ export function FoodCameraBlock({
   const scannedRef = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanSession, setScanSession] = useState(0);
+  const [reviewQueue, setReviewQueue] = useState<(CapturedFoodPhoto & { reviewId: string })[]>([]);
+  const captureBusy = useRef(false);
+  const photoSequence = useRef(0);
   const [scanNotice, setScanNotice] = useState<'none' | 'notFound' | 'unsupported'>('none');
   const isBarcode = mode === 'barcode';
+  const kind = mode === 'menuPhoto' ? 'menuPhoto' : 'foodPhoto';
+  const stagePhoto = useCallback((photo: CapturedFoodPhoto) => {
+    if (photo.kind !== 'foodPhoto') { onPhoto(photo); return; }
+    const reviewId = String(++photoSequence.current);
+    setReviewQueue((current) => [...current, { ...photo, reviewId }]);
+  }, [onPhoto]);
 
   useEffect(() => {
     scannedRef.current = false;
@@ -103,12 +107,42 @@ export function FoodCameraBlock({
     return true;
   };
 
+  const attachPickedPhotos = useCallback((assets: ImagePicker.ImagePickerAsset[]) => {
+    assets.forEach((asset) => {
+      if (!asset.uri) return;
+      stagePhoto({
+        kind,
+        uri: asset.uri,
+        base64: asset.base64 ?? undefined,
+        mimeType: asset.mimeType ?? 'image/jpeg',
+        width: asset.width,
+        height: asset.height,
+      });
+    });
+  }, [kind, stagePhoto]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || isBarcode) return;
+    let mounted = true;
+    void ImagePicker.getPendingResultAsync()
+      .then((result) => {
+        if (!mounted || !result || 'code' in result || result.canceled) return;
+        attachPickedPhotos(result.assets);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [attachPickedPhotos, isBarcode]);
+
   const takePhoto = async () => {
+    if (captureBusy.current) return;
+    captureBusy.current = true;
     setScanNotice('none');
     try {
       const camera = cameraRef.current;
       if (!camera) return;
-      const photo = await camera.takePictureAsync({ base64: !isBarcode, quality: 0.45 });
+      const photo = await camera.takePictureAsync({ base64: !isBarcode, quality: 0.85 });
       if (!photo?.uri) return;
       // In scan mode the shutter is a manual retry of the reader, not a way to
       // attach a picture: it used to file the barcode frame as a meal photo,
@@ -117,11 +151,12 @@ export function FoodCameraBlock({
         if (!(await scanStill(photo.uri))) setScanNotice('notFound');
         return;
       }
-      const kind = mode === 'menuPhoto' ? 'menuPhoto' : 'foodPhoto';
-      onPhoto({ kind, uri: photo.uri, base64: photo.base64, mimeType: 'image/jpeg' });
+      stagePhoto({ kind, uri: photo.uri, base64: photo.base64, mimeType: 'image/jpeg', width: photo.width, height: photo.height });
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       if (!message.includes('unmounted')) console.warn('Failed to take food photo', error);
+    } finally {
+      captureBusy.current = false;
     }
   };
 
@@ -141,11 +176,8 @@ export function FoodCameraBlock({
       // picking five photos would read one and drop four without saying so.
       allowsMultipleSelection: !isBarcode,
       base64: !isBarcode,
-      // Full quality when the picture is going to be READ rather than shown:
-      // bars are the highest-frequency detail in a frame and the first thing a
-      // 45%-quality re-encode smears away. Photos of food survive 0.45 fine and
-      // it keeps the base64 the model receives small.
-      quality: isBarcode ? 1 : 0.45,
+      // Preserve silhouette detail; food photos are resized before segmentation.
+      quality: isBarcode ? 1 : 0.85,
     });
     if (result.canceled) return;
 
@@ -161,16 +193,7 @@ export function FoodCameraBlock({
       return;
     }
 
-    const kind = mode === 'menuPhoto' ? 'menuPhoto' : 'foodPhoto';
-    result.assets.forEach((asset) => {
-      if (!asset.uri) return;
-      onPhoto({
-        kind,
-        uri: asset.uri,
-        base64: asset.base64 ?? undefined,
-        mimeType: asset.mimeType ?? 'image/jpeg',
-      });
-    });
+    attachPickedPhotos(result.assets);
   };
 
   const handleBarcode = (result: BarcodeScanningResult) => {
@@ -183,6 +206,18 @@ export function FoodCameraBlock({
       .then((photo) => onBarcode(result.data, photo?.uri))
       .catch(() => onBarcode(result.data));
   };
+
+  const reviewPhoto = reviewQueue[0];
+  if (reviewPhoto) return (
+    <GlassSurface glass="regular" style={styles.panel}>
+      <FoodPhotoReview key={reviewPhoto.reviewId} photo={reviewPhoto} remaining={reviewQueue.length}
+        onDiscard={() => setReviewQueue((current) => current.slice(1))}
+        onConfirm={(photo) => {
+          onPhoto(photo);
+          setReviewQueue((current) => current.slice(1));
+        }} />
+    </GlassSurface>
+  );
 
   return (
     <GlassSurface glass="regular" style={styles.panel}>
@@ -247,8 +282,7 @@ export function FoodCameraBlock({
       </View>
 
       {/* Controls — overlaid on bottom */}
-      {permission?.granted ? (
-        <View style={styles.captureControls}>
+      <View style={styles.captureControls}>
           <View style={styles.gallerySlot}>
             {capturedUris.length > 0 ? (
               <View style={styles.thumbnailRow}>
@@ -277,7 +311,7 @@ export function FoodCameraBlock({
               </View>
             ) : null}
           </View>
-          <LoggedPressable onPress={takePhoto} accessibilityRole="button" accessibilityLabel={t('media.takePhoto')}>
+          <LoggedPressable onPress={takePhoto} disabled={!permission?.granted} style={{ opacity: permission?.granted ? 1 : 0.35 }} accessibilityRole="button" accessibilityLabel={t('media.takePhoto')}>
             <View style={styles.shutterOuter}>
               <View style={styles.shutterInner} />
             </View>
@@ -293,14 +327,16 @@ export function FoodCameraBlock({
               </GlassSurface>
             </LoggedPressable>
           </View>
-        </View>
-      ) : null}
+      </View>
     </GlassSurface>
   );
 }
 
 const styles = StyleSheet.create({
   panel: {
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
     // ponytail: tune CAMERA_BLOCK_HEIGHT on device — tall enough to frame
     // food and small enough to leave room for the keyboard/dock below.
     height: CAMERA_BLOCK_HEIGHT,

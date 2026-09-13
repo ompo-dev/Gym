@@ -11,6 +11,13 @@ export function normalizeText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+export function normalizeEditableText(text: string): string {
+  return normalizeText(text)
+    .replace(/\b0+(\d)/g, '$1')
+    .replace(/\s+([.,;:/])/g, '$1')
+    .replace(/([:/])\s+/g, '$1');
+}
+
 /** Stable djb2 hash → short string. Used as the cache/dedup key. */
 export function hashKey(...parts: string[]): string {
   const s = parts.join('|');

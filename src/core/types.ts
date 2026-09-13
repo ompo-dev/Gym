@@ -12,11 +12,24 @@ export type EntryStatus = 'thinking' | 'queued' | 'done' | 'error';
 export type EntryMediaKind = 'foodPhoto' | 'menuPhoto' | 'barcode';
 export type FoodMediaAction = EntryMediaKind;
 
+export interface FoodPhotoCutout {
+  id: string;
+  label: string;
+  description: string;
+  /** [top, left, bottom, right], normalized to the full photo (0..1000). */
+  box: [number, number, number, number];
+  /** Contour points [x, y], relative to the box (0..1000). */
+  polygon: [number, number][];
+}
+
 export interface EntryMediaAttachment {
   id: string;
   kind: EntryMediaKind;
   uri?: string;
   description: string;
+  width?: number;
+  height?: number;
+  cutouts?: FoodPhotoCutout[];
 }
 
 export interface Entry {
@@ -25,6 +38,8 @@ export interface Entry {
   domain: Domain;
   text: string;
   media?: EntryMediaAttachment[];
+  planned?: boolean;
+  completedAt?: number | null;
   status: EntryStatus;
   data: EnrichData | null;
   error: string | null;

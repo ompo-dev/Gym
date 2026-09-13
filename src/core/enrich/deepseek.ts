@@ -30,9 +30,17 @@ import type {
 import type { Domain } from '@/core/types';
 import type { FoodData } from '@/domains/schemas';
 
+import {
+  AiProviderTransportError,
+  callTextJson,
+  callVisionJson,
+  type AiProviderId,
+} from './providers';
+
 /**
- * The whole DeepSeek exchange — prompt assembly, image captioning, output
- * validation — with no transport of its own beyond the upstream `fetch`.
+ * Prompt assembly and output validation for the enrich engine. Text parsing
+ * still runs through DeepSeek by default; image captioning can use a vision
+ * provider before the final nutrition parse.
  *
  * Two callers share it: the `/api/enrich` route (managed key, server-side) and
  * the app itself when the user brought their own key. Keeping it here is what
@@ -111,8 +119,8 @@ const INTENT_SCHEMA: Partial<Record<EnrichEngineInput['intent'], z.ZodType>> = {
  * succeed — so the ceiling has to match what each answer actually costs.
  */
 const MAX_TOKENS: Partial<Record<EnrichEngineInput['intent'], number>> = {
-  // Budgeted for the widest branch: several split notes, one of them a recipe.
-  foodAuto: 3200,
+  // Budgeted for the widest branch: a day plan, plus groceries and a recipe.
+  foodAuto: 5200,
   // Budgeted for its widest branch: a full week of exercises and sets.
   workoutAuto: 3000,
   foodEdit: 1800,
@@ -185,6 +193,8 @@ export interface EnrichEngineInput {
 export interface EngineKeys {
   chat: string;
   image: string;
+  chatProvider?: AiProviderId;
+  imageProvider?: AiProviderId;
 }
 
 /** A success line stays short; a failure prints whole, because that is the one
@@ -300,6 +310,7 @@ async function callDeepSeekJson(
 
 async function describeFoodMedia(
   apiKey: string,
+  provider: AiProviderId,
   media: EnrichMediaInput[] | undefined,
   language: string,
   signal?: AbortSignal,
@@ -314,43 +325,56 @@ async function describeFoodMedia(
   if (!mediaToDescribe.length) return provided;
 
   const mediaOrder = mediaToDescribe.map((item, index) => `${index + 1}. ${item.id}`).join('\n');
-  const content: ChatContent = [
-    {
-      type: 'text',
-      text: [
-        `Describe each food/menu image in ${language}.`,
-        'Return ONLY JSON: {"descriptions":[{"id":string,"description":string}]}',
-        'Use the exact ids in this order:',
-        mediaOrder,
-        'Focus on visible foods, drinks, portions, packaging, menu text, quantities, and any nutrition label clues.',
-        'If an image is unclear, describe what is visible and say it is uncertain.',
-      ].join('\n'),
-    },
-    ...mediaToDescribe.map((item) => ({
-      type: 'image_url' as const,
-      image_url: {
-        url: `data:${item.mimeType ?? 'image/jpeg'};base64,${item.base64}`,
-      },
-    })),
-  ];
-
   try {
-    const raw = await callDeepSeekJson(
-      apiKey,
-      [
-        {
-          role: 'system',
-          content:
-            'You create concise food image descriptions for a nutrition parser. Respond with JSON only.',
-        },
-        { role: 'user', content },
-      ],
-      700,
-      signal,
-    );
+    const raw =
+      provider === 'deepseek'
+        ? await callDeepSeekJson(
+            apiKey,
+            [
+              {
+                role: 'system',
+                content:
+                  'You create concise food image descriptions for a nutrition parser. Respond with JSON only.',
+              },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: [
+                      `Describe each food/menu image in ${language}.`,
+                      'Return ONLY JSON: {"descriptions":[{"id":string,"description":string}]}',
+                      'Use the exact ids in this order:',
+                      mediaOrder,
+                      'Focus on visible foods, drinks, portions, packaging, menu text, quantities, and any nutrition label clues.',
+                      'If an image is unclear, describe what is visible and say it is uncertain.',
+                    ].join('\n'),
+                  },
+                  ...mediaToDescribe.map((item) => ({
+                    type: 'image_url' as const,
+                    image_url: {
+                      url: `data:${item.mimeType ?? 'image/jpeg'};base64,${item.base64}`,
+                    },
+                  })),
+                ],
+              },
+            ],
+            700,
+            signal,
+          )
+        : await callVisionJson({
+            provider,
+            apiKey,
+            media: mediaToDescribe,
+            language,
+            mediaOrder,
+            maxTokens: 700,
+            signal,
+          });
     const parsed = MediaDescriptionsSchema.safeParse(raw);
     return parsed.success ? [...provided, ...parsed.data.descriptions] : provided;
-  } catch {
+  } catch (e) {
+    if (e instanceof AiProviderTransportError) throw new DeepSeekTransportError(e.message);
     // Captioning is best-effort: a blind parse still beats failing the note.
     return provided;
   }
@@ -373,7 +397,9 @@ export async function runEnrichEngine(
   // started routing through `foodAuto` — a grocery haul and a fridge shot are
   // exactly the pictures worth reading.
   const mediaDescriptions =
-    domain === 'food' ? await describeFoodMedia(keys.image, media, language, signal) : [];
+    domain === 'food'
+      ? await describeFoodMedia(keys.image, keys.imageProvider ?? 'deepseek', media, language, signal)
+      : [];
   const mediaContext = mediaDescriptions
     .map((item, index) => `Image ${index + 1} mediaId=${item.id}: ${item.description}`)
     .join('\n');
@@ -406,15 +432,27 @@ export async function runEnrichEngine(
   const instructionBlock = intent === 'foodEdit' ? `Instruction: ${text}` : entryBlock;
   const userContent = `${contextBlock}${userContextBlock}${currentFoodBlock}${instructionBlock}`;
 
-  const raw = await callDeepSeekJson(
-    keys.chat,
-    [
-      { role: 'system', content: system },
-      { role: 'user', content: userContent },
-    ],
-    MAX_TOKENS[intent] ?? 1100,
-    signal,
-  );
+  const messages: ChatMessage[] = [
+    { role: 'system', content: system },
+    { role: 'user', content: userContent },
+  ];
+  const maxTokens = MAX_TOKENS[intent] ?? 1100;
+  const raw =
+    !keys.chatProvider || keys.chatProvider === 'deepseek'
+      ? await callDeepSeekJson(keys.chat, messages, maxTokens, signal)
+      : await callTextJson({
+          provider: keys.chatProvider,
+          apiKey: keys.chat,
+          messages: messages.map((message) => ({
+            role: message.role,
+            content: describeContent(message.content),
+          })),
+          maxTokens,
+          signal,
+        }).catch((e) => {
+          if (e instanceof AiProviderTransportError) throw new DeepSeekTransportError(e.message);
+          throw e;
+        });
 
   // Validate the model output here too (defense in depth). A purchase is pinned
   // to `purchaseSchema`, NOT to `schemaByDomain.food` — the union would happily
