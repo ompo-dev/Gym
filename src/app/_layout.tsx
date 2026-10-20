@@ -16,6 +16,9 @@ import { initReminders } from '@/core/notifications/reminders';
 import { useCommandLink } from '@/core/siri/useCommandLink';
 import { useWidgetSync } from '@/core/widgets/useWidgetSync';
 import { useAppStore } from '@/store/useAppStore';
+import { useOTAStartupUpdate } from '@/hooks/useOTAStartupUpdate';
+import { useOTAUpdates } from '@/hooks/useOTAUpdates';
+import { AppUpdateScreen } from '@/components/organisms/AppUpdateScreen';
 
 // Once, at import: every uncaught error and rejection now flows through the
 // same logger as the rest of the app, in the Metro terminal.
@@ -27,6 +30,9 @@ export default function RootLayout() {
   const prefsLoaded = useAppStore((s) => s.prefsLoaded);
   const onboardingDone = useAppStore((s) => s.onboardingDone);
   const fontsLoaded = useAppFonts();
+  const appReady = prefsLoaded && fontsLoaded;
+  const startupUpdate = useOTAStartupUpdate(appReady);
+  useOTAUpdates({ enabled: appReady && startupUpdate.settled });
 
   // Siri / Shortcuts commands. Only once the app is past onboarding, so a
   // cold-start command has real tabs to land on.
@@ -65,6 +71,8 @@ export default function RootLayout() {
       ) : (
         <OnboardingTemplate />
       )}
+      {appReady ? <AppUpdateScreen phase={startupUpdate.phase} progress={startupUpdate.downloadProgress}
+        onContinue={startupUpdate.continueToApp} onRetry={startupUpdate.retry} /> : null}
     </SafeAreaProvider>
   );
 }

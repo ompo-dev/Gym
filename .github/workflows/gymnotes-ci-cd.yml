@@ -1,0 +1,572 @@
+name: GymNotes CI/CD
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      publish_ota:
+        description: Abrir uma janela temporaria para atualizar o app
+        required: true
+        default: true
+        type: boolean
+      build_ios:
+        description: Gerar IPA para iPhone
+        required: true
+        default: true
+        type: boolean
+      build_android:
+        description: Gerar APK Android
+        required: true
+        default: true
+        type: boolean
+  pull_request:
+    branches:
+      - main
+concurrency:
+  group: gymnotes-ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CI: "1"
+  EXPO_NO_TELEMETRY: "1"
+  IOS_APPLE_TEAM_ID: ${{ vars.IOS_APPLE_TEAM_ID }}
+  EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v6
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci --legacy-peer-deps
+      - name: Validar TypeScript
+        run: npm run typecheck
+  testar:
+    needs: validar
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v6
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci --legacy-peer-deps
+      - name: Rodar testes
+        run: npm test -- --runInBand --silent
+      - name: Validar servidor OTA temporario
+        run: node --test scripts/__tests__/temporary-expo-update-server.test.mjs scripts/__tests__/wait-for-ota-health.test.mjs scripts/__tests__/temporary-ota-pointer.test.mjs scripts/__tests__/ota-workflow.test.mjs
+  preparar-ota:
+    name: Preparar bundle OTA
+    if: github.event_name == 'push' || inputs.publish_ota
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v6
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci --legacy-peer-deps
+      - name: Localizar cache do Metro
+        id: metro-cache
+        shell: bash
+        run: echo "directory=$(node -p "require('node:path').join(require('node:os').tmpdir(), 'metro-cache')")" >> "$GITHUB_OUTPUT"
+      - name: Restaurar cache de transformacoes do Metro
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.metro-cache.outputs.directory }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ota-metro-v1-${{ hashFiles('package-lock.json', 'app.config.js', 'app.json', 'babel.config.*', 'metro.config.*', 'patches/**') }}-${{ vars.EXPO_PUBLIC_API_URL }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ota-metro-v1-${{ hashFiles('package-lock.json', 'app.config.js', 'app.json', 'babel.config.*', 'metro.config.*', 'patches/**') }}-${{ vars.EXPO_PUBLIC_API_URL }}-
+      - name: Exportar somente os bundles nativos para OTA
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPORT_STARTED_AT=$(date +%s)
+          npx expo config --type public --json > "$RUNNER_TEMP/expo-config.json"
+          npx expo export --platform ios --platform android --output-dir dist/ota
+          RUNTIME_VERSION="$(node -e "const c=require('./app.config.js').expo; console.log(typeof c.runtimeVersion === 'string' ? c.runtimeVersion : c.version)")"
+          test -s dist/ota/metadata.json
+          cp "$RUNNER_TEMP/expo-config.json" dist/ota/expo-config.json
+          printf '%s' "$RUNTIME_VERSION" > dist/ota/runtime-version.txt
+          tar -czf "$RUNNER_TEMP/gymnotes-ota-export.tar.gz" -C dist/ota .
+          EXPORT_SECONDS=$(( $(date +%s) - EXPORT_STARTED_AT ))
+          echo "Native OTA export prepared in ${EXPORT_SECONDS}s; publication still requires validation and tests."
+          echo "### Bundle OTA preparado" >> "$GITHUB_STEP_SUMMARY"
+          echo "Exportacao iOS/Android: ${EXPORT_SECONDS}s. Preparacao executada em paralelo as validacoes; ainda nao publicada." >> "$GITHUB_STEP_SUMMARY"
+      - name: Enviar bundle preparado deste run
+        uses: actions/upload-artifact@v4
+        with:
+          name: GymNotes-OTA-export-${{ github.run_id }}
+          path: ${{ runner.temp }}/gymnotes-ota-export.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+  publicar-ota:
+    needs:
+      - validar
+      - testar
+      - preparar-ota
+    if: github.event_name == 'push' || inputs.publish_ota
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v6
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Baixar bundle preparado deste run
+        uses: actions/download-artifact@v4
+        with:
+          name: GymNotes-OTA-export-${{ github.run_id }}
+          path: ${{ runner.temp }}/gymnotes-ota-export
+      - name: Preparar bundle validado sem reinstalar dependencias
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/ota
+          tar -xzf "$RUNNER_TEMP/gymnotes-ota-export/gymnotes-ota-export.tar.gz" -C dist/ota
+          test -s dist/ota/metadata.json
+          test -s dist/ota/expo-config.json
+          test -s dist/ota/runtime-version.txt
+          echo "RUNTIME_VERSION=$(cat dist/ota/runtime-version.txt)" >> "$GITHUB_ENV"
+      - name: Abrir janela OTA por 10 minutos
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OTA_DIR="$RUNNER_TEMP/gymnotes-ota"
+          mkdir -p "$OTA_DIR"
+          SERVER_PID=""
+          TUNNEL_PID=""
+          POINTER="$OTA_DIR/gymnotes-ota-pointer.json"
+          POINTER_PUBLISHED=false
+          TAG=ota-window
+          cleanup() {
+            EXIT_STATUS=$?
+            trap - EXIT INT TERM
+            if [ "$EXIT_STATUS" -ne 0 ]; then
+              for LOG in "$OTA_DIR"/*.log; do
+                [ -f "$LOG" ] || continue
+                echo "--- $LOG ---"
+                tail -80 "$LOG" || true
+              done
+            fi
+            if [ "$POINTER_PUBLISHED" = true ]; then
+              node scripts/write-temporary-ota-pointer.mjs --output "$POINTER" --active false || true
+              gh release upload "$TAG" "$POINTER" --clobber || true
+            fi
+            if [ -n "$TUNNEL_PID" ]; then kill "$TUNNEL_PID" 2>/dev/null || true; fi
+            if [ -n "$SERVER_PID" ]; then kill "$SERVER_PID" 2>/dev/null || true; fi
+            exit "$EXIT_STATUS"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          curl --fail --location --silent --show-error \
+            --connect-timeout 5 --max-time 60 --retry 3 --retry-all-errors --retry-max-time 120 \
+            "https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64" \
+            --output "$OTA_DIR/cloudflared"
+          echo "77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f511ef55609e3fbac2  $OTA_DIR/cloudflared" | sha256sum --check
+          chmod +x "$OTA_DIR/cloudflared"
+
+          node scripts/temporary-expo-update-server.mjs \
+            --directory dist/ota \
+            --runtime-version "$RUNTIME_VERSION" \
+            --expo-config dist/ota/expo-config.json \
+            --port 8787 > "$OTA_DIR/server.log" 2>&1 &
+          SERVER_PID=$!
+          HEALTH_JSON="$(node scripts/wait-for-ota-health.mjs \
+            --url http://127.0.0.1:8787 --runtime-version "$RUNTIME_VERSION" \
+            --timeout-ms 30000 --process-id "$SERVER_PID")"
+          OTA_UPDATE_ID="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).updateId)' "$HEALTH_JSON")"
+          OTA_CREATED_AT="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).createdAt)' "$HEALTH_JSON")"
+
+          PUBLIC_TUNNEL_URL=""
+          for attempt in $(seq 1 3); do
+            echo "Starting OTA tunnel, attempt $attempt/3 (HTTP/2 over IPv4)."
+            TUNNEL_LOG="$OTA_DIR/cloudflared-$attempt.log"
+            "$OTA_DIR/cloudflared" tunnel --no-autoupdate --protocol http2 --edge-ip-version 4 \
+              --url http://127.0.0.1:8787 > "$TUNNEL_LOG" 2>&1 &
+            TUNNEL_PID=$!
+            if PUBLIC_HEALTH_JSON="$(node scripts/wait-for-ota-health.mjs \
+              --tunnel-log "$TUNNEL_LOG" --runtime-version "$RUNTIME_VERSION" \
+              --expected-update-id "$OTA_UPDATE_ID" --timeout-ms 90000 \
+              --process-id "$SERVER_PID" --process-id "$TUNNEL_PID")"; then
+              PUBLIC_TUNNEL_URL="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).origin)' "$PUBLIC_HEALTH_JSON")"
+              break
+            fi
+            tail -80 "$TUNNEL_LOG" || true
+            kill "$TUNNEL_PID" 2>/dev/null || true
+            wait "$TUNNEL_PID" 2>/dev/null || true
+            TUNNEL_PID=""
+            sleep 2
+          done
+          if [ -z "$PUBLIC_TUNNEL_URL" ]; then
+            echo "OTA tunnel did not serve this update after three attempts."
+            exit 1
+          fi
+
+          node scripts/write-temporary-ota-pointer.mjs \
+            --output "$POINTER" \
+            --active true \
+            --update-url "$PUBLIC_TUNNEL_URL/api/manifest" \
+            --runtime-version "$RUNTIME_VERSION" \
+            --update-id "$OTA_UPDATE_ID" \
+            --created-at "$OTA_CREATED_AT" \
+            --run-id "${{ github.run_id }}" \
+            --commit-sha "${{ github.sha }}" \
+            --duration-seconds 605
+          POINTER_PUBLISHED=true
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$POINTER" --clobber
+          else
+            gh release create "$TAG" "$POINTER" \
+              --target "${{ github.sha }}" \
+              --title "GymNotes temporary OTA pointer" \
+              --notes "Updated by CI; the Expo Updates server is temporary." \
+              --latest=false
+          fi
+
+          echo "Temporary OTA endpoint active for commit $GITHUB_SHA until the CI window closes."
+          echo "### OTA disponivel" >> "$GITHUB_STEP_SUMMARY"
+          echo "Publicado em $(date -u +%Y-%m-%dT%H:%M:%SZ), apos validacao e testes. A janela de download agora permanece ativa por 10 minutos." >> "$GITHUB_STEP_SUMMARY"
+          for second in $(seq 1 600); do
+            if ! kill -0 "$TUNNEL_PID" 2>/dev/null || ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "The temporary OTA server or tunnel stopped before the window ended."
+              exit 1
+            fi
+            sleep 1
+          done
+      - name: Enviar diagnosticos OTA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GymNotes-OTA-logs
+          path: ${{ runner.temp }}/gymnotes-ota/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+  gerar-ipa:
+    needs: validar
+    if: github.event_name == 'push' || inputs.build_ios
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      IOS_BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v6
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Selecionar Xcode
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          uname -m
+      - name: Restaurar cache do CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods/repos
+          key: ${{ runner.os }}-${{ runner.arch }}-pods-${{ hashFiles('package-lock.json', 'app.config.js', 'app.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-pods-
+      - name: Instalar dependencias
+        run: npm ci --legacy-peer-deps
+      - name: Verificar configuracao do Expo
+        run: |
+          npx expo config --type public
+          npx expo-doctor || true
+      - name: Gerar projeto nativo iOS
+        run: |
+          npx expo prebuild \
+            --platform ios \
+            --clean \
+            --no-install
+      - name: Instalar CocoaPods
+        run: |
+          cd ios
+          pod install
+      - name: Identificar workspace e scheme
+        id: ios-project
+        shell: bash
+        run: |
+          set -e
+          WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          if [ -z "$WORKSPACE" ]; then
+            echo "Nenhum workspace encontrado."
+            find ios -maxdepth 2 -type f | sort
+            exit 1
+          fi
+          SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
+          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+          xcodebuild -workspace "$WORKSPACE" -list
+      - name: Compilar aplicativo para iPhone
+        timeout-minutes: 50
+        shell: bash
+        run: |
+          set -e
+          set -o pipefail
+          WORKSPACE="${{ steps.ios-project.outputs.workspace }}"
+          SCHEME="${{ steps.ios-project.outputs.scheme }}"
+          BUILD_JOBS="$(sysctl -n hw.ncpu)"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$PWD/build" \
+            -parallelizeTargets \
+            -jobs "$BUILD_JOBS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            DEBUG_INFORMATION_FORMAT=dwarf \
+            GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            build \
+            2>&1 | tee xcodebuild.log
+      - name: Mostrar erros de compilacao
+        if: failure()
+        shell: bash
+        run: |
+          grep -nE "error:|warning:" xcodebuild.log | tail -120 || true
+          grep -nE "BUILD FAILED|The following build commands failed|Compiling .*\.swift" xcodebuild.log | tail -40 || true
+      - name: Encontrar aplicativo compilado
+        id: compiled-app
+        shell: bash
+        run: |
+          set -e
+          APP_PATH="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "O arquivo .app nao foi encontrado."
+            find build -maxdepth 8 -type d -name '*.app' -print || true
+            exit 1
+          fi
+          APP_NAME="$(basename "$APP_PATH" .app)"
+          echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+      - name: Validar widget iOS embutido
+        shell: bash
+        run: |
+          set -e
+          APP_PATH="${{ steps.compiled-app.outputs.app_path }}"
+          WIDGET_PATH="$APP_PATH/PlugIns/GymWidget.appex"
+          if [ ! -d "$WIDGET_PATH" ]; then
+            echo "A extensao WidgetKit nao foi embutida em $APP_PATH/PlugIns."
+            find "$APP_PATH/PlugIns" -maxdepth 2 -print 2>/dev/null || true
+            exit 1
+          fi
+          WIDGET_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$WIDGET_PATH/Info.plist")
+          if [ "$WIDGET_BUNDLE_ID" != "com.ompinho.gymnotes.widget" ]; then
+            echo "Bundle ID inesperado para o widget: $WIDGET_BUNDLE_ID"
+            exit 1
+          fi
+          echo "Widget iOS validado: $WIDGET_BUNDLE_ID"
+      - name: Empacotar IPA
+        shell: bash
+        run: |
+          set -e
+          APP_PATH="${{ steps.compiled-app.outputs.app_path }}"
+          APP_NAME="${{ steps.compiled-app.outputs.app_name }}"
+          rm -rf ipa-package
+          mkdir -p ipa-package/Payload
+          cp -R "$APP_PATH" ipa-package/Payload/
+          cd ipa-package
+          ditto -c -k --sequesterRsrc --keepParent Payload "../${APP_NAME}-unsigned.ipa"
+          cd ..
+          ls -lh "${APP_NAME}-unsigned.ipa"
+      - name: Publicar release iOS
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -e
+          IPA="$(ls *-unsigned.ipa | head -1)"
+          SIZE="$(stat -f%z "$IPA")"
+          VERSION="$(node -p "require('./app.config.js').expo.version")"
+          BUILD="${IOS_BUILD_NUMBER}"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          REPO="${{ github.repository }}"
+          BASE="https://github.com/${REPO}/releases/latest/download"
+          SIZE="$SIZE" VERSION="$VERSION" BUILD="$BUILD" DATE="$DATE" BASE="$BASE" node -e '
+          const { SIZE, VERSION, BUILD, DATE, BASE } = process.env;
+          const icon = BASE + "/icon.png";
+          const src = {
+            name: "GymNotes",
+            subtitle: "Dieta e treino local-first, com IA.",
+            iconURL: icon,
+            tintColor: "#F0B648",
+            apps: [{
+              name: "GymNotes",
+              bundleIdentifier: "com.ompinho.gymnotes",
+              developerName: "ompo.dev",
+              subtitle: "Dieta e treino em notas.",
+              localizedDescription: "Registre refeicoes, receitas, compras e treinos com IA. Seus dados ficam no aparelho.",
+              iconURL: icon,
+              permissions: [],
+              category: "lifestyle",
+              tintColor: "#F0B648",
+              versions: [{
+                version: VERSION,
+                buildVersion: BUILD,
+                date: DATE,
+                localizedDescription: "Build automatico mais recente.",
+                downloadURL: BASE + "/GymNotes-unsigned.ipa",
+                size: Number(SIZE),
+                minOSVersion: "18.0",
+              }],
+            }],
+            news: [],
+          };
+          require("fs").writeFileSync("apps.json", JSON.stringify(src, null, 2));
+          '
+          if [ "$IPA" != "GymNotes-unsigned.ipa" ]; then cp "$IPA" GymNotes-unsigned.ipa; fi
+          cp assets/images/gym/ios-light.png icon.png
+          TAG="v${VERSION}-${{ github.run_number }}"
+          gh release create "$TAG" \
+            GymNotes-unsigned.ipa apps.json \
+            $([ -f icon.png ] && echo "icon.png") \
+            --target "${{ github.sha }}" \
+            --title "GymNotes ${VERSION} (build ${{ github.run_number }})" \
+            --notes "Build nao-assinado (sideload via AltStore). Fonte AltStore: apps.json neste release." \
+            --latest
+      - name: Enviar IPA para download
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GymNotes-iOS-unsigned
+          path: "*-unsigned.ipa"
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enviar log da compilacao
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GymNotes-iOS-build-log
+          path: xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 7
+  gerar-apk:
+    needs: validar
+    if: github.event_name == 'push' || inputs.build_android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      ANDROID_VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v6
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Configurar Java para Android
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Restaurar cache do Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('package-lock.json', 'app.config.js', 'app.json') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      - name: Instalar dependencias
+        run: npm ci --legacy-peer-deps
+      - name: Gerar projeto nativo Android
+        run: |
+          npx expo prebuild \
+            --clean \
+            --no-install \
+            --platform android
+      - name: Compilar APK
+        timeout-minutes: 35
+        shell: bash
+        run: |
+          set -e
+          cd android
+          chmod +x gradlew
+          ./gradlew help --no-daemon --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=768m'
+          ./gradlew :app:assembleRelease --no-daemon --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError' \
+            -Pkotlin.compiler.execution.strategy=in-process
+          APK="$PWD/app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$APK" ]; then
+            echo "APK nao encontrado em $APK"
+            find app/build/outputs/apk/release -type f | sort
+            exit 1
+          fi
+      - name: Copiar APK para nome estavel
+        shell: bash
+        run: |
+          APK="$(find android/app/build/outputs/apk/release -type f -name 'app-release*.apk' | head -1)"
+          cp "$APK" GymNotes-android.apk
+          ls -lh GymNotes-android.apk
+      - name: Publicar release Android
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -e
+          VERSION="$(node -p "require('./app.config.js').expo.version")"
+          TAG="v${VERSION}-android-${{ github.run_number }}"
+          gh release create "$TAG" \
+            GymNotes-android.apk \
+            --target "${{ github.sha }}" \
+            --title "GymNotes ${VERSION} Android (build ${{ github.run_number }})" \
+            --notes "Build Android nao-assinado." \
+            --latest=false
+      - name: Enviar APK para download
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GymNotes-Android-release
+          path: GymNotes-android.apk
+          if-no-files-found: error
+          retention-days: 7

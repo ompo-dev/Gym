@@ -1,0 +1,242 @@
+import { renderHook, act } from '@testing-library/react-native';
+import { Alert, AppState, Platform } from 'react-native';
+import * as Updates from 'expo-updates';
+import { checkForOTAUpdateNow } from './useOTAUpdates';
+import { prepareTemporaryOTAUpdate } from '@/core/updates/temporaryOTA';
+import { getAppSettings } from '@/core/updates/preferences';
+
+const mockListeners = new Set<(state: string) => void>();
+const mockRemove = jest.fn();
+
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: { appOwnership: 'standalone' },
+}));
+
+jest.mock('expo-updates', () => ({
+  isEnabled: true,
+  checkForUpdateAsync: jest.fn(),
+  fetchUpdateAsync: jest.fn(),
+  reloadAsync: jest.fn(),
+  readLogEntriesAsync: jest.fn().mockResolvedValue([]),
+  channel: 'production',
+  runtimeVersion: '1.0.0',
+  updateId: 'current-update',
+}));
+
+jest.mock('@/core/updates/temporaryOTA', () => ({
+  prepareTemporaryOTAUpdate: jest.fn(),
+}));
+jest.mock('@/core/updates/preferences', () => ({ getAppSettings: jest.fn() }));
+
+const flushPromises = () => act(async () => {});
+const enabledOptions = (getNow: () => number) => ({
+  canUseUpdates: () => true,
+  getNow,
+});
+let useOTAUpdates: typeof import('./useOTAUpdates').useOTAUpdates;
+
+const renderOTAUpdates = (getNow: () => number) =>
+  renderHook(() => useOTAUpdates(enabledOptions(getNow)));
+
+const setAppState = async (state: 'active' | 'background' | 'inactive') => {
+  (AppState as unknown as { currentState: string }).currentState = state;
+  await act(async () => {
+    mockListeners.forEach((listener) => listener(state));
+  });
+};
+
+describe('useOTAUpdates', () => {
+  let now: number;
+  const originalDev = (global as typeof globalThis & { __DEV__?: boolean })
+    .__DEV__;
+  const originalPlatformOS = Platform.OS;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    jest.mocked(getAppSettings).mockResolvedValue({ automaticUpdates: true } as any);
+    mockListeners.clear();
+    mockRemove.mockClear();
+    now = 1_000;
+    (global as typeof globalThis & { __DEV__?: boolean }).__DEV__ = false;
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'ios',
+    });
+    (AppState as unknown as { currentState: string }).currentState = 'active';
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(
+      (_event, listener) => {
+        mockListeners.add(listener as (state: string) => void);
+        return {
+          remove: () => {
+            mockListeners.delete(listener as (state: string) => void);
+            mockRemove();
+          },
+        } as ReturnType<typeof AppState.addEventListener>;
+      }
+    );
+    jest.mocked(Updates.checkForUpdateAsync).mockResolvedValue({
+      isAvailable: true,
+    } as Awaited<ReturnType<typeof Updates.checkForUpdateAsync>>);
+    jest.mocked(Updates.fetchUpdateAsync).mockResolvedValue({
+      isNew: true,
+      isRollBackToEmbedded: false,
+    } as Awaited<ReturnType<typeof Updates.fetchUpdateAsync>>);
+    jest.mocked(prepareTemporaryOTAUpdate).mockResolvedValue({
+      status: 'ready',
+      runId: 1,
+      expiresAt: '2026-10-01T20:00:00.000Z',
+    });
+    ({ useOTAUpdates } = require('./useOTAUpdates'));
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    (global as typeof globalThis & { __DEV__?: boolean }).__DEV__ =
+      originalDev;
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: originalPlatformOS,
+    });
+    jest.restoreAllMocks();
+  });
+
+  it('does not duplicate the native ON_LOAD check on startup', async () => {
+    await renderOTAUpdates(() => now);
+
+    await flushPromises();
+
+    expect(Updates.checkForUpdateAsync).not.toHaveBeenCalled();
+    expect(Updates.fetchUpdateAsync).not.toHaveBeenCalled();
+    expect(prepareTemporaryOTAUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not check or download on warm resume even after one hour', async () => {
+    await renderOTAUpdates(() => now);
+
+    await setAppState('background');
+    now += 60 * 60 * 1000;
+    await setAppState('active');
+    await flushPromises();
+
+    expect(Updates.checkForUpdateAsync).not.toHaveBeenCalled();
+    expect(Updates.fetchUpdateAsync).not.toHaveBeenCalled();
+    expect(prepareTemporaryOTAUpdate).not.toHaveBeenCalled();
+    expect(Updates.reloadAsync).not.toHaveBeenCalled();
+  });
+
+  it('waits for the CI notice listener instead of querying on every foreground event', async () => {
+    await renderOTAUpdates(() => now);
+
+    await setAppState('background');
+    now += 59 * 60 * 1000;
+    await setAppState('active');
+    await flushPromises();
+
+    expect(Updates.checkForUpdateAsync).not.toHaveBeenCalled();
+    expect(prepareTemporaryOTAUpdate).not.toHaveBeenCalled();
+    await act(async () => { jest.advanceTimersByTime(60_000); });
+    expect(prepareTemporaryOTAUpdate).toHaveBeenCalledTimes(1);
+    expect(Alert.alert).toHaveBeenCalledTimes(1);
+    expect(Updates.checkForUpdateAsync).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates in-flight CI notices and never downloads them before a restart', async () => {
+    let resolvePointer!: (value: Awaited<ReturnType<typeof prepareTemporaryOTAUpdate>>) => void;
+    jest.mocked(prepareTemporaryOTAUpdate).mockReturnValue(new Promise((resolve) => { resolvePointer = resolve; }));
+
+    await renderOTAUpdates(() => now);
+
+    await act(async () => { jest.advanceTimersByTime(60_000); });
+    await act(async () => { jest.advanceTimersByTime(60_000); });
+    expect(prepareTemporaryOTAUpdate).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolvePointer({ status: 'restart-required', runId: 1, expiresAt: '2026-10-01T20:00:00.000Z' });
+    });
+    await flushPromises();
+
+    expect(Alert.alert).toHaveBeenCalledTimes(1);
+    expect(Updates.checkForUpdateAsync).not.toHaveBeenCalled();
+    expect(Updates.fetchUpdateAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not display a late notice or fetch after entering the background', async () => {
+    let resolvePointer!: (value: Awaited<ReturnType<typeof prepareTemporaryOTAUpdate>>) => void;
+    jest.mocked(prepareTemporaryOTAUpdate).mockReturnValue(new Promise((resolve) => { resolvePointer = resolve; }));
+
+    await renderOTAUpdates(() => now);
+
+    await act(async () => { jest.advanceTimersByTime(60_000); });
+    await setAppState('background');
+    await act(async () => {
+      resolvePointer({ status: 'restart-required', runId: 1, expiresAt: '2026-10-01T20:00:00.000Z' });
+    });
+    await flushPromises();
+
+    expect(Updates.fetchUpdateAsync).not.toHaveBeenCalled();
+    expect(Alert.alert).not.toHaveBeenCalled();
+  });
+
+  it('removes the AppState listener on unmount', async () => {
+    const renderer = await renderOTAUpdates(() => now);
+    await renderer.unmount();
+
+    expect(mockRemove).toHaveBeenCalledTimes(1);
+    expect(mockListeners.size).toBe(0);
+  });
+
+  it('reports a fetch that returned no update instead of claiming success', async () => {
+    jest.mocked(Updates.checkForUpdateAsync).mockResolvedValue({
+      isAvailable: true,
+      isRollBackToEmbedded: false,
+    } as Awaited<ReturnType<typeof Updates.checkForUpdateAsync>>);
+    jest.mocked(Updates.fetchUpdateAsync).mockResolvedValue({
+      isNew: false,
+      isRollBackToEmbedded: false,
+    } as Awaited<ReturnType<typeof Updates.fetchUpdateAsync>>);
+
+    await expect(checkForOTAUpdateNow()).resolves.toEqual({
+      status: 'download-failed',
+    });
+  });
+
+  it('requires a cold restart when a new temporary CI endpoint is discovered', async () => {
+    jest.mocked(prepareTemporaryOTAUpdate).mockResolvedValue({
+      status: 'restart-required',
+      runId: 2,
+      expiresAt: '2026-10-01T20:00:00.000Z',
+    });
+
+    await expect(checkForOTAUpdateNow()).resolves.toEqual({
+      status: 'restart-required',
+      expiresAt: '2026-10-01T20:00:00.000Z',
+    });
+    expect(Updates.checkForUpdateAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not query Expo when the temporary CI window is closed', async () => {
+    jest.mocked(prepareTemporaryOTAUpdate).mockResolvedValue({ status: 'inactive' });
+
+    await expect(checkForOTAUpdateNow()).resolves.toEqual({
+      status: 'window-inactive',
+    });
+    expect(Updates.checkForUpdateAsync).not.toHaveBeenCalled();
+  });
+
+  it('returns the native OTA failure stage and code for manual checks', async () => {
+    jest.mocked(Updates.checkForUpdateAsync).mockRejectedValue(
+      Object.assign(new Error('offline'), { code: 'ERR_UPDATES_CHECK' })
+    );
+
+    await expect(checkForOTAUpdateNow()).resolves.toEqual({
+      status: 'error',
+      stage: 'check',
+      code: 'ERR_UPDATES_CHECK',
+    });
+    expect(Updates.readLogEntriesAsync).toHaveBeenCalled();
+  });
+});

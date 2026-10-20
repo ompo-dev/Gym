@@ -37,6 +37,7 @@ import {
 } from "@/data/SavedMealRepository";
 import { SavedRoutineRepository } from "@/data/SavedRoutineRepository";
 import { SettingsRepository } from "@/data/SettingsRepository";
+import { getAppSettings, setAutomaticUpdates } from "@/core/updates/preferences";
 import { mergeFoodEdit } from "@/domains/food";
 import type { ScheduledSlot } from "@/domains/mealTiming";
 import { foodEditSchema, foodSchema, type FoodData } from "@/domains/schemas";
@@ -125,6 +126,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
 
   const [devMode, setDevMode] = useState(false);
   const [autoTimezone, setAutoTimezone] = useState(true);
+  const [automaticUpdates, setAutomaticUpdatesState] = useState(true);
   const [remindersOn, setRemindersOn] = useState<boolean | null>(null);
   const [reminderSlots, setReminderSlots] = useState<ScheduledSlot[]>([]);
   const [savedMealsCount, setSavedMealsCount] = useState(0);
@@ -174,6 +176,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
 
   useEffect(() => {
     if (!visible) return;
+    void getAppSettings().then((settings) => setAutomaticUpdatesState(settings.automaticUpdates));
     void SavedMealRepository.count().then(setSavedMealsCount);
     void SavedExerciseRepository.count().then(setSavedExercisesCount);
     if (Platform.OS !== "web") {
@@ -619,6 +622,14 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
       ) : null}
 
       <Section label={t("settings.section.device")}>
+        {Platform.OS !== "web" ? <>
+          <SettingsRow icon="cloudOff" iconColor={TINT.indigo} title={t('updates.automatic')}
+            trailing={<Toggle value={automaticUpdates} label={t('updates.automatic')} onValueChange={(value) => {
+              setAutomaticUpdatesState(value);
+              void setAutomaticUpdates(value).catch(() => setAutomaticUpdatesState(!value));
+            }} />} />
+          <Divider />
+        </> : null}
         <View ref={themeRowRef} collapsable={false}>
           <SettingsRow
             icon="contrast"

@@ -2,6 +2,7 @@
 module.exports = {
   type: 'widget',
   name: 'GymWidget',
+  bundleIdentifier: 'com.ompinho.gymnotes.widget',
   // OpenURLIntent (App Intent that opens the deep link) requires iOS 18; the
   // widgets/containerBackground work fine there too.
   deploymentTarget: '18.0',
