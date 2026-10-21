@@ -182,9 +182,11 @@ export function Toggle({
   value,
   onValueChange,
   label,
+  disabled = false,
 }: {
   value: boolean;
   onValueChange: (v: boolean) => void;
+  disabled?: boolean;
   /** Names the switch for the screen reader — the row's title next to it. */
   label?: string;
 }) {
@@ -197,6 +199,7 @@ export function Toggle({
   return (
     <Switch
       value={value}
+      disabled={disabled}
       onValueChange={onValueChange}
       accessibilityLabel={label}
       trackColor={{ true: colors.success, false: colors.backgroundSelected }}

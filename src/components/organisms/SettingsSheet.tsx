@@ -246,6 +246,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
 
   const closeDeveloper = () => {
     closeAppModal("settings.developer");
+    void getAppSettings().then((settings) => setAutomaticUpdatesState(settings.automaticUpdates)).catch(() => {});
   };
 
   const toggleDevMode = (on: boolean) => {

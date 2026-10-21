@@ -30,6 +30,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useAppStore } from "@/store/useAppStore";
 
 import { Divider, PageSheet, Section, Toggle } from "./primitives";
+import { DeveloperUpdatesSection } from "./DeveloperUpdatesSection";
 import { Spacing, Radii } from "@/constants/theme";
 
 const DAY_OPTIONS = [
@@ -264,6 +265,7 @@ export function DeveloperSheet({
       onClose={onClose}
       keyboardAwareScroll
     >
+      <DeveloperUpdatesSection />
       {/* ---- Mock Data (existing) ---- */}
       <Section label="Mock Data">
         {DAY_OPTIONS.map((opt, i) => (

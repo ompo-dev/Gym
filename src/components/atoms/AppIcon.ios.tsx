@@ -28,6 +28,7 @@ const SF: Record<AppIconName, SFSymbol> = {
   circleHelp: 'questionmark.circle',
   cloudOff: 'icloud.slash',
   copy: 'doc.on.doc',
+  clipboard: 'doc.on.clipboard',
   externalLink: 'arrow.up.right',
   history: 'clock.arrow.circlepath',
   key: 'key',

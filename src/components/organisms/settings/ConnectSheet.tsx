@@ -10,15 +10,10 @@ import { AGENTS, AgentLogo, AgentLogos, type AgentId } from '@/components/molecu
 import { SettingsRow } from '@/components/molecules/SettingsRow';
 import { Fonts, Spacing } from '@/constants/theme';
 import { connectionSchema } from '@/core/connect/protocol';
-import { todayISO } from '@/core/date';
-import { foodGoalsFromProfile } from '@/domains/food';
-import { defaultOnboardingProfile } from '@/core/onboarding';
-import { invokeTool } from '@/core/tools/registry';
-import { appToolDeps } from '@/core/tools/appTools';
+import { buildAgentSetupPrompt, importAgentConnection, toolTokenFor } from '@/core/connect/setupPrompt';
 import { useColors } from '@/hooks/use-colors';
 import { getLang, t } from '@/i18n';
 import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
-import { useAppStore } from '@/store/useAppStore';
 
 import { SheetFrame } from '../SheetFrame';
 import { AgentAccountPanel } from './AgentAccountPanel';
@@ -65,49 +60,90 @@ export function ConnectSheet({ onClose, nested }: {
   const [token, setToken] = useState(connection?.token ?? '');
   const [allowWrites, setAllowWrites] = useState(connection?.allowWrites ?? false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
-  const cloud = ['chatgpt', 'claude'].includes(agent);
+  const [error, setError] = useState<'connect.invalid' | 'connect.invalidCode' | 'common.error' | null>(null);
+  const [prepared, setPrepared] = useState<{ signature: string; prompt: string } | null>(null);
+  const [copiedPrompt, setCopiedPrompt] = useState('');
+  const signature = JSON.stringify([agent, url, token, allowWrites, getLang()]);
+  const prompt = prepared?.signature === signature ? prepared.prompt : '';
+  const copied = !!prompt && copiedPrompt === prompt;
+  const mounted = useRef(true);
+  const working = useRef(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const provider = agent === 'claude' || agent === 'claudecode' ? 'claude' :
     agent === 'chatgpt' || agent === 'codex' ? 'codex' : agent === 'gemini' ? 'gemini' : null;
   useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; if (copyTimer.current) clearTimeout(copyTimer.current); };
+  }, []);
+  useEffect(() => {
+    if (connection) return;
     let active = true;
-    if (connection) {
-      void Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `gymnotes-tools-v1:${connection.token}`)
-        .then((value) => { if (active) setToolToken(value); }).catch(() => {});
-    }
+    void Crypto.getRandomBytesAsync(32).then((bytes) => {
+      if (active) setToken((current) => current || Array.from(bytes, (v) => v.toString(16).padStart(2, '0')).join(''));
+    }).catch(() => { if (active) setError('common.error'); });
     return () => { active = false; };
   }, [connection]);
+  useEffect(() => {
+    let active = true;
+    if (!token) return;
+    void (async () => {
+      const grant = connectionSchema.parse({ url, token, allowWrites });
+      const [ready, tools] = await Promise.all([buildAgentSetupPrompt(agent, grant, getLang()), toolTokenFor(token)]);
+      if (active) { setPrepared({ signature, prompt: ready }); setToolToken(tools); }
+    })().catch(() => {});
+    return () => { active = false; };
+  }, [agent, url, token, allowWrites, signature]);
+  const copyPrompt = async (): Promise<boolean> => {
+    if (working.current || !prompt) return false;
+    working.current = true; setBusy(true); setError(null);
+    try {
+      // Copy first, within the user's gesture, including on WebKit.
+      await Clipboard.setStringAsync(prompt);
+      const next = connectionSchema.parse({ url, token, allowWrites });
+      const current = useAgentConnectionStore.getState().connection;
+      if (!current || current.url !== next.url || current.token !== next.token || current.allowWrites !== next.allowWrites) {
+        await useAgentConnectionStore.getState().configure(next);
+      }
+      if (mounted.current) {
+        setCopiedPrompt(prompt);
+        if (copyTimer.current) clearTimeout(copyTimer.current);
+        copyTimer.current = setTimeout(() => { if (mounted.current) setCopiedPrompt(''); }, 2400);
+      }
+      return true;
+    } catch { if (mounted.current) setError('common.error'); return false; }
+    finally { working.current = false; if (mounted.current) setBusy(false); }
+  };
+  const pasteConnection = async () => {
+    if (working.current) return;
+    working.current = true; setBusy(true); setError(null);
+    try {
+      const code = await Clipboard.getStringAsync();
+      const current = useAgentConnectionStore.getState().connection;
+      if (!current) throw new Error('connect.invalidCode');
+      const next = await importAgentConnection(code, current);
+      await useAgentConnectionStore.getState().configure(next);
+      if (mounted.current) { setURL(next.url); setToken(next.token); setAllowWrites(next.allowWrites); }
+    } catch { if (mounted.current) setError('connect.invalidCode'); }
+    finally { working.current = false; if (mounted.current) setBusy(false); }
+  };
+  const changeWrites = async (value: boolean) => {
+    if (working.current) return;
+    working.current = true; setBusy(true); setError(null);
+    const before = allowWrites; setAllowWrites(value);
+    try {
+      const current = useAgentConnectionStore.getState().connection;
+      if (current) await useAgentConnectionStore.getState().configure({ ...current, allowWrites: value });
+    } catch { if (mounted.current) { setAllowWrites(before); setError('common.error'); } }
+    finally { working.current = false; if (mounted.current) setBusy(false); }
+  };
   const connect = async () => {
-    setError(false);
-    setBusy(true);
+    if (working.current) return;
+    working.current = true; setBusy(true); setError(null);
     try {
       await useAgentConnectionStore.getState().configure(connectionSchema.parse({ url, token, allowWrites }));
-    } catch { setError(true); }
-    finally { setBusy(false); }
+    } catch { if (mounted.current) setError('connect.invalid'); }
+    finally { working.current = false; if (mounted.current) setBusy(false); }
   };
-  const exportDiary = async () => {
-    setBusy(true);
-    try {
-      const food = await invokeTool('readDay', { domain: 'food' }, appToolDeps);
-      const workout = await invokeTool('readDay', { domain: 'workout' }, appToolDeps);
-      const goals = foodGoalsFromProfile(useAppStore.getState().onboardingProfile ?? defaultOnboardingProfile());
-      await Clipboard.setStringAsync(JSON.stringify({ date: todayISO(), goals,
-        food: food.ok && food.kind === 'data' ? food.data : null,
-        workout: workout.ok && workout.kind === 'data' ? workout.data : null }, null, 2));
-      Alert.alert(t('connect.copied'));
-    } catch { Alert.alert(t('common.error')); }
-    finally { setBusy(false); }
-  };
-  const keyPlaceholder = getLang() === 'pt-BR' ? 'SUA_CHAVE' : 'YOUR_KEY';
-  const jsonConfig = JSON.stringify({ mcpServers: { gymnotes: {
-    command: 'node', args: ['C:/CAMINHO/Gym/scripts/gymnotes-connect.mjs', '--mcp'],
-    env: { GYMNOTES_CONNECT_TOKEN: keyPlaceholder },
-  } } }, null, 2);
-  const config = agent === 'codex'
-    ? `[mcp_servers.gymnotes]\ncommand = "node"\nargs = ["C:/CAMINHO/Gym/scripts/gymnotes-connect.mjs", "--mcp"]\n\n[mcp_servers.gymnotes.env]\nGYMNOTES_CONNECT_TOKEN = "${keyPlaceholder}"`
-    : jsonConfig;
-  const configFile = agent === 'codex' ? '~/.codex/config.toml' : agent === 'claudecode' ? '.mcp.json' :
-    agent === 'gemini' ? '~/.gemini/settings.json (Gemini CLI)' : 'claude_desktop_config.json';
   let baseURL = 'http://127.0.0.1:3847';
   try { const parsed = new URL(url); baseURL = `${parsed.protocol === 'wss:' ? 'https:' : 'http:'}//${parsed.host}`; } catch { /* Draft can be incomplete. */ }
   return <SheetFrame visible title={t('connect.title')} onClose={onClose} size="full" nested={nested} keyboardAwareScroll>
@@ -121,21 +157,29 @@ export function ConnectSheet({ onClose, nested }: {
         <AppText variant="heading" style={styles.heading}>{t('connect.choose')}</AppText>
         <View style={styles.agents}>{AGENTS.map((item) => <LoggedPressable key={item.id}
           accessibilityRole="radio" accessibilityState={{ checked: item.id === agent }} accessibilityLabel={item.label}
-          onPress={() => { setAgent(item.id); if (item.id === 'mcp') setAdvanced(true); }}
+          onPress={() => setAgent(item.id)}
           style={[styles.agent, { borderColor: item.id === agent ? colors.accent : colors.border,
             backgroundColor: colors.backgroundElement }]}>
           <AgentLogo agent={item.id} size={32} /><AppText variant="secondary" style={styles.grow}>{item.label}</AppText>
         </LoggedPressable>)}</View>
       </>
-      {provider ? <AgentAccountPanel key={provider} provider={provider} /> : null}
-      {cloud ? <>
-        <AppText variant="secondary">{t('connect.cloud')}</AppText>
-        <SettingsRow title={t('connect.export')} icon="copy" onPress={exportDiary} disabled={busy} />
-        <AppText variant="caption">{t('connect.exportHint')}</AppText>
-      </> : null}
+      <SettingsRow title={t(copied ? 'connect.copied' : 'connect.copyPrompt')} icon={copied ? 'check' : 'copy'}
+        disabled={busy || !prompt} onPress={() => { void copyPrompt(); }} />
+      <SettingsRow title={t('connect.pasteConnection')} icon="clipboard" disabled={busy || !connection}
+        onPress={() => { void pasteConnection(); }} />
+      {error ? <AppText variant="secondary" color={colors.danger}>{t(error)}</AppText> : null}
+      {provider ? <AgentAccountPanel key={provider} provider={provider} onPrepare={copyPrompt} prepareDisabled={busy || !prompt} /> : null}
+      <SettingsRow title={t('connect.writes')} trailing={<Toggle value={allowWrites} disabled={busy}
+        onValueChange={(value) => { void changeWrites(value); }} label={t('connect.writes')} />} />
+      {connection ? <SettingsRow title={t('connect.disconnect')} icon="x" iconColor={colors.danger} disabled={busy} onPress={async () => {
+        try { await useAgentConnectionStore.getState().disconnect(); setToken(''); setAllowWrites(false); }
+        catch { setError('common.error'); }
+      }} /> : null}
+      <SettingsRow title={t('agent.keys')} icon="key" onPress={() => setKeysVisible((value) => !value)} />
+      {keysVisible ? <ProviderKeysForm /> : null}
+      <SettingsRow title={t('connect.details')} icon="sliders" onPress={() => setAdvanced((value) => !value)} />
+      {advanced ? <>
       <AppText variant="heading" style={styles.heading}>{t('connect.local')}</AppText>
-      <AppText variant="secondary">{t('connect.steps')}</AppText>
-      <CopyField label="Terminal" value="npm run connect -- --lan" />
       <View style={styles.field}>
         <AppText variant="label">{t('connect.url')}</AppText>
         <TextInput value={url} onChangeText={setURL} autoCapitalize="none" autoCorrect={false}
@@ -152,30 +196,15 @@ export function ConnectSheet({ onClose, nested }: {
           try {
             const bytes = await Crypto.getRandomBytesAsync(32);
             setToken(Array.from(bytes, (v) => v.toString(16).padStart(2, '0')).join(''));
-          } catch { setError(true); } finally { setBusy(false); }
+          } catch { setError('common.error'); } finally { setBusy(false); }
         }} />
         {token ? <CopyField label={t('connect.key')} value={token} secret /> : null}
       </View>
-      <SettingsRow title={t('connect.writes')} trailing={<Toggle value={allowWrites} onValueChange={setAllowWrites} label={t('connect.writes')} />} />
       <AppText variant="caption">{t('connect.readOnly')}</AppText>
-      {error ? <AppText variant="secondary" color={colors.danger}>{t('connect.invalid')}</AppText> : null}
       <SettingsRow title={t('connect.connect')} icon="check" disabled={busy || !token || status === 'connecting'} onPress={connect} />
-      {connection ? <SettingsRow title={t('connect.disconnect')} icon="x" iconColor={colors.danger} onPress={async () => {
-        try { await useAgentConnectionStore.getState().disconnect(); setToken(''); setAllowWrites(false); }
-        catch { setError(true); }
-      }} /> : null}
       <AppText variant="caption" color={colors.textTertiary}>{t('connect.network')}</AppText>
-      <SettingsRow title={t('agent.keys')} icon="key" onPress={() => setKeysVisible((value) => !value)} />
-      {keysVisible ? <ProviderKeysForm /> : null}
-      <SettingsRow title={t('connect.details')} icon="sliders" onPress={() => setAdvanced((value) => !value)} />
-      {advanced ? <>
         {connection && toolToken ? <CopyField label={t('connect.toolKey')} value={toolToken} secret /> : null}
         <CopyField label="REST" value={`${baseURL}/api/v1`} />
-        <CopyField label={t('connect.request')} value={`curl -H "Authorization: Bearer ${keyPlaceholder}" "${baseURL}/api/v1/tools"`} />
-        <CopyField label="POST /api/v1/call" value={JSON.stringify({ name: 'readDay', arguments: { domain: 'food', date: todayISO() } }, null, 2)} />
-        <AppText variant="heading" style={styles.heading}>{t('connect.config')}</AppText>
-        <AppText variant="secondary">{t('connect.configHint')}</AppText>
-        <CopyField label={configFile} value={config} />
       </> : null}
     </View>
   </SheetFrame>;

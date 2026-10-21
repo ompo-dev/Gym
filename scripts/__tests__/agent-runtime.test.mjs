@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { agent, methods, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk/unstable';
+import { z } from 'zod';
 
 import { createAgentManager, publicAgentOptions } from '../agent-runtime.mjs';
 
@@ -13,7 +14,7 @@ const options = () => [
     options: [{ value: 'read-only', name: 'Read only' }, { value: 'yolo', name: 'Unsafe' }] },
 ];
 
-export function fakeAgent({ authenticated = false, image = true, invalidJSON = false } = {}) {
+export function fakeAgent({ authenticated = false, image = true, invalidJSON = false, legacy = false, authStatus = false } = {}) {
   const sessions = new Map();
   const calls = { prompts: [], permissions: [], initialized: null, stopped: 0, deleted: [] };
   const factory = async () => {
@@ -22,17 +23,20 @@ export function fakeAgent({ authenticated = false, image = true, invalidJSON = f
     const app = agent({ name: 'fixture' })
       .onRequest(methods.agent.initialize, ({ params }) => {
         calls.initialized = params;
-        return { protocolVersion: PROTOCOL_VERSION, agentCapabilities: { promptCapabilities: { image }, sessionCapabilities: { delete: {} }, auth: { logout: {} } },
+        return { protocolVersion: PROTOCOL_VERSION, agentCapabilities: { promptCapabilities: { image }, sessionCapabilities: { delete: {} }, auth: { logout: {} },
+          ...(authStatus ? { _meta: { authStatus: {} } } : {}) },
           authMethods: [{ id: 'chat-login', name: 'Chat account' }, { id: 'console-login', name: 'Console', type: 'terminal' },
             { id: 'api-key', name: 'API key', type: 'env_var' }] };
       })
       .onRequest(methods.agent.authenticate, () => { authenticated = true; return {}; })
       .onRequest(methods.agent.logout, () => { authenticated = false; return {}; })
-      .onRequest(methods.agent.session.new, ({ params }) => {
-        if (!authenticated) throw RequestError.authRequired();
+      .onRequest(methods.agent.session.new, async ({ params, client }) => {
+        if (!authenticated && !authStatus) throw RequestError.authRequired();
+        if (authStatus) await client.notify('_auth/status_update', { authStatus: { kind: authenticated ? 'api_key' : 'none' } });
         assert.deepEqual(params.mcpServers, []);
         assert.deepEqual(params._meta.claudeCode.options.tools, []);
-        const session = { sessionId: `s-${sessions.size + 1}`, configOptions: options() };
+        const session = { sessionId: `s-${sessions.size + 1}`, ...(legacy ? { models: { currentModelId: 'model-a',
+          availableModels: [{ modelId: 'model-a', name: 'A' }, { modelId: 'model-b', name: 'B' }] } } : { configOptions: options() }) };
         sessions.set(session.sessionId, session);
         return structuredClone(session);
       })
@@ -40,6 +44,10 @@ export function fakeAgent({ authenticated = false, image = true, invalidJSON = f
         const session = sessions.get(params.sessionId);
         session.configOptions.find((option) => option.id === params.configId).currentValue = params.value;
         return { configOptions: session.configOptions };
+      })
+      .onRequest('session/set_model', z.object({ sessionId: z.string(), modelId: z.string() }), ({ params }) => {
+        sessions.get(params.sessionId).models.currentModelId = params.modelId;
+        return {};
       })
       .onRequest(methods.agent.session.prompt, async ({ params, client }) => {
         calls.prompts.push(params);
@@ -112,4 +120,24 @@ test('grouped model options flatten without exposing permission or tool modes', 
   const grouped = [{ ...options()[0], options: [{ group: 'Family', options: options()[0].options }] }, options()[2]];
   assert.equal(publicAgentOptions(grouped).length, 1);
   assert.deepEqual(publicAgentOptions(grouped)[0].options.map((item) => item.value), ['model-a', 'model-b']);
+});
+
+test('legacy model catalog and session/set_model work like the Momor compatibility path', async (t) => {
+  const fake = fakeAgent({ authenticated: true, legacy: true });
+  const manager = createAgentManager(fake); t.after(() => manager.close());
+  const before = await manager.handle({ provider: 'gemini', action: 'inspect' });
+  assert.deepEqual(before.options[0].options.map((option) => option.value), ['model-a', 'model-b']);
+  const changed = await manager.handle({ provider: 'gemini', action: 'setOption', optionId: 'model', value: 'model-b' });
+  assert.equal(changed.options[0].currentValue, 'model-b');
+  await assert.rejects(manager.handle({ provider: 'gemini', action: 'setOption', optionId: 'model', value: 'invented' }), /invalidOption/);
+  await manager.handle({ provider: 'gemini', action: 'generate', choices: { model: 'model-b' }, messages: [{ role: 'user', content: 'JSON' }] });
+  assert.equal(fake.sessions.get(fake.calls.prompts[0].sessionId).models.currentModelId, 'model-b');
+});
+
+test('a Claude session and model catalog alone do not prove account authentication', async (t) => {
+  const manager = createAgentManager(fakeAgent({ authStatus: true })); t.after(() => manager.close());
+  const state = await manager.handle({ provider: 'claude', action: 'inspect' });
+  assert.equal(state.authenticated, false);
+  await assert.rejects(manager.handle({ provider: 'claude', action: 'generate', messages: [{ role: 'user', content: 'JSON' }] }), /authRequired/);
+  assert.equal((await manager.handle({ provider: 'claude', action: 'authenticate', methodId: 'console-login' })).authenticated, true);
 });

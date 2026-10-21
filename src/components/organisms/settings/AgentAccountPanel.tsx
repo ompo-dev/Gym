@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
@@ -41,7 +41,9 @@ function AgentOption({ option, disabled, onChange }: {
   </View>;
 }
 
-export function AgentAccountPanel({ provider }: { provider: AgentProvider }) {
+export function AgentAccountPanel({ provider, onPrepare, prepareDisabled = false }: {
+  provider: AgentProvider; onPrepare: () => Promise<boolean>; prepareDisabled?: boolean;
+}) {
   const colors = useColors();
   const status = useAgentConnectionStore((s) => s.status);
   const text = useAgentSettingsStore((s) => s.text);
@@ -50,29 +52,40 @@ export function AgentAccountPanel({ provider }: { provider: AgentProvider }) {
   const [busy, setBusy] = useState(false);
   const [cancellable, setCancellable] = useState(false);
   const [error, setError] = useState('');
+  const [pendingLogin, setPendingLogin] = useState(false);
   const request = useRef<AbortController | null>(null);
+  const running = useRef(false);
+  const mounted = useRef(true);
+  const stopWaiting = useRef<(() => void) | null>(null);
   useEffect(() => {
+    mounted.current = true;
     void useAgentSettingsStore.getState().hydrate();
-    return () => { request.current?.abort(); useAgentConnectionStore.getState().setAuthenticating(false); };
+    return () => { mounted.current = false; stopWaiting.current?.(); request.current?.abort(); useAgentConnectionStore.getState().setAuthenticating(false); };
   }, []);
-  const run = async (action: AgentRequest['action'], extra: Partial<AgentRequest> = {}) => {
-    if (busy) return;
+  const run = useCallback(async (action: AgentRequest['action'], extra: Partial<AgentRequest> = {}, login = false) => {
+    if (running.current) return;
+    running.current = true;
     const controller = new AbortController(); request.current = controller;
     setBusy(true); setCancellable(true); setError('');
     useAgentConnectionStore.getState().setAuthenticating(true);
     try {
-      const next = agentStateSchema.parse(await requestAgent({ provider, action, ...extra }, controller.signal));
+      let next = agentStateSchema.parse(await requestAgent({ provider, action, ...extra }, controller.signal));
+      if (login && !next.authenticated && next.authMethods.length === 1 && !controller.signal.aborted) {
+        next = agentStateSchema.parse(await requestAgent({ provider, action: 'authenticate', methodId: next.authMethods[0].id }, controller.signal));
+      }
       if (action === 'logout' && !controller.signal.aborted) await useAgentSettingsStore.getState().unbind(provider);
       if (!controller.signal.aborted) setState(next);
     } catch (e) {
       if (!controller.signal.aborted) setError(e instanceof Error && /^agent\.[a-zA-Z]+$/.test(e.message) ? e.message : 'agent.failed');
     } finally {
+      running.current = false;
       if (!controller.signal.aborted) setBusy(false);
       if (request.current === controller && !controller.signal.aborted) useAgentConnectionStore.getState().setAuthenticating(false);
     }
-  };
+  }, [provider]);
   const bind = async (purpose: AgentPurpose) => {
-    if (!state?.authenticated) return;
+    if (!state?.authenticated || running.current) return;
+    running.current = true;
     request.current = null;
     setBusy(true); setCancellable(false); setError('');
     try {
@@ -80,7 +93,8 @@ export function AgentAccountPanel({ provider }: { provider: AgentProvider }) {
       await useAgentSettingsStore.getState().bind(purpose, { provider, choices });
       const app = useAppStore.getState();
       if (useAgentSettingsStore.getState().text) await app.setApiKeys({ ...app.apiKeys, mode: 'agent' });
-    } catch { setError('agent.failed'); } finally { setBusy(false); }
+    } catch { if (mounted.current) setError('agent.failed'); }
+    finally { running.current = false; if (mounted.current) setBusy(false); }
   };
   const configured = (purpose: AgentPurpose) => {
     const binding = purpose === 'text' ? text : vision;
@@ -91,11 +105,29 @@ export function AgentAccountPanel({ provider }: { provider: AgentProvider }) {
   return <View style={styles.content}>
     <AppText variant="heading" style={styles.heading}>{t('agent.account')}</AppText>
     <AppText variant="secondary">{t(provider === 'claude' ? 'agent.console' : 'agent.loginHint')}</AppText>
-    <SettingsRow title={t(state ? 'agent.refresh' : 'agent.load')} icon="refresh" disabled={busy || status !== 'connected'}
-      onPress={() => { void run('inspect'); }} />
-    {busy ? <View style={styles.pending}><ActivityIndicator color={colors.accent} /><AppText variant="secondary" style={styles.grow}>{t('agent.wait')}</AppText>
-      {cancellable ? <LoggedPressable accessibilityRole="button" accessibilityLabel={t('common.cancel')} style={styles.cancel}
-        onPress={() => { request.current?.abort(); setBusy(false); useAgentConnectionStore.getState().setAuthenticating(false); }}>
+    <SettingsRow title={state?.authenticated ? t('agent.refresh') : `${t('agent.signIn')} ${provider === 'codex' ? 'ChatGPT / Codex' : provider === 'claude' ? 'Anthropic Console' : 'Google / Gemini'}`}
+      icon={state?.authenticated ? 'refresh' : 'externalLink'} disabled={busy || pendingLogin || (status !== 'connected' && prepareDisabled)}
+      onPress={async () => {
+        if (status === 'connected') { void run('inspect', {}, true); return; }
+        if (await onPrepare() && mounted.current) {
+          setPendingLogin(true);
+          const connected = () => {
+            const current = useAgentConnectionStore.getState();
+            if (!current.connection) {
+              stopWaiting.current?.(); stopWaiting.current = null; setPendingLogin(false);
+              return;
+            }
+            if (current.status !== 'connected') return;
+            stopWaiting.current?.(); stopWaiting.current = null;
+            setPendingLogin(false); void run('inspect', {}, true);
+          };
+          stopWaiting.current = useAgentConnectionStore.subscribe(connected);
+          connected();
+        }
+      }} />
+    {busy || pendingLogin ? <View style={styles.pending}><ActivityIndicator color={colors.accent} /><AppText variant="secondary" style={styles.grow}>{t('agent.wait')}</AppText>
+      {cancellable || pendingLogin ? <LoggedPressable accessibilityRole="button" accessibilityLabel={t('common.cancel')} style={styles.cancel}
+        onPress={() => { stopWaiting.current?.(); stopWaiting.current = null; request.current?.abort(); setPendingLogin(false); setBusy(false); useAgentConnectionStore.getState().setAuthenticating(false); }}>
         <AppIcon name="x" size={20} />
       </LoggedPressable> : null}
     </View> : null}

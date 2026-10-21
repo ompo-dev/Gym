@@ -12,6 +12,8 @@ import { agentRequestSchema, createAgentManager } from './agent-runtime.mjs';
 const MAX_BODY = 262_144;
 const keySchema = z.string().regex(/^[a-f0-9]{64}$/i);
 export const deriveToolToken = (token) => createHash('sha256').update(`gymnotes-tools-v1:${token}`).digest('hex');
+export const pairingCode = (token, url) => `gymnotes-connect:v1:${JSON.stringify({ url,
+  pairingId: createHash('sha256').update(`gymnotes-pairing-v1:${keySchema.parse(token)}`).digest('hex') })}`;
 const callSchema = z.object({ name: z.string().min(1).max(80),
   arguments: z.record(z.string(), z.unknown()).default({}), requestId: z.string().min(1).max(100).optional() });
 const helloSchema = z.object({ type: z.literal('hello'), token: keySchema,
@@ -215,7 +217,8 @@ async function serveMCP(token, endpoint) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    let token = process.env.GYMNOTES_CONNECT_TOKEN;
+    let token = process.argv.includes('--mcp') ? process.env.GYMNOTES_CONNECT_TOKEN :
+      process.env.GYMNOTES_PAIRING_TOKEN ?? process.env.GYMNOTES_CONNECT_TOKEN;
     if (!token && !process.argv.includes('--mcp')) {
       const input = createInterface({ input: process.stdin, output: process.stderr });
       token = await input.question('Cole a chave criada em Conectar GymNotes: ');
@@ -230,9 +233,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       console.error('GymNotes: ponte local pronta na porta 3847. Nenhum dado e salvo aqui.');
       if (host === '0.0.0.0') {
         for (const addresses of Object.values(networkInterfaces())) for (const address of addresses ?? []) {
-          if (address.family === 'IPv4' && !address.internal) console.error(`App: ws://${address.address}:3847/app`);
+          if (address.family === 'IPv4' && !address.internal) console.error(pairingCode(token, `ws://${address.address}:3847/app`));
         }
-      } else console.error('App: ws://127.0.0.1:3847/app');
+      }
+      console.error(pairingCode(token, 'ws://127.0.0.1:3847/app'));
       const stop = async () => { await bridge.close(); process.exit(0); };
       process.once('SIGINT', stop);
       process.once('SIGTERM', stop);

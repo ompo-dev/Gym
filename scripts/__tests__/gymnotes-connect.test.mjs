@@ -6,10 +6,19 @@ import { createInterface } from 'node:readline';
 import { test } from 'node:test';
 import { WebSocket } from 'ws';
 
-import { createBridge, deriveToolToken } from '../gymnotes-connect.mjs';
+import { createBridge, deriveToolToken, pairingCode } from '../gymnotes-connect.mjs';
 
 const token = 'a'.repeat(64);
 const toolToken = deriveToolToken(token);
+test('public connection code contains no pairing or tools secret', () => {
+  const code = pairingCode(token, 'ws://192.168.1.10:3847/app');
+  assert.ok(code.startsWith('gymnotes-connect:v1:'));
+  assert.ok(!code.includes(token));
+  assert.ok(!code.includes(toolToken));
+  const data = JSON.parse(code.slice('gymnotes-connect:v1:'.length));
+  assert.equal(data.url, 'ws://192.168.1.10:3847/app');
+  assert.match(data.pairingId, /^[a-f0-9]{64}$/);
+});
 const tools = [{ name: 'readDay', description: 'Read the diary', parameters: { type: 'object', properties: { domain: { type: 'string' } } } }];
 async function setup(t, options = {}) {
   const bridge = createBridge({ token, port: 0, ...options });

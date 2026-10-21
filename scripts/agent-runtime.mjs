@@ -49,7 +49,8 @@ async function spawnAgent(provider) {
   await mkdir(home, { recursive: true, mode: 0o700 });
   const env = { ...process.env };
   for (const name of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN',
-    'CLAUDE_CODE_OAUTH_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GENAI_USE_VERTEXAI', 'GEMINI_USE_VERTEXAI']) delete env[name];
+    'CLAUDE_CODE_OAUTH_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GENAI_USE_VERTEXAI', 'GEMINI_USE_VERTEXAI',
+    'GYMNOTES_PAIRING_TOKEN', 'GYMNOTES_CONNECT_TOKEN']) delete env[name];
   env.CODEX_HOME = home;
   env.CLAUDE_CONFIG_DIR = home;
   env.GEMINI_CLI_HOME = home;
@@ -103,6 +104,14 @@ export function publicAgentOptions(options = []) {
   }));
 }
 
+export function sessionOptions(session) {
+  if (session?.configOptions?.length) return publicAgentOptions(session.configOptions);
+  const legacy = session?.models;
+  if (!legacy?.availableModels?.length) return [];
+  return [{ id: 'model', name: 'Model', type: 'select', category: 'model', currentValue: legacy.currentModelId,
+    options: legacy.availableModels.slice(0, 1000).map(({ modelId, name }) => ({ value: modelId, name })) }];
+}
+
 function safeAuthMethods(provider, methods) {
   return (methods ?? []).filter((method) => provider === 'claude' ? method.id === 'console-login' :
     method.type !== 'env_var' && !/api.?key|gateway|vertex/i.test(`${method.id} ${method.name}`));
@@ -112,10 +121,12 @@ function safeAuthMethods(provider, methods) {
 export function createAgentManager({ factory = spawnAgent } = {}) {
   const runtimes = new Map();
   let closed = false;
-  const state = (runtime) => ({ provider: runtime.provider, authenticated: !!runtime.control,
+  const authenticated = (runtime) => !!runtime.control && (runtime.provider !== 'claude' ||
+    !Object.hasOwn(runtime.initialized.agentCapabilities?._meta ?? {}, 'authStatus') || runtime.authKind === 'api_key');
+  const state = (runtime) => ({ provider: runtime.provider, authenticated: authenticated(runtime),
     authMethods: safeAuthMethods(runtime.provider, runtime.initialized.authMethods).map(({ id, name, description }) => ({ id, name, description })),
     imageSupported: !!runtime.initialized.agentCapabilities?.promptCapabilities?.image,
-    options: publicAgentOptions(runtime.control?.configOptions),
+    options: sessionOptions(runtime.control),
     claudeConsoleOnly: runtime.provider === 'claude',
     logoutSupported: !!runtime.initialized.agentCapabilities?.auth?.logout,
   });
@@ -140,6 +151,9 @@ export function createAgentManager({ factory = spawnAgent } = {}) {
         const app = client({ name: 'gymnotes', version: '1.0.2' })
           .onRequest(methods.client.session.requestPermission, () => ({ outcome: { outcome: 'cancelled' } }))
           .onRequest('*', () => { throw RequestError.methodNotFound(); })
+          .onNotification('_auth/status_update', z.object({ authStatus: z.object({ kind: z.string().max(40) }) }), ({ params }) => {
+            runtime.authKind = params.authStatus.kind;
+          })
           .onNotification(methods.client.session.update, ({ params }) => {
             if (params.sessionId === runtime.activeSession && params.update.sessionUpdate === 'agent_message_chunk' && params.update.content.type === 'text') {
               runtime.text += params.update.content.text;
@@ -163,9 +177,14 @@ export function createAgentManager({ factory = spawnAgent } = {}) {
     return runtimes.get(provider);
   };
   const applyChoice = async (runtime, session, id, value, signal) => {
-    const option = publicAgentOptions(session.configOptions).find((option) => option.id === id);
+    const option = sessionOptions(session).find((option) => option.id === id);
     if (!option || (option.type === 'boolean' ? typeof value !== 'boolean' : !option.options.some((item) => item.value === value))) {
       throw new Error('agent.invalidOption');
+    }
+    if (!session.configOptions?.length && session.models && id === 'model') {
+      await runtime.peer.request('session/set_model', { sessionId: session.sessionId, modelId: value }, { signal });
+      session.models.currentModelId = value;
+      return;
     }
     const response = await runtime.peer.request(methods.agent.session.setConfigOption, {
       sessionId: session.sessionId, configId: id, value,
@@ -176,7 +195,10 @@ export function createAgentManager({ factory = spawnAgent } = {}) {
     async handle(raw, signal) {
       const request = agentRequestSchema.parse(raw);
       const runtime = await get(request.provider, signal);
-      if (request.action === 'inspect') return state(runtime);
+      if (request.action === 'inspect') {
+        if (!authenticated(runtime) && !runtime.busy) await controlSession(runtime, signal);
+        return state(runtime);
+      }
       if (runtime.busy) throw new Error('agent.busy');
       runtime.busy = true;
       try {
@@ -194,7 +216,7 @@ export function createAgentManager({ factory = spawnAgent } = {}) {
           runtime.control = null;
           return state(runtime);
         }
-        if (!runtime.control) throw new Error('agent.authRequired');
+        if (!authenticated(runtime)) throw new Error('agent.authRequired');
         if (request.action === 'setOption') {
           await applyChoice(runtime, runtime.control, request.optionId, request.value, signal);
           return state(runtime);
