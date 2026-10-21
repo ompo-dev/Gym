@@ -48,7 +48,7 @@ export interface EnrichMediaDescription {
  * rather than inferred from "has a key" because billing reads it, and because a
  * user may keep a key saved while temporarily switching back.
  */
-export type ApiKeyMode = 'managed' | 'own';
+export type ApiKeyMode = 'managed' | 'own' | 'agent';
 
 export interface ApiKeys {
   mode: ApiKeyMode;

@@ -1,0 +1,197 @@
+import * as Clipboard from 'expo-clipboard';
+import * as Crypto from 'expo-crypto';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Alert, StyleSheet, TextInput, View } from 'react-native';
+
+import { AppIcon } from '@/components/atoms/AppIcon';
+import { AppText } from '@/components/atoms/AppText';
+import { LoggedPressable } from '@/components/atoms/Logged';
+import { AGENTS, AgentLogo, AgentLogos, type AgentId } from '@/components/molecules/AgentLogos';
+import { SettingsRow } from '@/components/molecules/SettingsRow';
+import { Fonts, Spacing } from '@/constants/theme';
+import { connectionSchema } from '@/core/connect/protocol';
+import { todayISO } from '@/core/date';
+import { foodGoalsFromProfile } from '@/domains/food';
+import { defaultOnboardingProfile } from '@/core/onboarding';
+import { invokeTool } from '@/core/tools/registry';
+import { appToolDeps } from '@/core/tools/appTools';
+import { useColors } from '@/hooks/use-colors';
+import { getLang, t } from '@/i18n';
+import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
+import { useAppStore } from '@/store/useAppStore';
+
+import { SheetFrame } from '../SheetFrame';
+import { AgentAccountPanel } from './AgentAccountPanel';
+import { ProviderKeysForm } from './ApiKeysSheet';
+import { Toggle } from './primitives';
+
+function CopyField({ label, value, secret = false }: { label: string; value: string; secret?: boolean }) {
+  const colors = useColors();
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  return <View style={[styles.copyField, { backgroundColor: colors.backgroundElement }]}>
+    <View style={styles.grow}>
+      <AppText variant="label">{label}</AppText>
+      <AppText variant="secondary" selectable={!secret} style={styles.code}>
+        {secret ? '********************************' : value}
+      </AppText>
+    </View>
+    <LoggedPressable style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`${t('connect.copy')} ${label}`}
+      onPress={async () => {
+        try {
+          await Clipboard.setStringAsync(value);
+          setCopied(true);
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = setTimeout(() => setCopied(false), 1800);
+        } catch { Alert.alert(t('common.error')); }
+      }}>
+      <AppIcon name={copied ? 'check' : 'copy'} color={copied ? colors.success : colors.textSecondary} size={20} />
+    </LoggedPressable>
+  </View>;
+}
+
+export function ConnectSheet({ onClose, nested }: {
+  onClose: () => void; nested?: ReactNode;
+}) {
+  const colors = useColors();
+  const connection = useAgentConnectionStore((s) => s.connection);
+  const status = useAgentConnectionStore((s) => s.status);
+  const [advanced, setAdvanced] = useState(false);
+  const [keysVisible, setKeysVisible] = useState(false);
+  const [toolToken, setToolToken] = useState('');
+  const [agent, setAgent] = useState<AgentId>('claude');
+  const [url, setURL] = useState(connection?.url ?? 'ws://127.0.0.1:3847/app');
+  const [token, setToken] = useState(connection?.token ?? '');
+  const [allowWrites, setAllowWrites] = useState(connection?.allowWrites ?? false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const cloud = ['chatgpt', 'claude'].includes(agent);
+  const provider = agent === 'claude' || agent === 'claudecode' ? 'claude' :
+    agent === 'chatgpt' || agent === 'codex' ? 'codex' : agent === 'gemini' ? 'gemini' : null;
+  useEffect(() => {
+    let active = true;
+    if (connection) {
+      void Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `gymnotes-tools-v1:${connection.token}`)
+        .then((value) => { if (active) setToolToken(value); }).catch(() => {});
+    }
+    return () => { active = false; };
+  }, [connection]);
+  const connect = async () => {
+    setError(false);
+    setBusy(true);
+    try {
+      await useAgentConnectionStore.getState().configure(connectionSchema.parse({ url, token, allowWrites }));
+    } catch { setError(true); }
+    finally { setBusy(false); }
+  };
+  const exportDiary = async () => {
+    setBusy(true);
+    try {
+      const food = await invokeTool('readDay', { domain: 'food' }, appToolDeps);
+      const workout = await invokeTool('readDay', { domain: 'workout' }, appToolDeps);
+      const goals = foodGoalsFromProfile(useAppStore.getState().onboardingProfile ?? defaultOnboardingProfile());
+      await Clipboard.setStringAsync(JSON.stringify({ date: todayISO(), goals,
+        food: food.ok && food.kind === 'data' ? food.data : null,
+        workout: workout.ok && workout.kind === 'data' ? workout.data : null }, null, 2));
+      Alert.alert(t('connect.copied'));
+    } catch { Alert.alert(t('common.error')); }
+    finally { setBusy(false); }
+  };
+  const keyPlaceholder = getLang() === 'pt-BR' ? 'SUA_CHAVE' : 'YOUR_KEY';
+  const jsonConfig = JSON.stringify({ mcpServers: { gymnotes: {
+    command: 'node', args: ['C:/CAMINHO/Gym/scripts/gymnotes-connect.mjs', '--mcp'],
+    env: { GYMNOTES_CONNECT_TOKEN: keyPlaceholder },
+  } } }, null, 2);
+  const config = agent === 'codex'
+    ? `[mcp_servers.gymnotes]\ncommand = "node"\nargs = ["C:/CAMINHO/Gym/scripts/gymnotes-connect.mjs", "--mcp"]\n\n[mcp_servers.gymnotes.env]\nGYMNOTES_CONNECT_TOKEN = "${keyPlaceholder}"`
+    : jsonConfig;
+  const configFile = agent === 'codex' ? '~/.codex/config.toml' : agent === 'claudecode' ? '.mcp.json' :
+    agent === 'gemini' ? '~/.gemini/settings.json (Gemini CLI)' : 'claude_desktop_config.json';
+  let baseURL = 'http://127.0.0.1:3847';
+  try { const parsed = new URL(url); baseURL = `${parsed.protocol === 'wss:' ? 'https:' : 'http:'}//${parsed.host}`; } catch { /* Draft can be incomplete. */ }
+  return <SheetFrame visible title={t('connect.title')} onClose={onClose} size="full" nested={nested} keyboardAwareScroll>
+    <View style={styles.content}>
+      <AgentLogos />
+      <View style={styles.status}>
+        <AppIcon name={status === 'connected' ? 'check' : 'circleDot'} color={status === 'connected' ? colors.success : colors.textTertiary} />
+        <AppText variant="secondary" style={styles.grow}>{t(`connect.${status}`)}</AppText>
+      </View>
+      <>
+        <AppText variant="heading" style={styles.heading}>{t('connect.choose')}</AppText>
+        <View style={styles.agents}>{AGENTS.map((item) => <LoggedPressable key={item.id}
+          accessibilityRole="radio" accessibilityState={{ checked: item.id === agent }} accessibilityLabel={item.label}
+          onPress={() => { setAgent(item.id); if (item.id === 'mcp') setAdvanced(true); }}
+          style={[styles.agent, { borderColor: item.id === agent ? colors.accent : colors.border,
+            backgroundColor: colors.backgroundElement }]}>
+          <AgentLogo agent={item.id} size={32} /><AppText variant="secondary" style={styles.grow}>{item.label}</AppText>
+        </LoggedPressable>)}</View>
+      </>
+      {provider ? <AgentAccountPanel key={provider} provider={provider} /> : null}
+      {cloud ? <>
+        <AppText variant="secondary">{t('connect.cloud')}</AppText>
+        <SettingsRow title={t('connect.export')} icon="copy" onPress={exportDiary} disabled={busy} />
+        <AppText variant="caption">{t('connect.exportHint')}</AppText>
+      </> : null}
+      <AppText variant="heading" style={styles.heading}>{t('connect.local')}</AppText>
+      <AppText variant="secondary">{t('connect.steps')}</AppText>
+      <CopyField label="Terminal" value="npm run connect -- --lan" />
+      <View style={styles.field}>
+        <AppText variant="label">{t('connect.url')}</AppText>
+        <TextInput value={url} onChangeText={setURL} autoCapitalize="none" autoCorrect={false}
+          accessibilityLabel={t('connect.url')} placeholder="ws://192.168.1.10:3847/app" placeholderTextColor={colors.textTertiary}
+          style={[styles.input, { color: colors.text, backgroundColor: colors.backgroundElement }]} />
+      </View>
+      <View style={styles.field}>
+        <AppText variant="label">{t('connect.key')}</AppText>
+        <TextInput value={token} onChangeText={setToken} autoCapitalize="none" autoCorrect={false} secureTextEntry
+          accessibilityLabel={t('connect.key')} maxLength={64}
+          style={[styles.input, { color: colors.text, backgroundColor: colors.backgroundElement }]} />
+        <SettingsRow title={t('connect.createKey')} icon="key" disabled={busy} onPress={async () => {
+          setBusy(true);
+          try {
+            const bytes = await Crypto.getRandomBytesAsync(32);
+            setToken(Array.from(bytes, (v) => v.toString(16).padStart(2, '0')).join(''));
+          } catch { setError(true); } finally { setBusy(false); }
+        }} />
+        {token ? <CopyField label={t('connect.key')} value={token} secret /> : null}
+      </View>
+      <SettingsRow title={t('connect.writes')} trailing={<Toggle value={allowWrites} onValueChange={setAllowWrites} label={t('connect.writes')} />} />
+      <AppText variant="caption">{t('connect.readOnly')}</AppText>
+      {error ? <AppText variant="secondary" color={colors.danger}>{t('connect.invalid')}</AppText> : null}
+      <SettingsRow title={t('connect.connect')} icon="check" disabled={busy || !token || status === 'connecting'} onPress={connect} />
+      {connection ? <SettingsRow title={t('connect.disconnect')} icon="x" iconColor={colors.danger} onPress={async () => {
+        try { await useAgentConnectionStore.getState().disconnect(); setToken(''); setAllowWrites(false); }
+        catch { setError(true); }
+      }} /> : null}
+      <AppText variant="caption" color={colors.textTertiary}>{t('connect.network')}</AppText>
+      <SettingsRow title={t('agent.keys')} icon="key" onPress={() => setKeysVisible((value) => !value)} />
+      {keysVisible ? <ProviderKeysForm /> : null}
+      <SettingsRow title={t('connect.details')} icon="sliders" onPress={() => setAdvanced((value) => !value)} />
+      {advanced ? <>
+        {connection && toolToken ? <CopyField label={t('connect.toolKey')} value={toolToken} secret /> : null}
+        <CopyField label="REST" value={`${baseURL}/api/v1`} />
+        <CopyField label={t('connect.request')} value={`curl -H "Authorization: Bearer ${keyPlaceholder}" "${baseURL}/api/v1/tools"`} />
+        <CopyField label="POST /api/v1/call" value={JSON.stringify({ name: 'readDay', arguments: { domain: 'food', date: todayISO() } }, null, 2)} />
+        <AppText variant="heading" style={styles.heading}>{t('connect.config')}</AppText>
+        <AppText variant="secondary">{t('connect.configHint')}</AppText>
+        <CopyField label={configFile} value={config} />
+      </> : null}
+    </View>
+  </SheetFrame>;
+}
+
+const styles = StyleSheet.create({
+  content: { gap: Spacing.four, paddingBottom: Spacing.seven },
+  heading: { fontSize: 21, letterSpacing: 0 },
+  status: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, minHeight: 36 },
+  agents: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  agent: { flexBasis: '47%', flexGrow: 1, minWidth: 128, minHeight: 64, padding: Spacing.three,
+    flexDirection: 'row', gap: Spacing.two, alignItems: 'center', borderWidth: 1, borderRadius: 8 },
+  grow: { flex: 1, minWidth: 0 },
+  field: { gap: Spacing.two },
+  input: { borderRadius: 8, padding: Spacing.three, minHeight: 48, fontSize: 15, fontFamily: Fonts.regular },
+  copyField: { flexDirection: 'row', gap: Spacing.two, padding: Spacing.three, borderRadius: 8, alignItems: 'flex-start' },
+  code: { fontFamily: Fonts.regular, fontSize: 12, marginTop: Spacing.two, flexShrink: 1 },
+  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+});

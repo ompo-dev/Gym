@@ -50,6 +50,19 @@ test('unresolved purchases are not stock yet', () => {
   expect(pantryItems([pending])).toEqual([]);
 });
 
+test('planned purchases and meals affect stock only when checked', () => {
+  const purchase = { ...bought([{ label: 'arroz', grams: 1000, price: 8 }]), planned: true, completedAt: null };
+  expect(pantryItems([purchase])).toEqual([]);
+  expect(pantryItems([{ ...purchase, completedAt: 100 }])[0].remainingGrams).toBe(1000);
+  const consumed = { ...meal, planned: true, completedAt: null,
+    data: { items: [{ label: 'arroz', calories: 100, protein: 1, carbs: 20, fat: 0,
+      from: { pantryItemId: 'arroz', label: 'arroz', grams: 100 } }] } };
+  const stock = { ...purchase, completedAt: 100 };
+  expect(pantryItems([stock, consumed])[0].remainingGrams).toBe(1000);
+  expect(pantryItems([stock, { ...consumed, completedAt: 200 }])[0].remainingGrams).toBe(900);
+  expect(pantryItems([stock, consumed])[0].remainingGrams).toBe(1000);
+});
+
 test('buying the same product twice builds one row with history', () => {
   const items = pantryItems([
     bought([{ label: 'Patinho', grams: 500, price: 30 }]),

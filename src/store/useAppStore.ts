@@ -1,5 +1,7 @@
 import { Appearance } from 'react-native';
 import { create } from 'zustand';
+import { useAgentConnectionStore } from './useAgentConnectionStore';
+import { useAgentSettingsStore } from './useAgentSettingsStore';
 
 import { todayISO } from '@/core/date';
 import { DEFAULT_FLAGS, type FeatureFlag, type FeatureFlags } from '@/core/dev/flagDefs';
@@ -185,7 +187,7 @@ export const useAppStore = create<AppState>((set) => ({
         onboardingDone: storedOnboardingDone === '1',
         onboardingProfile: parseOnboardingProfile(storedOnboardingProfile),
         apiKeys: {
-          mode: storedApiMode === 'own' ? 'own' : 'managed',
+          mode: storedApiMode === 'own' || storedApiMode === 'agent' ? storedApiMode : 'managed',
           chat: storedChatKey ?? '',
           image: storedImageKey ?? '',
         },
@@ -226,6 +228,8 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   completeOnboarding: async (profile) => {
+    // Keychain can survive uninstall; a fresh profile must not restore an old agent grant.
+    if (!useAppStore.getState().onboardingDone) await useAgentConnectionStore.getState().disconnect();
     profile = normalizeOnboardingProfile(profile);
     set({ onboardingDone: true, onboardingProfile: profile });
     await Promise.all([
@@ -254,6 +258,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   // Clears the onboarding flag so RootLayout swaps back to a fresh OnboardingFlow.
   signOut: async () => {
+    await useAgentConnectionStore.getState().disconnect();
     set({ onboardingDone: false, onboardingProfile: null });
     await Promise.all([
       SettingsRepository.set(ONBOARDING_DONE_KEY, '0'),
@@ -271,6 +276,8 @@ export const useAppStore = create<AppState>((set) => ({
    * user typed, and flipping it to system on the way out reads as a glitch.
    */
   eraseAllData: async () => {
+    await useAgentConnectionStore.getState().disconnect();
+    useAgentSettingsStore.getState().reset();
     await wipeAllData();
     set({
       food: emptyDay(),

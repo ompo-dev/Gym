@@ -971,7 +971,7 @@ export function DayTemplate<TData, TTotals>({
   );
 
   const handleSaveFoodNutrition = useCallback(
-    async (entry: Entry, text: string, data: FoodData) => {
+    async (entry: Entry, text: string, data: FoodData, refreshReasoning = true) => {
       const updated: Entry = {
         ...entry,
         text,
@@ -979,7 +979,7 @@ export function DayTemplate<TData, TTotals>({
         status: "done",
         error: null,
       };
-      const needsReasoning = !data.reasoning;
+      const needsReasoning = refreshReasoning && !data.reasoning;
       const reasoningRun = needsReasoning
         ? foodReasoningRun.current + 1
         : foodReasoningRun.current;

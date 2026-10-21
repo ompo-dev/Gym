@@ -6,6 +6,7 @@ import { Alert, Platform, StyleSheet, View } from "react-native";
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
 import { SettingsRow } from "@/components/molecules/SettingsRow";
+import { AgentLogos } from "@/components/molecules/AgentLogos";
 import { Metrics, Radii, Spacing } from "@/constants/theme";
 import {
   canOpenAppModal,
@@ -49,6 +50,8 @@ import { useAppStore, type ThemeMode } from "@/store/useAppStore";
 import { FoodEntryDetailSheet } from "./FoodEntryDetailSheet";
 import { FoodNutritionEditSheet } from "./FoodNutritionEditSheet";
 import { ApiKeysSheet } from "./settings/ApiKeysSheet";
+import { ConnectSheet } from "./settings/ConnectSheet";
+import { CommunitySheet } from "./settings/CommunitySheet";
 import { DeveloperSheet } from "./settings/DeveloperSheet";
 import { EstimationBiasSheet } from "./settings/EstimationBiasSheet";
 import { HealthProfileSheet } from "./settings/HealthProfileSheet";
@@ -77,7 +80,6 @@ import {
 import { SavedRoutinesSheet } from "./settings/SavedRoutinesSheet";
 import {
   AccountCard,
-  CLUSTER,
   GoalsSummary,
   UPGRADE_BG,
   UPGRADE_FG,
@@ -168,11 +170,6 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     setRoutinesDomain(target);
     openAppModal({ id: "settings.routines", domain });
   };
-  const apiKeys = useAppStore((s) => s.apiKeys);
-  const apiKeysLabel =
-    apiKeys.mode === "own"
-      ? t("settings.api.usingOwn")
-      : t("settings.api.usingManaged");
 
   useEffect(() => {
     if (!visible) return;
@@ -230,11 +227,6 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     if (!canOpenAppModal("settings.root", "settings.savedExercises")) return;
     openAppModal({ id: "settings.savedExercises", domain });
     void loadSavedExercises();
-  };
-
-  const openApiKeys = () => {
-    if (!canOpenAppModal("settings.root", "settings.apiKeys")) return;
-    openAppModal({ id: "settings.apiKeys", domain });
   };
 
   const openTerms = () => {
@@ -689,21 +681,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
 
       <Section label={t("settings.section.connect")}>
         <View style={styles.connectTop}>
-          <View style={styles.cluster}>
-            {CLUSTER.map((c, i) => (
-              <View
-                key={c}
-                style={[
-                  styles.logo,
-                  {
-                    backgroundColor: c,
-                    borderColor: colors.backgroundElement,
-                  },
-                  i > 0 && styles.logoOverlap,
-                ]}
-              />
-            ))}
-          </View>
+          <AgentLogos />
           <AppText variant="secondary" color={colors.textSecondary}>
             {t("settings.connect.desc")}
           </AppText>
@@ -712,13 +690,7 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
         <SettingsRow
           title={t("settings.connect.instructions")}
           trailing={<Chevron />}
-          onPress={noop}
-        />
-        <Divider />
-        <SettingsRow
-          title={t("settings.connect.api")}
-          trailing={<ValueTrailing label={apiKeysLabel} />}
-          onPress={openApiKeys}
+          onPress={() => openAppModal({ id: 'settings.connect', domain })}
         />
       </Section>
 
@@ -751,12 +723,16 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
           { backgroundColor: colors.backgroundElement },
         ]}
       >
+        <SettingsRow icon="history" iconColor={TINT.blue}
+          title={t('community.history')} trailing={<Chevron />}
+          onPress={() => openAppModal({ id: 'settings.community', domain, tab: 'updates' })} />
+        <Divider />
         <SettingsRow
           icon="star"
           iconColor={TINT.blue}
           title={t("settings.feedback")}
           trailing={<Chevron />}
-          onPress={noop}
+          onPress={() => openAppModal({ id: 'settings.community', domain, tab: 'feedback' })}
         />
         <Divider />
         <SettingsRow
@@ -826,6 +802,12 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
     nested: ReactNode,
   ): ReactNode | null => {
     switch (item.id) {
+      case "settings.connect":
+        return <ConnectSheet nested={nested}
+          onClose={() => closeAppModal('settings.connect')} />;
+      case "settings.community":
+        return <CommunitySheet initialTab={item.tab}
+          onClose={() => closeAppModal('settings.community')} />;
       case "settings.root":
         return (
           <SheetFrame

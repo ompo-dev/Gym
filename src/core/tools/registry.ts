@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { CompositeCommand, type Command } from '@/core/command/Command';
+import { isCompletedEntry } from '@/core/entries';
 import type { CommandBus } from '@/core/command/CommandBus';
 import type { Domain, Entry } from '@/core/types';
 import type { SavedMeal } from '@/data/SavedMealRepository';
@@ -38,6 +39,7 @@ export interface ToolDeps {
   };
   savedMeals: { all: () => Promise<SavedMeal[]> };
   today: () => string;
+  goals?: () => unknown;
 }
 
 /** Stable keys, in the spirit of `ENRICH_ERROR`. */
@@ -116,6 +118,14 @@ export const toolRegistry = {
         command: new CompositeCommand(args.label ?? `${commands.length} entries`, commands),
       };
     },
+  }),
+
+  readGoals: defineTool({
+    description: 'Read the nutrition goals configured in the app before planning meals. Never includes provider credentials.',
+    args: z.object({}),
+    build: async (_args, deps) => deps.goals
+      ? { ok: true, kind: 'data', data: deps.goals() }
+      : { ok: false, error: 'tool.unavailable' },
   }),
 
   readDay: defineTool({
@@ -220,10 +230,13 @@ function foodDay(date: string, entries: Entry[]) {
     entries: done.map((entry) => ({
       id: entry.id,
       text: entry.text,
+      planned: Boolean(entry.planned),
+      completed: isCompletedEntry(entry),
       items: entry.data.items.map((item) => item.label),
+      recipe: entry.data.recipe,
       totals: sumFoodData(entry.data),
     })),
-    totals: done.reduce((acc, e) => foodConfig.addToTotals(acc, e.data), foodConfig.emptyTotals),
+    totals: done.filter(isCompletedEntry).reduce((acc, e) => foodConfig.addToTotals(acc, e.data), foodConfig.emptyTotals),
   };
 }
 

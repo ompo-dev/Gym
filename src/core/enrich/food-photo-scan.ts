@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { foodPhotoScanSchema, parsePhotoScan } from '@/core/food/photo-cutouts';
 import type { FoodPhotoCutout } from '@/core/types';
 
-import { callVisionJson, type ProviderCredential } from './providers';
+import { callVisionJson, type JsonModelTransport, type ProviderCredential } from './providers';
 
 export const photoScanRequestSchema = z.object({
   base64: z.string().min(1).max(2_500_000),
@@ -17,6 +17,7 @@ export async function runFoodPhotoScan(
   input: PhotoScanRequest,
   credential: ProviderCredential,
   signal?: AbortSignal,
+  transport?: JsonModelTransport,
 ): Promise<FoodPhotoCutout[]> {
   if (credential.provider === 'deepseek') throw new Error('photoScan.unsupported');
   const language = input.locale.startsWith('en') ? 'English' : 'Brazilian Portuguese';
@@ -41,6 +42,6 @@ export async function runFoodPhotoScan(
       `Write labels and descriptions in ${language}. Describe visible portion/quantity, preparation and any uncertainty for a nutrition estimate. Do not invent exact weights.`,
       'Return an empty items array if no food or drink is visible. Detect up to 40 items.',
     ].join('\n'),
-  });
+  }, transport);
   return parsePhotoScan(raw);
 }

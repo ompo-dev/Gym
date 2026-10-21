@@ -133,6 +133,8 @@ export type Routine = Partial<Record<MealType, RoutineSlot>>;
 
 /** Per meal type, the median time it is eaten — learned from a window of notes. */
 export function buildRoutine(entries: Entry[]): Routine {
+  entries = entries.filter((entry) => !entry.planned || entry.completedAt != null)
+    .map((entry) => entry.planned && entry.completedAt != null ? { ...entry, createdAt: entry.completedAt } : entry);
   const batch = batchLoggedIds(entries);
   const byType = new Map<MealType, number[]>();
   for (const entry of entries) {

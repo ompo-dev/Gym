@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gym",
     "slug": "gymnotes",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "runtimeVersion": { "policy": "appVersion" },
     "updates": {
       "enabled": true,
@@ -21,6 +21,10 @@
       "bundleIdentifier": "com.ompinho.gymnotes",
       "icon": "./assets/gym.icon",
       "appleTeamId": "0000000000",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Conectar o GymNotes aos seus agentes de IA na mesma rede, somente quando voce configurar a conexao local.",
+        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true }
+      },
       "entitlements": {
         "com.apple.security.application-groups": [
           "group.com.ompinho.gymnotes"
@@ -85,6 +89,8 @@
       ],
       "expo-image",
       "expo-asset",
+      "expo-secure-store",
+      "./plugins/with-local-agent-network",
       "expo-web-browser"
     ],
     "experiments": {

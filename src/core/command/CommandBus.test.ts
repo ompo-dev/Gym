@@ -192,6 +192,22 @@ test('food enrich preserves hydration returned by the AI', async () => {
   expect((day.food.entries[0].data as { items: { waterMl: number }[] }).items[0].waterMl).toBe(500);
 });
 
+test('diet planning context counts only checked plans', async () => {
+  const enrichFn = jest.fn(async () => foodOk());
+  const { bus, day } = harness(enrichFn);
+  await bus.addEntry('almoco planejado', 'food');
+  await flush();
+  day.food.entries[0] = { ...day.food.entries[0], planned: true, completedAt: null };
+  await bus.addEntry('planeje o jantar', 'food');
+  await flush();
+  expect(enrichFn.mock.calls.at(-1)?.[0].userContext).toContain(`Today food already logged (${TODAY}): none.`);
+  day.food.entries[0] = { ...day.food.entries[0], completedAt: 100 };
+  day.food.entries[1] = { ...day.food.entries[1], planned: true, completedAt: null };
+  await bus.addEntry('planeje o lanche', 'food');
+  await flush();
+  expect(enrichFn.mock.calls.at(-1)?.[0].userContext).toContain('620 kcal');
+});
+
 test('undo removes the added entry from store and repo', async () => {
   const { bus, day, rows } = harness(async () => foodOk());
   await bus.addEntry('burger', 'food');

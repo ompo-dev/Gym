@@ -31,6 +31,13 @@ type VisionJsonRequest = {
 };
 
 export type ProviderChatMessage = { role: 'system' | 'user'; content: string };
+export type JsonModelTransport = (request: {
+  messages: ProviderChatMessage[];
+  media?: EnrichMediaInput[];
+  maxTokens: number;
+  signal?: AbortSignal;
+  responseSchema?: Record<string, unknown>;
+}) => Promise<unknown>;
 
 type TextJsonRequest = {
   provider: Exclude<AiProviderId, 'deepseek'>;
@@ -166,8 +173,9 @@ export async function callVisionJson({
   signal,
   prompt: customPrompt,
   responseSchema,
-}: VisionJsonRequest): Promise<unknown> {
+}: VisionJsonRequest, transport?: JsonModelTransport): Promise<unknown> {
   const prompt = customPrompt ?? visionPrompt(language, mediaOrder);
+  if (transport) return transport({ messages: [{ role: 'user', content: prompt }], media, maxTokens, signal, responseSchema });
   log.ai(`${provider} vision request`, {
     media: media.length,
     key: maskProviderKey(apiKey),

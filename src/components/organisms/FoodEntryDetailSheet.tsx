@@ -60,7 +60,7 @@ interface FoodEntryDetailSheetProps {
   modalDomain?: Domain;
   onDelete?: (entry: Entry) => void;
   onSaveMeal?: (entry: Entry) => Promise<void> | void;
-  onSaveNutrition?: (entry: Entry, text: string, data: FoodData) => Promise<void> | void;
+  onSaveNutrition?: (entry: Entry, text: string, data: FoodData, refreshReasoning?: boolean) => Promise<void> | void;
   onAiEdit?: (entry: Entry, instruction: string) => Promise<void> | void;
   reasoningLoading?: boolean;
   initialMealSaved?: boolean;
@@ -626,7 +626,9 @@ export function FoodEntryDetailSheet({
 
             {featureRecipes && data.recipe ? (
               <View style={styles.section}>
-                <FoodRecipeCard recipe={data.recipe} />
+                <FoodRecipeCard recipe={data.recipe} onChange={onSaveNutrition
+                  ? (recipe) => onSaveNutrition(entry, entry.text, { ...data, recipe }, false)
+                  : undefined} />
               </View>
             ) : null}
 

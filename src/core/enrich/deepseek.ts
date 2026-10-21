@@ -35,6 +35,8 @@ import {
   callTextJson,
   callVisionJson,
   type AiProviderId,
+  type JsonModelTransport,
+  type ProviderChatMessage,
 } from './providers';
 
 /**
@@ -314,6 +316,7 @@ async function describeFoodMedia(
   media: EnrichMediaInput[] | undefined,
   language: string,
   signal?: AbortSignal,
+  transport?: JsonModelTransport,
 ): Promise<EnrichMediaDescription[]> {
   if (!media?.length) return [];
 
@@ -327,7 +330,7 @@ async function describeFoodMedia(
   const mediaOrder = mediaToDescribe.map((item, index) => `${index + 1}. ${item.id}`).join('\n');
   try {
     const raw =
-      provider === 'deepseek'
+      provider === 'deepseek' && !transport
         ? await callDeepSeekJson(
             apiKey,
             [
@@ -363,17 +366,21 @@ async function describeFoodMedia(
             signal,
           )
         : await callVisionJson({
-            provider,
+            provider: provider === 'deepseek' ? 'gemini' : provider,
             apiKey,
             media: mediaToDescribe,
             language,
             mediaOrder,
             maxTokens: 700,
             signal,
-          });
+          }, transport);
     const parsed = MediaDescriptionsSchema.safeParse(raw);
+    if (transport && (!parsed.success || mediaToDescribe.some((item) => !parsed.data.descriptions.some((description) => description.id === item.id)))) {
+      throw new Error('agent.invalidResponse');
+    }
     return parsed.success ? [...provided, ...parsed.data.descriptions] : provided;
   } catch (e) {
+    if (transport) throw e;
     if (e instanceof AiProviderTransportError) throw new DeepSeekTransportError(e.message);
     // Captioning is best-effort: a blind parse still beats failing the note.
     return provided;
@@ -388,6 +395,7 @@ export async function runEnrichEngine(
   input: EnrichEngineInput,
   keys: EngineKeys,
   signal?: AbortSignal,
+  transport?: JsonModelTransport,
 ): Promise<EnrichResponse> {
   const { text, domain, intent, currentFood, media, context, userContext, locale } = input;
 
@@ -398,7 +406,7 @@ export async function runEnrichEngine(
   // exactly the pictures worth reading.
   const mediaDescriptions =
     domain === 'food'
-      ? await describeFoodMedia(keys.image, keys.imageProvider ?? 'deepseek', media, language, signal)
+      ? await describeFoodMedia(keys.image, keys.imageProvider ?? 'deepseek', media, language, signal, transport)
       : [];
   const mediaContext = mediaDescriptions
     .map((item, index) => `Image ${index + 1} mediaId=${item.id}: ${item.description}`)
@@ -432,21 +440,20 @@ export async function runEnrichEngine(
   const instructionBlock = intent === 'foodEdit' ? `Instruction: ${text}` : entryBlock;
   const userContent = `${contextBlock}${userContextBlock}${currentFoodBlock}${instructionBlock}`;
 
-  const messages: ChatMessage[] = [
+  const messages: ProviderChatMessage[] = [
     { role: 'system', content: system },
     { role: 'user', content: userContent },
   ];
   const maxTokens = MAX_TOKENS[intent] ?? 1100;
   const raw =
-    !keys.chatProvider || keys.chatProvider === 'deepseek'
+    transport
+      ? await transport({ messages, maxTokens, signal })
+      : !keys.chatProvider || keys.chatProvider === 'deepseek'
       ? await callDeepSeekJson(keys.chat, messages, maxTokens, signal)
       : await callTextJson({
           provider: keys.chatProvider,
           apiKey: keys.chat,
-          messages: messages.map((message) => ({
-            role: message.role,
-            content: describeContent(message.content),
-          })),
+          messages,
           maxTokens,
           signal,
         }).catch((e) => {

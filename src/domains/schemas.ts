@@ -48,6 +48,8 @@ export const recipeIngredientSchema = z.object({
   unit: z.string().trim().min(1).max(32).optional().catch(undefined),
   /** null = has to be bought. Filled from the pantry. */
   pantryItemId: z.string().min(1).nullable().default(null),
+  /** Explicit user override; absent keeps the live pantry match. */
+  available: z.boolean().optional().catch(undefined),
   /** Whole cents. undefined = no price history for this item. */
   estimatedCostCents: z.coerce.number().int().nonnegative().optional().catch(undefined),
 });

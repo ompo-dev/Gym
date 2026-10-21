@@ -394,7 +394,7 @@ export function recipeShoppingList(recipe: FoodRecipe): {
   /** null when any missing item has no known price — a partial total lies. */
   totalCents: number | null;
 } {
-  const missing = recipe.ingredients.filter((item) => item.pantryItemId === null);
+  const missing = recipe.ingredients.filter((item) => !(item.available ?? Boolean(item.pantryItemId)));
   const priced = missing.every((item) => item.estimatedCostCents !== undefined);
   return {
     missing,

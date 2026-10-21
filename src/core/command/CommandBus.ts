@@ -1,4 +1,5 @@
 import { Lru } from '@/core/cache/lru';
+import { isCompletedEntry } from '@/core/entries';
 import { log } from '@/core/log';
 import { normalizeForEnrich } from '@/core/enrich/normalize';
 import { notesForDate } from '@/constants/limits';
@@ -39,7 +40,7 @@ const MAX_EXERCISE_NAME = 60;
 function todayFoodContext(entries: Entry[], date: string, excludeId: string): string {
   const meals = entries.filter((entry) => {
     if (entry.id === excludeId) return false;
-    if (entry.status !== 'done') return false;
+    if (!isCompletedEntry(entry)) return false;
     return Boolean(entry.data && 'items' in entry.data);
   });
 
@@ -77,7 +78,7 @@ function todayFoodContext(entries: Entry[], date: string, excludeId: string): st
 
 function shouldIncludeFoodDayContext(text: string): boolean {
   const normalized = normalizeText(text);
-  return /\b(dieta|diet|alimentacao|alimentar|alimenta|cardapio|plano|planej|complete|completar|restante|falta|fechar|bater|meta|macro|macros|caloria|calorias|proteina|carbo|carboidrato|carboidratos|gordura|gorduras|refeicao|refeicoes|dia todo|janta livre|jantar livre|ate o cafe|cafe da tarde)\b/.test(
+  return /\b(dieta|diet|alimentacao|alimentar|alimenta|cardapio|plano|planej[a-z]*|complete|completar|restante|falta|fechar|bater|meta|macro|macros|caloria|calorias|proteina|carbo|carboidrato|carboidratos|gordura|gorduras|refeicao|refeicoes|dia todo|janta livre|jantar livre|ate o cafe|cafe da tarde)\b/.test(
     normalized,
   );
 }

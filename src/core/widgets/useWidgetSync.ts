@@ -5,6 +5,7 @@ import { todayISO } from '@/core/date';
 import { defaultOnboardingProfile } from '@/core/onboarding';
 import { EntryRepository } from '@/data/EntryRepository';
 import { foodGoalsFromProfile, sumFoodData } from '@/domains/food';
+import { isCompletedEntry } from '@/core/entries';
 import type { FoodData, WorkoutData } from '@/domains/schemas';
 import { trainingAdjustment } from '@/domains/trainingLoad';
 import { getWorkoutSetVolume } from '@/domains/workout';
@@ -48,7 +49,7 @@ export function useWidgetSync(ready: boolean): void {
       ]).then(([foodEntries, workoutEntries]) => {
         const food = foodEntries.reduce(
           (acc, entry) => {
-            if (entry.status !== 'done' || !entry.data || !('items' in entry.data)) return acc;
+            if (!isCompletedEntry(entry) || !entry.data || !('items' in entry.data)) return acc;
             const t = sumFoodData(entry.data as FoodData);
             return {
               calories: acc.calories + t.calories,

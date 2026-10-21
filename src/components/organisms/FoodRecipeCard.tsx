@@ -1,8 +1,10 @@
-import { StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
+import { LoggedPressable } from '@/components/atoms/Logged';
 import { Radii, Spacing } from '@/constants/theme';
 import { PantryRepository } from '@/data/PantryRepository';
 import { recipeShoppingList } from '@/domains/food';
@@ -15,6 +17,7 @@ import { t } from '@/i18n';
 
 interface FoodRecipeCardProps {
   recipe: FoodRecipe;
+  onChange?: (recipe: FoodRecipe) => Promise<void> | void;
 }
 
 /** Servings and time, in the same chip strip the meal rows use for macros. */
@@ -35,8 +38,9 @@ function RecipeMetric({ icon, label }: { icon: 'utensils' | 'clock'; label: stri
  * made in `recipeShoppingList` and `matchRecipeToPantry` — jest only runs
  * `*.test.ts`, so anything settled in here would be untestable by construction.
  */
-export function FoodRecipeCard({ recipe }: FoodRecipeCardProps) {
+export function FoodRecipeCard({ recipe, onChange }: FoodRecipeCardProps) {
   const colors = useColors();
+  const [saving, setSaving] = useState(false);
   // Read when the sheet opens, not frozen when the recipe was written: what is
   // in the fridge changes, and a list that answers "do I have this" answers for
   // now. Same load `PantrySheet` does.
@@ -67,9 +71,22 @@ export function FoodRecipeCard({ recipe }: FoodRecipeCardProps) {
           {t('recipe.ingredients')}
         </AppText>
         {matched.ingredients.map((item, index) => {
-          const owned = Boolean(item.pantryItemId);
+          const owned = item.available ?? Boolean(item.pantryItemId);
           return (
-            <View key={`${item.label}-${index}`} style={styles.line}>
+            <LoggedPressable key={`${item.label}-${index}`} style={styles.line}
+              disabled={!onChange || saving}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: owned, disabled: !onChange || saving }}
+              accessibilityLabel={item.label}
+              onPress={async () => {
+                setSaving(true);
+                try {
+                  await onChange?.({ ...recipe, ingredients: recipe.ingredients.map((ingredient, i) =>
+                    i === index ? { ...ingredient, available: !owned } : ingredient) });
+                } catch {
+                  Alert.alert(t('common.error'), t('recipe.saveError'));
+                } finally { setSaving(false); }
+              }}>
               <View
                 style={[
                   styles.bullet,
@@ -89,7 +106,7 @@ export function FoodRecipeCard({ recipe }: FoodRecipeCardProps) {
                     ? formatMoney(item.estimatedCostCents / 100)
                     : t('recipe.needBuy')}
               </AppText>
-            </View>
+            </LoggedPressable>
           );
         })}
           {/* Suppressed when any price is unknown: a partial total reads as the
@@ -176,6 +193,7 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   line: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,

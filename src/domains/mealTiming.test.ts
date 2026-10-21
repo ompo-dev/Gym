@@ -56,6 +56,13 @@ describe('meal-type resolution', () => {
   });
 });
 
+test('unchecked plans do not teach meal times; checked plans use completion time', () => {
+  const plans = [1, 2, 3].map((day) => ({ ...meal(`plan-${day}`, at(day, 8), 'lunch'), planned: true, completedAt: null }));
+  expect(buildRoutine(plans)).toEqual({});
+  const completed = plans.map((entry, index) => ({ ...entry, completedAt: at(index + 1, 13) }));
+  expect(buildRoutine(completed).lunch).toMatchObject({ hour: 13, minute: 0, samples: 3 });
+});
+
 describe('median', () => {
   test('odd and even', () => {
     expect(median([530, 100, 1000])).toBe(530);

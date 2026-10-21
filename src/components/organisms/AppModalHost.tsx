@@ -24,7 +24,7 @@ interface AppModalHostProps {
   reasoningLoadingId: string | null;
   onDeleteFoodEntry: (entry: Entry) => void;
   onSaveMeal?: (entry: Entry) => Promise<void> | void;
-  onSaveNutrition: (entry: Entry, text: string, data: FoodData) => Promise<void> | void;
+  onSaveNutrition: (entry: Entry, text: string, data: FoodData, refreshReasoning?: boolean) => Promise<void> | void;
   onAiEdit: (entry: Entry, instruction: string) => Promise<void> | void;
   onSaveBarcodeFood: (text: string, data: FoodData) => Promise<void> | void;
   onSelectSavedMeals: (meals: SavedMeal[]) => void;

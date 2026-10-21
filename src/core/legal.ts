@@ -15,7 +15,7 @@ export interface LegalDocument {
 const pt = {
   terms: {
     title: 'Termos de Serviço',
-    effectiveDate: 'Vigente desde 11 de setembro de 2026',
+    effectiveDate: 'Vigente desde 21 de outubro de 2026',
     intro:
       'Estes Termos explicam as regras para usar o GymNotes, um app para registrar alimentação, treinos, metas, fotos, produtos, refeições salvas, exercícios salvos, rotinas e lembretes.',
     sections: [
@@ -33,6 +33,10 @@ const pt = {
         title: 'IA e provedores externos',
         body:
           'Recursos de IA podem enviar texto, fotos, descrições de mídia e contexto do seu perfil para o provedor configurado, como DeepSeek, Gemini, OpenAI ou Anthropic. Quando você usa sua própria chave, a cobrança, disponibilidade e uso de dados seguem também os termos do provedor escolhido.',
+      },
+      {
+        title: 'Agentes e comunidade',
+        body: 'Conectar um agente local permite consultar seu diário, geladeira, refeições salvas e metas. Criar notas exige a permissão de escrita. Mantenha a ponte em uma rede confiável e não exponha sua porta na internet. Logins, modelos, limites e cobranças seguem as regras dos provedores. Claude usa Anthropic Console, não a assinatura claude.ai. Roteiro, feedback e atualizações usam dados de demonstração, sem publicação externa.',
       },
       {
         title: 'Seu conteúdo',
@@ -68,7 +72,7 @@ const pt = {
   },
   privacy: {
     title: 'Política de Privacidade',
-    effectiveDate: 'Vigente desde 11 de setembro de 2026',
+    effectiveDate: 'Vigente desde 21 de outubro de 2026',
     intro:
       'Esta Política explica como o GymNotes trata dados usados para registrar alimentação, treinos, fotos, metas, preferências e recursos de IA.',
     sections: [
@@ -96,6 +100,10 @@ const pt = {
         title: 'Armazenamento',
         body:
           'A maior parte dos dados fica no seu aparelho, usando o armazenamento local do app. Dados enviados para IA ou serviços externos são tratados conforme as políticas desses provedores. Excluir os dados pelo app remove as informações locais deste aparelho.',
+      },
+      {
+        title: 'Conexão local e feedback',
+        body: 'A conexão com agentes é opcional e usa seu computador, sem backend hospedado do GymNotes. Ferramentas autorizadas recebem os dados solicitados. A análise por conta de agente envia o texto, contexto e imagens necessários ao provedor escolhido. Tokens de login permanecem no perfil isolado do agente no computador; o app salva apenas a seleção de modelo e esforço. Agentes podem manter credenciais e histórico conforme suas configurações. A chave de pareamento fica no armazenamento seguro do iOS/Android ou só na memória no web. A chave das ferramentas é separada e não controla contas. Conexões ws/HTTP locais não são criptografadas. Desconectar remove o acesso no app; pare a conexão no computador para revogar também clientes REST. Copiar diário e metas envia esses dados à área de transferência por sua ação. A comunidade usa mocks locais, sem consultas ou publicações externas; o rascunho fica no aparelho. Apagar dados locais não remove informações já recebidas por agentes ou provedores.',
       },
       {
         title: 'Compartilhamento',
@@ -129,7 +137,7 @@ const pt = {
 const en = {
   terms: {
     title: 'Terms of Service',
-    effectiveDate: 'Effective September 11, 2026',
+    effectiveDate: 'Effective October 21, 2026',
     intro:
       'These Terms explain the rules for using GymNotes, an app for logging food, workouts, goals, photos, products, saved meals, saved exercises, routines, and reminders.',
     sections: [
@@ -147,6 +155,10 @@ const en = {
         title: 'AI and external providers',
         body:
           'AI features may send text, photos, media descriptions, and profile context to the configured provider, such as DeepSeek, Gemini, OpenAI, or Anthropic. If you use your own key, billing, availability, and data use are also governed by that provider.',
+      },
+      {
+        title: 'Agents and community',
+        body: 'Pairing a local agent allows it to read your diary, pantry, saved meals and goals. Creating notes requires write permission. Keep the connection on a trusted network and do not expose its port to the internet. Sign-in, models, limits and billing follow provider rules. Claude uses Anthropic Console, not claude.ai subscriptions. Roadmap, feedback and updates use demo data without external publication.',
       },
       {
         title: 'Your content',
@@ -182,7 +194,7 @@ const en = {
   },
   privacy: {
     title: 'Privacy Policy',
-    effectiveDate: 'Effective September 11, 2026',
+    effectiveDate: 'Effective October 21, 2026',
     intro:
       'This Policy explains how GymNotes handles data used to log food, workouts, photos, goals, preferences, and AI features.',
     sections: [
@@ -210,6 +222,10 @@ const en = {
         title: 'Storage',
         body:
           'Most data stays on your device in local app storage. Data sent to AI or external services is handled under those providers policies. Deleting data in the app removes local information from this device.',
+      },
+      {
+        title: 'Local connection and feedback',
+        body: 'Agent connections are optional and use your computer, not a hosted GymNotes backend. Authorized tools receive the requested data. Agent account analysis sends required text, context and images to your selected provider. Login tokens remain in an isolated agent profile on the computer; the app saves only model and effort selections. Agents may retain credentials and history according to their settings. The pairing key stays in iOS/Android secure storage or web session memory. The separate tools key cannot control accounts. Local ws/HTTP connections are unencrypted. Disconnecting removes app access; stop the computer connection to revoke REST clients too. Copying your diary and goals places them on the clipboard at your request. Community views use local mocks without external requests or publication; drafts stay on the device. Deleting local data does not remove information already received by agents or providers.',
       },
       {
         title: 'Sharing',

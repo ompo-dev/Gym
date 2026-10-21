@@ -17,13 +17,14 @@ import { WorkoutOutliner } from '@/components/molecules/WorkoutOutliner';
 import {
   IOS_NATIVE_ENABLED,
   SwiftHost,
-  SwiftToggle,
+  SwiftButton,
+  swiftButtonStyle,
   swiftControlSize,
   swiftFrame,
   swiftLabelStyle,
-  swiftLabelsHidden,
   swiftTint,
-  swiftToggleStyle,
+  swiftFont,
+  swiftForegroundStyle,
 } from '@/components/onboarding/onboardingNative';
 import { Radii, Spacing } from '@/constants/theme';
 import { ENRICH_UNCONFIGURED } from '@/core/enrich/types';
@@ -81,20 +82,20 @@ function PlannedCheckButton({
     transform: [{ scale: 0.65 + progress.value * 0.35 }],
   }));
 
-  if (IOS_NATIVE_ENABLED && SwiftHost && SwiftToggle) {
+  if (IOS_NATIVE_ENABLED && SwiftHost && SwiftButton) {
     return (
       <View style={styles.planCheckSlot}>
         <SwiftHost style={styles.swiftPlanCheckHost}>
-          <SwiftToggle
-            isOn={checked}
-            onIsOnChange={onChange}
+          <SwiftButton
+            onPress={() => onChange(!checked)}
             label={t('plan.toggle')}
             systemImage={checked ? 'checkmark.circle.fill' : 'circle'}
             modifiers={[
-              swiftToggleStyle?.('button'),
+              swiftButtonStyle?.('plain'),
               swiftControlSize?.('regular'),
               swiftLabelStyle?.('iconOnly'),
-              swiftLabelsHidden?.(),
+              swiftFont?.({ size: 26 }),
+              swiftForegroundStyle?.(checked ? colors.success : colors.textSecondary),
               swiftTint?.(colors.success),
               swiftFrame?.({ width: 30, height: 30 }),
             ].filter(Boolean)}
@@ -215,7 +216,7 @@ function FoodRow<TData, TTotals>({
   const colors = useColors();
   const [text, setText] = useState(entry.text);
   const deletedRef = useRef(false);
-  const completed = Boolean(entry.completedAt);
+  const completed = entry.completedAt != null;
   const completeProgress = useSharedValue(completed ? 1 : 0);
 
   useEffect(() => {
@@ -384,6 +385,7 @@ const styles = StyleSheet.create({
   },
   inputWrap: {
     flex: 1,
+    minWidth: 0,
     minHeight: NOTE_MIN_HEIGHT,
     justifyContent: 'flex-start',
   },

@@ -18,6 +18,7 @@ import { useWidgetSync } from '@/core/widgets/useWidgetSync';
 import { useAppStore } from '@/store/useAppStore';
 import { useOTAStartupUpdate } from '@/hooks/useOTAStartupUpdate';
 import { useOTAUpdates } from '@/hooks/useOTAUpdates';
+import { useAgentConnection } from '@/hooks/useAgentConnection';
 import { AppUpdateScreen } from '@/components/organisms/AppUpdateScreen';
 
 // Once, at import: every uncaught error and rejection now flows through the
@@ -37,6 +38,7 @@ export default function RootLayout() {
   // Siri / Shortcuts commands. Only once the app is past onboarding, so a
   // cold-start command has real tabs to land on.
   useCommandLink(prefsLoaded && onboardingDone);
+  useAgentConnection(appReady && onboardingDone && startupUpdate.settled);
 
   // Mirror today's diet/workout totals into the App Group for the home/lock
   // screen widgets (iOS, dev/standalone build only).

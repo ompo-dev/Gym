@@ -1,16 +1,35 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Alert, StyleSheet, TextInput, View } from "react-native";
 
 import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
 import { SettingsRow } from "@/components/molecules/SettingsRow";
-import { Radii, Spacing } from "@/constants/theme";
+import { AgentLogos } from "@/components/molecules/AgentLogos";
+import { Fonts, Radii, Spacing } from "@/constants/theme";
 import type { ApiKeyMode } from "@/core/enrich/types";
 import { useColors } from "@/hooks/use-colors";
 import { t } from "@/i18n";
 import { useAppStore } from "@/store/useAppStore";
 
 import { Divider, PageSheet, Section } from "./primitives";
+
+export function ProviderKeysForm() {
+  const apiKeys = useAppStore((s) => s.apiKeys);
+  const [draft, setDraft] = useState(apiKeys);
+  const [saving, setSaving] = useState(false);
+  return <View>
+    <ApiKeyField label={t('settings.api.chatKey')} hint={t('settings.api.chatKeyHint')} value={draft.chat}
+      placeholder="deepseek:sk-..." onChange={(chat) => setDraft((current) => ({ ...current, chat }))} />
+    <ApiKeyField label={t('settings.api.imageKey')} hint={t('settings.api.imageKeyHint')} value={draft.image}
+      placeholder="gemini:AIza..." onChange={(image) => setDraft((current) => ({ ...current, image }))} />
+    <SettingsRow title={t('agent.useKeys')} icon="key" disabled={saving || !draft.chat.trim()} onPress={async () => {
+      setSaving(true);
+      try { await useAppStore.getState().setApiKeys({ ...draft, mode: 'own' }); }
+      catch { Alert.alert(t('common.error')); }
+      finally { setSaving(false); }
+    }} />
+  </View>;
+}
 
 function ApiKeyField({
   label,
@@ -96,6 +115,7 @@ export function ApiKeysSheet({
       onSave={save}
       keyboardAwareScroll
     >
+      <AgentLogos />
       <Section label={t("settings.api.mode")}>
         {modes.map((mode, index) => (
           <View key={mode.value}>
@@ -146,6 +166,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
   },
   apiKeyInput: {
+    fontFamily: Fonts.regular,
     minHeight: 44,
     borderRadius: Radii.md,
     paddingHorizontal: Spacing.three,

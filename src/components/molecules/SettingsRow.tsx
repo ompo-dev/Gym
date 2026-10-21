@@ -32,6 +32,7 @@ interface SettingsRowProps {
   subtitle?: string;
   trailing?: ReactNode;
   onPress?: () => void;
+  disabled?: boolean;
   /**
    * Turns the row into a select. On iOS it renders a native SwiftUI menu
    * `Picker`; on other platforms it falls back to a normal row that shows the
@@ -55,12 +56,13 @@ export function SettingsRow({
   subtitle,
   trailing,
   onPress,
+  disabled = false,
   select,
 }: SettingsRowProps) {
   const colors = useColors();
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
 
-  if (select && IOS_NATIVE_ENABLED) {
+  if (select && IOS_NATIVE_ENABLED && !disabled) {
     // Native Menu (not Picker) in the trailing slot so we control the look:
     // the value in the app's secondary text colour + a single chevron.down,
     // matching the other value rows instead of the blue "⇅" default Picker.
@@ -160,11 +162,13 @@ export function SettingsRow({
   return (
     <LoggedPressable
       onPress={onPress}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
       accessibilityRole="button"
       // Derived from the text the row already shows, so every settings row is
       // labelled without each call site repeating its title.
       accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
-      style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
+      style={({ pressed }) => (pressed || disabled ? styles.pressed : undefined)}>
       {content}
     </LoggedPressable>
   );

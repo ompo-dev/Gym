@@ -1,4 +1,5 @@
 import type { Entry } from '@/core/types';
+import { isCompletedEntry } from '@/core/entries';
 import type { FoodItem, FoodRecipe, NutritionPer100g } from '@/domains/schemas';
 
 import { foodLabelKey, mealItemGrams } from './food';
@@ -76,7 +77,7 @@ export function formatPantryGrams(grams: number): string {
 export function mealConsumption(entries: Entry[]): Map<string, number> {
   const byKey = new Map<string, number>();
   for (const entry of entries) {
-    if (entry.status !== 'done' || !entry.data || !('items' in entry.data)) continue;
+    if (!isCompletedEntry(entry) || !entry.data || !('items' in entry.data)) continue;
     for (const item of entry.data.items) {
       if (!item.from) continue;
       byKey.set(item.from.pantryItemId, (byKey.get(item.from.pantryItemId) ?? 0) + item.from.grams);
@@ -87,7 +88,7 @@ export function mealConsumption(entries: Entry[]): Map<string, number> {
 
 export function purchaseLines(entries: Entry[]): PantryPurchase[] {
   return entries.flatMap((entry) => {
-    if (entry.status !== 'done' || !isPurchaseData(entry.data)) return [];
+    if (!isCompletedEntry(entry) || !isPurchaseData(entry.data)) return [];
     // Bound once: the narrowing from the guard does not survive into the
     // callback below, where `entry.data` widens back to the whole union.
     const data = entry.data;
@@ -290,6 +291,7 @@ export function matchRecipeToPantry(recipe: FoodRecipe, items: PantryItem[]): Fo
   return {
     ...recipe,
     ingredients: recipe.ingredients.map((ingredient) => {
+      if (ingredient.available !== undefined) return ingredient;
       const match = owned.get(foodLabelKey(ingredient.label));
       // A price is what the missing ones cost. Owning it means nothing is
       // spent, and leaving an estimate on it would inflate the total.
