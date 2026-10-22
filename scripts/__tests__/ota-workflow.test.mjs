@@ -8,6 +8,10 @@ const workflow = YAML.parse(source);
 const steps = (job) => workflow.jobs[job].steps;
 const commands = (job) => steps(job).map((step) => step.run || '').join('\n');
 
+test('runs the complete Node suite, including P2P and MCP, before publication', () => {
+  assert.ok(workflow.jobs.testar.steps.some((step) => step.run === 'npm run test:ota'));
+});
+
 test('prepares OTA alongside checks without publishing before validation and tests succeed', () => {
   assert.equal(workflow.jobs['preparar-ota'].needs, undefined);
   assert.deepEqual(new Set(workflow.jobs['publicar-ota'].needs), new Set(['validar', 'testar', 'preparar-ota']));

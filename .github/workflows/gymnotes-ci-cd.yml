@@ -67,8 +67,8 @@ jobs:
         run: npm ci --legacy-peer-deps
       - name: Rodar testes
         run: npm test -- --runInBand --silent
-      - name: Validar servidor OTA temporario
-        run: node --test scripts/__tests__/temporary-expo-update-server.test.mjs scripts/__tests__/wait-for-ota-health.test.mjs scripts/__tests__/temporary-ota-pointer.test.mjs scripts/__tests__/ota-workflow.test.mjs
+      - name: Validar OTA e conexoes P2P MCP
+        run: npm run test:ota
   preparar-ota:
     name: Preparar bundle OTA
     if: github.event_name == 'push' || inputs.publish_ota
