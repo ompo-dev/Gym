@@ -33,6 +33,7 @@ test('late hydration cannot resurrect a revoked grant', async () => {
   let finish!: (value: string) => void;
   jest.mocked(SecureStore.getItemAsync).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
   const hydration = useAgentConnectionStore.getState().hydrate();
+  await new Promise((resolve) => setImmediate(resolve));
   await useAgentConnectionStore.getState().disconnect();
   finish(JSON.stringify(connection));
   await hydration;

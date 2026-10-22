@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
+import { createHmac, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { request } from 'node:http';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { test } from 'node:test';
 import { WebSocket } from 'ws';
 
-import { createBridge, deriveToolToken, pairingCode } from '../gymnotes-connect.mjs';
+import { createBridge, derivePairingId, deriveToolToken, pairingCode, pairingLink } from '../gymnotes-connect.mjs';
 
 const token = 'a'.repeat(64);
 const toolToken = deriveToolToken(token);
@@ -33,8 +36,16 @@ async function setup(t, options = {}) {
 }
 async function pair(base, key = token, catalog = tools) {
   const app = new WebSocket(`${base.replace('http:', 'ws:')}/app`);
+  const received = once(app, 'message');
   await once(app, 'open');
-  app.send(JSON.stringify({ type: 'hello', token: key, tools: catalog }));
+  const clientNonce = randomBytes(32).toString('hex');
+  app.send(JSON.stringify({ type: 'init', nonce: clientNonce }));
+  const [bytes] = await received;
+  const challenge = JSON.parse(bytes.toString());
+  assert.equal(challenge.type, 'challenge');
+  assert.equal(challenge.proof, createHmac('sha256', Buffer.from(token, 'hex')).update(`gymnotes-server-v2:${clientNonce}:${challenge.nonce}`).digest('hex'));
+  app.send(JSON.stringify({ type: 'hello', nonce: challenge.nonce,
+    proof: createHmac('sha256', Buffer.from(key, 'hex')).update(`gymnotes-app-v2:${clientNonce}:${challenge.nonce}`).digest('hex'), tools: catalog }));
   return app;
 }
 
@@ -51,8 +62,9 @@ test('REST requires bearer authentication, rejects foreign origins and does not 
 test('a wrong WebSocket credential is rejected and never exposes tools', async (t) => {
   const { base, api } = await setup(t);
   const app = await pair(base, toolToken);
-  const [code] = await once(app, 'close');
+  const [code, reason] = await once(app, 'close');
   assert.equal(code, 1008);
+  assert.equal(reason.toString(), 'wrong-key');
   assert.deepEqual(await (await api('tools')).json(), { connected: false, tools: [] });
 });
 
@@ -90,7 +102,9 @@ test('a second app cannot hijack an already paired session', async (t) => {
   const first = await pair(base);
   await once(first, 'message');
   const second = await pair(base);
-  assert.equal((await once(second, 'close'))[0], 1008);
+  const [code, reason] = await once(second, 'close');
+  assert.equal(code, 1008);
+  assert.equal(reason.toString(), 'app-in-use');
   assert.equal((await (await api('tools')).json()).connected, true);
 });
 
@@ -126,4 +140,119 @@ test('MCP stdio initialization, tool discovery and tool execution use the offici
   const call = await rpc(3, 'tools/call', { name: 'readDay', arguments: { domain: 'food' } });
   assert.equal(call.result.isError, false, JSON.stringify(call));
   assert.deepEqual(JSON.parse(call.result.content[0].text), { ok: true, data: { domain: 'food', calories: 650 } });
+});
+
+test('the phone landing page opens the app without publishing either secret', async (t) => {
+  const { base } = await setup(t);
+  const link = pairingLink(token, `${base.replace('http:', 'ws:')}/app`);
+  assert.equal(new URL(link).pathname, '/connect');
+  const response = await fetch(link);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.match(response.headers.get('content-security-policy'), /default-src 'none'/);
+  const html = await response.text();
+  assert.ok(!html.includes(token));
+  assert.ok(!html.includes(toolToken));
+  assert.ok(!html.includes('<script'));
+  const href = html.match(/href="([^"]+)"/)[1].replaceAll('&amp;', '&');
+  const appLink = new URL(href);
+  assert.equal(appLink.protocol, 'gym:');
+  assert.equal(appLink.hostname, 'connect');
+  assert.equal(appLink.searchParams.get('url'), `${base.replace('http:', 'ws:')}/app`);
+  assert.equal(appLink.searchParams.get('pairingId'), derivePairingId(token));
+  const image = await fetch(`${base}/app-icon.png`);
+  assert.equal(image.headers.get('content-type'), 'image/png');
+  assert.equal(Buffer.from(await image.arrayBuffer()).subarray(1, 4).toString(), 'PNG');
+});
+
+test('landing rejects unknown invites, extra fields and untrusted origins', async (t) => {
+  const { base } = await setup(t);
+  const link = pairingLink(token, `${base.replace('http:', 'ws:')}/app`);
+  for (const bad of [link.replace(derivePairingId(token), 'b'.repeat(64)), link + '&token=bad',
+    link + `&pairingId=${derivePairingId(token)}`, `${base}/connect`]) {
+    assert.equal((await fetch(bad)).status, 403);
+  }
+  assert.equal((await fetch(link, { headers: { origin: 'https://attacker.example' } })).status, 403);
+});
+
+test('authenticated connectivity test verifies a real app round trip without reading the diary', async (t) => {
+  const { base, api } = await setup(t);
+  assert.equal((await api('ping')).status, 503);
+  assert.equal((await api('ping', null, { authorization: '' })).status, 401);
+  const app = await pair(base);
+  await once(app, 'message');
+  app.on('message', (bytes) => {
+    const message = JSON.parse(bytes.toString());
+    assert.equal(message.type, 'ping');
+    assert.equal(message.name, undefined);
+    app.send(JSON.stringify({ type: 'result', id: message.id, result: { ok: true, data: { connected: true } } }));
+  });
+  const response = await api('ping');
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true, data: { connected: true } });
+});
+
+test('an app which authenticates but does not answer the probe is not reported as a successful round trip', async (t) => {
+  const { base, api } = await setup(t, { timeoutMs: 40 });
+  const app = await pair(base);
+  await once(app, 'message');
+  assert.equal((await api('ping')).status, 503);
+});
+
+test('a proof from another socket or from the server direction cannot authenticate an app', async (t) => {
+  const { base, api } = await setup(t);
+  let previous;
+  for (const replay of [false, true]) {
+    const app = new WebSocket(`${base.replace('http:', 'ws:')}/app`);
+    const received = once(app, 'message');
+    await once(app, 'open');
+    app.send(JSON.stringify({ type: 'init', nonce: randomBytes(32).toString('hex') }));
+    const [bytes] = await received;
+    const challenge = JSON.parse(bytes.toString());
+    const used = replay ? previous : challenge;
+    app.send(JSON.stringify({ type: 'hello', nonce: used.nonce, proof: used.proof, tools }));
+    assert.equal((await once(app, 'close'))[0], 1008);
+    previous = challenge;
+  }
+  assert.equal((await (await api('tools')).json()).connected, false);
+});
+
+test('LAN mode advertises only a public invitation fingerprint and cleans up discovery', async () => {
+  let published;
+  let stopped = false;
+  const bridge = createBridge({ token, port: 0, advertise: true, discoveryFactory: () => ({
+    publish: (service) => { published = service; }, destroy: () => { stopped = true; },
+  }) });
+  try {
+    const address = await bridge.start();
+    assert.equal(published.type, 'gymnotes');
+    assert.equal(published.protocol, 'tcp');
+    assert.equal(published.port, address.port);
+    assert.deepEqual(published.txt, { pairingId: derivePairingId(token), protocol: '2' });
+    assert.ok(!JSON.stringify(published).includes(token));
+    assert.ok(!JSON.stringify(published).includes(toolToken));
+  } finally { await bridge.close(); }
+  assert.equal(stopped, true);
+});
+
+test('a malformed unauthenticated request target cannot crash the peer', async (t) => {
+  const { base, api } = await setup(t);
+  const status = await new Promise((resolve, reject) => {
+    const req = request(base, { path: 'http://[' }, (response) => { response.resume(); resolve(response.statusCode); });
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(status, 400);
+  assert.equal((await api('tools')).status, 200);
+});
+
+test('an explicitly paired legacy phone still connects without discovery or a new handshake', async (t) => {
+  const { base, api } = await setup(t);
+  const app = new WebSocket(`${base.replace('http:', 'ws:')}/app`);
+  await once(app, 'open');
+  app.send(JSON.stringify({ type: 'hello', token, tools }));
+  const [bytes] = await once(app, 'message');
+  assert.equal(JSON.parse(bytes.toString()).type, 'ready');
+  assert.equal((await (await api('tools')).json()).connected, true);
 });

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gym",
     "slug": "gymnotes",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "runtimeVersion": { "policy": "appVersion" },
     "updates": {
       "enabled": true,
@@ -23,6 +23,7 @@
       "appleTeamId": "0000000000",
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Conectar o GymNotes aos seus agentes de IA na mesma rede, somente quando voce configurar a conexao local.",
+        "NSBonjourServices": ["_gymnotes._tcp"],
         "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true }
       },
       "entitlements": {
@@ -42,6 +43,7 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA",
+        "android.permission.ACCESS_LOCAL_NETWORK",
         "android.permission.RECORD_AUDIO"
       ]
     },

@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Crypto from 'expo-crypto';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Platform, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
@@ -52,11 +52,13 @@ export function ConnectSheet({ onClose, nested }: {
   const colors = useColors();
   const connection = useAgentConnectionStore((s) => s.connection);
   const status = useAgentConnectionStore((s) => s.status);
+  const issue = useAgentConnectionStore((s) => s.issue);
   const [advanced, setAdvanced] = useState(false);
   const [keysVisible, setKeysVisible] = useState(false);
   const [toolToken, setToolToken] = useState('');
   const [agent, setAgent] = useState<AgentId>('claude');
-  const [url, setURL] = useState(connection?.url ?? 'ws://127.0.0.1:3847/app');
+  const [customURL, setURL] = useState<string | null>(null);
+  const url = customURL ?? connection?.url ?? 'ws://127.0.0.1:3847/app';
   const [token, setToken] = useState(connection?.token ?? '');
   const [allowWrites, setAllowWrites] = useState(connection?.allowWrites ?? false);
   const [busy, setBusy] = useState(false);
@@ -97,13 +99,14 @@ export function ConnectSheet({ onClose, nested }: {
     if (working.current || !prompt) return false;
     working.current = true; setBusy(true); setError(null);
     try {
-      // Copy first, within the user's gesture, including on WebKit.
-      await Clipboard.setStringAsync(prompt);
       const next = connectionSchema.parse({ url, token, allowWrites });
       const current = useAgentConnectionStore.getState().connection;
+      // Native must save before leaving for the agent; WebKit needs the clipboard within the gesture.
+      if (Platform.OS === 'web') await Clipboard.setStringAsync(prompt);
       if (!current || current.url !== next.url || current.token !== next.token || current.allowWrites !== next.allowWrites) {
         await useAgentConnectionStore.getState().configure(next);
       }
+      if (Platform.OS !== 'web') await Clipboard.setStringAsync(prompt);
       if (mounted.current) {
         setCopiedPrompt(prompt);
         if (copyTimer.current) clearTimeout(copyTimer.current);
@@ -122,7 +125,7 @@ export function ConnectSheet({ onClose, nested }: {
       if (!current) throw new Error('connect.invalidCode');
       const next = await importAgentConnection(code, current);
       await useAgentConnectionStore.getState().configure(next);
-      if (mounted.current) { setURL(next.url); setToken(next.token); setAllowWrites(next.allowWrites); }
+      if (mounted.current) { setURL(null); setToken(next.token); setAllowWrites(next.allowWrites); }
     } catch { if (mounted.current) setError('connect.invalidCode'); }
     finally { working.current = false; if (mounted.current) setBusy(false); }
   };
@@ -153,6 +156,12 @@ export function ConnectSheet({ onClose, nested }: {
         <AppIcon name={status === 'connected' ? 'check' : 'circleDot'} color={status === 'connected' ? colors.success : colors.textTertiary} />
         <AppText variant="secondary" style={styles.grow}>{t(`connect.${status}`)}</AppText>
       </View>
+      {status === 'error' && issue ? <>
+        <AppText variant="secondary" color={colors.danger}>{t(`connect.${issue}`)}</AppText>
+        {connection ? <SettingsRow title={t('connect.retry')} icon="refresh" disabled={busy} onPress={() => {
+          void useAgentConnectionStore.getState().configure(connection).catch(() => setError('common.error'));
+        }} /> : null}
+      </> : null}
       <>
         <AppText variant="heading" style={styles.heading}>{t('connect.choose')}</AppText>
         <View style={styles.agents}>{AGENTS.map((item) => <LoggedPressable key={item.id}
@@ -165,8 +174,6 @@ export function ConnectSheet({ onClose, nested }: {
       </>
       <SettingsRow title={t(copied ? 'connect.copied' : 'connect.copyPrompt')} icon={copied ? 'check' : 'copy'}
         disabled={busy || !prompt} onPress={() => { void copyPrompt(); }} />
-      <SettingsRow title={t('connect.pasteConnection')} icon="clipboard" disabled={busy || !connection}
-        onPress={() => { void pasteConnection(); }} />
       {error ? <AppText variant="secondary" color={colors.danger}>{t(error)}</AppText> : null}
       {provider ? <AgentAccountPanel key={provider} provider={provider} onPrepare={copyPrompt} prepareDisabled={busy || !prompt} /> : null}
       <SettingsRow title={t('connect.writes')} trailing={<Toggle value={allowWrites} disabled={busy}
@@ -180,6 +187,8 @@ export function ConnectSheet({ onClose, nested }: {
       <SettingsRow title={t('connect.details')} icon="sliders" onPress={() => setAdvanced((value) => !value)} />
       {advanced ? <>
       <AppText variant="heading" style={styles.heading}>{t('connect.local')}</AppText>
+      <SettingsRow title={t('connect.pasteConnection')} icon="clipboard" disabled={busy || !connection}
+        onPress={() => { void pasteConnection(); }} />
       <View style={styles.field}>
         <AppText variant="label">{t('connect.url')}</AppText>
         <TextInput value={url} onChangeText={setURL} autoCapitalize="none" autoCorrect={false}

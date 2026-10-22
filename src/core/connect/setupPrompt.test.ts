@@ -1,6 +1,6 @@
 import { createHash as mockCreateHash } from 'node:crypto';
 
-import { buildAgentSetupPrompt, importAgentConnection, pairingIdFor, toolTokenFor } from './setupPrompt';
+import { buildAgentSetupPrompt, importAgentConnection, isAgentConnectionLink, pairingIdFor, toolTokenFor } from './setupPrompt';
 
 jest.mock('expo-crypto', () => ({ CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
   digestStringAsync: async (_algorithm: string, value: string) => mockCreateHash('sha256').update(value).digest('hex'),
@@ -36,4 +36,37 @@ test('import cannot replace the secret, change permissions, select a public host
     await expect(importAgentConnection(bad, connection)).rejects.toThrow();
   }
   expect(connection.allowWrites).toBe(false);
+});
+
+test('phone links and complete agent replies preserve the on-device grant', async () => {
+  const id = await pairingIdFor(connection.token);
+  const landing = `http://192.168.1.10:3847/connect?pairingId=${id}`;
+  const deepLink = `gym://connect?${new URLSearchParams({ url: 'ws://192.168.1.10:3847/app', pairingId: id })}`;
+  for (const text of [landing, deepLink, `Pronto!\n[Abrir GymNotes](${landing})\nAguardando o app.`,
+    `Copie esta linha:\n\x60${code('ws://192.168.1.10:3847/app', id)}\x60`, `${landing}\n${deepLink}`]) {
+    expect(await importAgentConnection(text, connection)).toEqual({ ...connection, url: 'ws://192.168.1.10:3847/app' });
+  }
+  expect(isAgentConnectionLink(deepLink)).toBe(true);
+  expect(isAgentConnectionLink('gym://add?text=abc')).toBe(false);
+});
+
+test('phone links cannot add credentials, public destinations or ambiguous addresses', async () => {
+  const id = await pairingIdFor(connection.token);
+  const landing = `http://192.168.1.10:3847/connect?pairingId=${id}`;
+  for (const text of [landing + '&token=bad', landing + '#extra', landing.replace('192.168.1.10', 'example.com'),
+    landing.replace('192.168.1.10', 'user:pass@192.168.1.10'), landing.replace('/connect?', '/other?'),
+    `${landing}\n${landing.replace('192.168.1.10', '192.168.1.11')}`,
+    `gym://connect?${new URLSearchParams({ url: 'ws://192.168.1.10:3847/app', pairingId: id, allowWrites: 'true' })}`,
+    'x'.repeat(20_001)]) {
+    await expect(importAgentConnection(text, connection)).rejects.toThrow('connect.invalidCode');
+  }
+});
+
+test('setup explicitly verifies an app round trip without reading health data', async () => {
+  const prompt = await buildAgentSetupPrompt('codex', connection, 'pt-BR');
+  expect(prompt).toContain('npm run connect -- --setup');
+  expect(prompt).toContain('LocalSubnet');
+  expect(prompt).toContain('GET /api/v1/ping');
+  expect(prompt).toContain('not connected');
+  expect(prompt).toContain('Do not read health data');
 });

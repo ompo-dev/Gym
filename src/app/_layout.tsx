@@ -19,6 +19,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { useOTAStartupUpdate } from '@/hooks/useOTAStartupUpdate';
 import { useOTAUpdates } from '@/hooks/useOTAUpdates';
 import { useAgentConnection } from '@/hooks/useAgentConnection';
+import { useAgentConnectionLink } from '@/hooks/useAgentConnectionLink';
 import { AppUpdateScreen } from '@/components/organisms/AppUpdateScreen';
 
 // Once, at import: every uncaught error and rejection now flows through the
@@ -39,6 +40,7 @@ export default function RootLayout() {
   // cold-start command has real tabs to land on.
   useCommandLink(prefsLoaded && onboardingDone);
   useAgentConnection(appReady && onboardingDone && startupUpdate.settled);
+  useAgentConnectionLink(appReady && onboardingDone && startupUpdate.settled);
 
   // Mirror today's diet/workout totals into the App Group for the home/lock
   // screen widgets (iOS, dev/standalone build only).
