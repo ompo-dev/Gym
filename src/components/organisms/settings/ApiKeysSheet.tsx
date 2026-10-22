@@ -54,6 +54,7 @@ function ApiKeyField({
         </AppText>
       ) : null}
       <TextInput
+        accessibilityLabel={label}
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}

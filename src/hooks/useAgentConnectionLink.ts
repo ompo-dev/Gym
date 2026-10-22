@@ -25,7 +25,8 @@ export function useAgentConnectionLink(ready: boolean) {
     let active = true;
     void openAgentConnection(url).catch((error) => {
       if (active) useAgentConnectionStore.getState().setStatus('error',
-        error instanceof Error && error.message === 'connect.missingInvite' ? 'missingInvite' : 'invalidCode');
+        error instanceof Error && error.message === 'connect.missingInvite' ? 'missingInvite' :
+          error instanceof Error && error.message === 'connect.wrongInvite' ? 'wrongInvite' : 'invalidCode');
     }).finally(() => {
       if (active) { router.replace('/'); showConnection(); }
     });

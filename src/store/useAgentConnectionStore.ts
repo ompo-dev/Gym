@@ -12,7 +12,7 @@ const persist = (write: () => Promise<void>) => {
   return storageWrite;
 };
 type Status = 'offline' | 'waiting' | 'connecting' | 'connected' | 'error';
-export type ConnectionIssue = 'network' | 'wrongKey' | 'inUse' | 'invalidCode' | 'missingInvite' | 'upgradeRequired' | 'localPermission';
+export type ConnectionIssue = 'network' | 'wrongKey' | 'inUse' | 'invalidCode' | 'wrongInvite' | 'missingInvite' | 'upgradeRequired' | 'localPermission';
 interface State {
   connection: AgentConnection | null;
   status: Status;

@@ -7,6 +7,7 @@ import { request } from 'node:http';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { test } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { WebSocket } from 'ws';
 
 import { createBridge, derivePairingId, deriveToolToken, pairingCode, pairingLink } from '../gymnotes-connect.mjs';
@@ -94,7 +95,15 @@ test('missing app replies time out; disconnection clears advertised tools', asyn
   assert.equal((await response.json()).error, 'app-timeout');
   app.close();
   await once(app, 'close');
-  assert.deepEqual(await (await api('tools')).json(), { connected: false, tools: [] });
+  // The client close event can precede the server's close-frame processing.
+  const deadline = Date.now() + 1000;
+  let state;
+  do {
+    state = await (await api('tools')).json();
+    if (!state.connected) break;
+    await delay(5);
+  } while (Date.now() < deadline);
+  assert.deepEqual(state, { connected: false, tools: [] });
 });
 
 test('a second app cannot hijack an already paired session', async (t) => {

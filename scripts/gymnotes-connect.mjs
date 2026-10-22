@@ -110,7 +110,10 @@ export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs
     }
     if (!sameKey(req.headers.authorization, `Bearer ${toolToken}`)) return reply(401, { error: 'unauthorized' });
     if (req.url === '/api/v1/peer' && req.method === 'GET') return reply(200, { protocol: 2, discovery: advertise });
-    if (req.url === '/api/v1/tools' && req.method === 'GET') return reply(200, { connected: !!app, tools: catalog });
+    if (req.url === '/api/v1/tools' && req.method === 'GET') {
+      const connected = app?.readyState === WebSocket.OPEN;
+      return reply(200, { connected, tools: connected ? catalog : [] });
+    }
     if (req.url === '/api/v1/ping' && req.method === 'GET') {
       try { return reply(200, await requestApp({ type: 'ping' })); }
       catch { return reply(503, { error: 'app-offline' }); }

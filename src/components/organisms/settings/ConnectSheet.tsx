@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Crypto from 'expo-crypto';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, Platform, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppIcon } from '@/components/atoms/AppIcon';
 import { AppText } from '@/components/atoms/AppText';
@@ -17,7 +17,6 @@ import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
 
 import { SheetFrame } from '../SheetFrame';
 import { AgentAccountPanel } from './AgentAccountPanel';
-import { ProviderKeysForm } from './ApiKeysSheet';
 import { Toggle } from './primitives';
 
 function CopyField({ label, value, secret = false }: { label: string; value: string; secret?: boolean }) {
@@ -54,15 +53,18 @@ export function ConnectSheet({ onClose, nested }: {
   const status = useAgentConnectionStore((s) => s.status);
   const issue = useAgentConnectionStore((s) => s.issue);
   const [advanced, setAdvanced] = useState(false);
-  const [keysVisible, setKeysVisible] = useState(false);
+  const [accountVisible, setAccountVisible] = useState(false);
+  const [hydrated, setHydrated] = useState(Platform.OS === 'web');
   const [toolToken, setToolToken] = useState('');
   const [agent, setAgent] = useState<AgentId>('claude');
   const [customURL, setURL] = useState<string | null>(null);
-  const url = customURL ?? connection?.url ?? 'ws://127.0.0.1:3847/app';
-  const [token, setToken] = useState(connection?.token ?? '');
-  const [allowWrites, setAllowWrites] = useState(connection?.allowWrites ?? false);
+  const url = (advanced ? customURL : null) ?? connection?.url ?? 'ws://127.0.0.1:3847/app';
+  const [draftToken, setToken] = useState(connection?.token ?? '');
+  const token = !advanced && connection ? connection.token : draftToken;
+  const [draftWrites, setAllowWrites] = useState(connection?.allowWrites ?? false);
+  const allowWrites = !advanced && connection ? connection.allowWrites : draftWrites;
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<'connect.invalid' | 'connect.invalidCode' | 'common.error' | null>(null);
+  const [error, setError] = useState<'connect.invalid' | 'connect.invalidCode' | 'connect.wrongInvite' | 'connect.missingInvite' | 'common.error' | null>(null);
   const [prepared, setPrepared] = useState<{ signature: string; prompt: string } | null>(null);
   const [copiedPrompt, setCopiedPrompt] = useState('');
   const signature = JSON.stringify([agent, url, token, allowWrites, getLang()]);
@@ -78,23 +80,31 @@ export function ConnectSheet({ onClose, nested }: {
     return () => { mounted.current = false; if (copyTimer.current) clearTimeout(copyTimer.current); };
   }, []);
   useEffect(() => {
+    let active = true;
+    void useAgentConnectionStore.getState().hydrate().then(() => {
+      if (active) setHydrated(true);
+    }).catch(() => { if (active) setError('common.error'); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!hydrated) return;
     if (connection) return;
     let active = true;
     void Crypto.getRandomBytesAsync(32).then((bytes) => {
       if (active) setToken((current) => current || Array.from(bytes, (v) => v.toString(16).padStart(2, '0')).join(''));
     }).catch(() => { if (active) setError('common.error'); });
     return () => { active = false; };
-  }, [connection]);
+  }, [connection, hydrated]);
   useEffect(() => {
     let active = true;
-    if (!token) return;
+    if (!hydrated || !token) return;
     void (async () => {
       const grant = connectionSchema.parse({ url, token, allowWrites });
       const [ready, tools] = await Promise.all([buildAgentSetupPrompt(agent, grant, getLang()), toolTokenFor(token)]);
       if (active) { setPrepared({ signature, prompt: ready }); setToolToken(tools); }
     })().catch(() => {});
     return () => { active = false; };
-  }, [agent, url, token, allowWrites, signature]);
+  }, [agent, url, token, allowWrites, signature, hydrated]);
   const copyPrompt = async (): Promise<boolean> => {
     if (working.current || !prompt) return false;
     working.current = true; setBusy(true); setError(null);
@@ -105,6 +115,10 @@ export function ConnectSheet({ onClose, nested }: {
       if (Platform.OS === 'web') await Clipboard.setStringAsync(prompt);
       if (!current || current.url !== next.url || current.token !== next.token || current.allowWrites !== next.allowWrites) {
         await useAgentConnectionStore.getState().configure(next);
+      }
+      const saved = useAgentConnectionStore.getState().connection;
+      if (!saved || saved.token !== next.token || saved.url !== next.url || saved.allowWrites !== next.allowWrites) {
+        throw new Error('invite-replaced');
       }
       if (Platform.OS !== 'web') await Clipboard.setStringAsync(prompt);
       if (mounted.current) {
@@ -122,11 +136,15 @@ export function ConnectSheet({ onClose, nested }: {
     try {
       const code = await Clipboard.getStringAsync();
       const current = useAgentConnectionStore.getState().connection;
-      if (!current) throw new Error('connect.invalidCode');
+      if (!current) throw new Error('connect.missingInvite');
       const next = await importAgentConnection(code, current);
       await useAgentConnectionStore.getState().configure(next);
       if (mounted.current) { setURL(null); setToken(next.token); setAllowWrites(next.allowWrites); }
-    } catch { if (mounted.current) setError('connect.invalidCode'); }
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error &&
+        ['connect.invalidCode', 'connect.wrongInvite', 'connect.missingInvite'].includes(cause.message)
+        ? cause.message as 'connect.invalidCode' | 'connect.wrongInvite' | 'connect.missingInvite' : 'common.error');
+    }
     finally { working.current = false; if (mounted.current) setBusy(false); }
   };
   const changeWrites = async (value: boolean) => {
@@ -153,7 +171,8 @@ export function ConnectSheet({ onClose, nested }: {
     <View style={styles.content}>
       <AgentLogos />
       <View style={styles.status}>
-        <AppIcon name={status === 'connected' ? 'check' : 'circleDot'} color={status === 'connected' ? colors.success : colors.textTertiary} />
+        {status === 'waiting' || status === 'connecting' ? <ActivityIndicator color={colors.accent} /> :
+          <AppIcon name={status === 'connected' ? 'check' : 'circleDot'} color={status === 'connected' ? colors.success : colors.textTertiary} />}
         <AppText variant="secondary" style={styles.grow}>{t(`connect.${status}`)}</AppText>
       </View>
       {status === 'error' && issue ? <>
@@ -162,29 +181,33 @@ export function ConnectSheet({ onClose, nested }: {
           void useAgentConnectionStore.getState().configure(connection).catch(() => setError('common.error'));
         }} /> : null}
       </> : null}
-      <>
-        <AppText variant="heading" style={styles.heading}>{t('connect.choose')}</AppText>
-        <View style={styles.agents}>{AGENTS.map((item) => <LoggedPressable key={item.id}
+      <AppText variant="heading" style={styles.heading}>{t('connect.choose')}</AppText>
+      <View style={styles.agents}>{AGENTS.map((item) => <LoggedPressable key={item.id}
           accessibilityRole="radio" accessibilityState={{ checked: item.id === agent }} accessibilityLabel={item.label}
-          onPress={() => setAgent(item.id)}
+          disabled={busy}
+          onPress={() => { setAgent(item.id); setAccountVisible(false); }}
           style={[styles.agent, { borderColor: item.id === agent ? colors.accent : colors.border,
             backgroundColor: colors.backgroundElement }]}>
           <AgentLogo agent={item.id} size={32} /><AppText variant="secondary" style={styles.grow}>{item.label}</AppText>
         </LoggedPressable>)}</View>
-      </>
-      <SettingsRow title={t(copied ? 'connect.copied' : 'connect.copyPrompt')} icon={copied ? 'check' : 'copy'}
-        disabled={busy || !prompt} onPress={() => { void copyPrompt(); }} />
-      {error ? <AppText variant="secondary" color={colors.danger}>{t(error)}</AppText> : null}
-      {provider ? <AgentAccountPanel key={provider} provider={provider} onPrepare={copyPrompt} prepareDisabled={busy || !prompt} /> : null}
       <SettingsRow title={t('connect.writes')} trailing={<Toggle value={allowWrites} disabled={busy}
         onValueChange={(value) => { void changeWrites(value); }} label={t('connect.writes')} />} />
-      {connection ? <SettingsRow title={t('connect.disconnect')} icon="x" iconColor={colors.danger} disabled={busy} onPress={async () => {
-        try { await useAgentConnectionStore.getState().disconnect(); setToken(''); setAllowWrites(false); }
-        catch { setError('common.error'); }
-      }} /> : null}
-      <SettingsRow title={t('agent.keys')} icon="key" onPress={() => setKeysVisible((value) => !value)} />
-      {keysVisible ? <ProviderKeysForm /> : null}
-      <SettingsRow title={t('connect.details')} icon="sliders" onPress={() => setAdvanced((value) => !value)} />
+      <LoggedPressable accessibilityRole="button" accessibilityLabel={t(copied ? 'connect.copied' : 'connect.copyPrompt')}
+        accessibilityState={{ disabled: busy || !prompt }} disabled={busy || !prompt}
+        style={({ pressed }) => [styles.primary, { backgroundColor: colors.accent, opacity: pressed || busy || !prompt ? 0.6 : 1 }]}
+        onPress={() => { void copyPrompt(); }}>
+        {busy ? <ActivityIndicator color={colors.background} /> : <AppIcon name={copied ? 'check' : 'copy'} color={colors.background} size={22} />}
+        <AppText variant="label" color={colors.background} style={styles.primaryLabel}>{t(copied ? 'connect.copied' : 'connect.copyPrompt')}</AppText>
+      </LoggedPressable>
+      {error ? <AppText variant="secondary" color={colors.danger}>{t(error)}</AppText> : null}
+      {provider && status === 'connected' ? <>
+        <SettingsRow title={t('connect.accountModels')} icon="sparkles" onPress={() => setAccountVisible((value) => !value)} />
+        {accountVisible ? <AgentAccountPanel key={provider} provider={provider} onPrepare={async () => true} /> : null}
+      </> : null}
+      <SettingsRow title={t('connect.details')} icon="sliders" onPress={() => {
+        if (!advanced) { setToken(token); setAllowWrites(allowWrites); setURL(url); }
+        setAdvanced((value) => !value);
+      }} />
       {advanced ? <>
       <AppText variant="heading" style={styles.heading}>{t('connect.local')}</AppText>
       <SettingsRow title={t('connect.pasteConnection')} icon="clipboard" disabled={busy || !connection}
@@ -214,6 +237,10 @@ export function ConnectSheet({ onClose, nested }: {
       <AppText variant="caption" color={colors.textTertiary}>{t('connect.network')}</AppText>
         {connection && toolToken ? <CopyField label={t('connect.toolKey')} value={toolToken} secret /> : null}
         <CopyField label="REST" value={`${baseURL}/api/v1`} />
+      {connection ? <SettingsRow title={t('connect.disconnect')} icon="x" iconColor={colors.danger} disabled={busy} onPress={async () => {
+        try { await useAgentConnectionStore.getState().disconnect(); setToken(''); setAllowWrites(false); setAccountVisible(false); }
+        catch { setError('common.error'); }
+      }} /> : null}
       </> : null}
     </View>
   </SheetFrame>;
@@ -223,6 +250,8 @@ const styles = StyleSheet.create({
   content: { gap: Spacing.four, paddingBottom: Spacing.seven },
   heading: { fontSize: 21, letterSpacing: 0 },
   status: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, minHeight: 36 },
+  primary: { minHeight: 56, padding: Spacing.four, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.two },
+  primaryLabel: { flexShrink: 1, textAlign: 'center' },
   agents: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   agent: { flexBasis: '47%', flexGrow: 1, minWidth: 128, minHeight: 64, padding: Spacing.three,
     flexDirection: 'row', gap: Spacing.two, alignItems: 'center', borderWidth: 1, borderRadius: 8 },

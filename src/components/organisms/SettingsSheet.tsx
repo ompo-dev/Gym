@@ -693,6 +693,13 @@ export function SettingsSheet({ visible, domain }: SettingsSheetProps) {
           trailing={<Chevron />}
           onPress={() => openAppModal({ id: 'settings.connect', domain })}
         />
+        <Divider />
+        <SettingsRow
+          title={t("settings.connect.api")}
+          icon="key"
+          trailing={<Chevron />}
+          onPress={() => openAppModal({ id: "settings.apiKeys", domain })}
+        />
       </Section>
 
       <Section label="Developer">

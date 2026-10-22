@@ -4,10 +4,10 @@ import { z } from 'zod';
 import { connectionSchema, type AgentConnection } from './protocol';
 
 const PREFIX = 'gymnotes-connect:v1:';
-const payloadSchema = z.object({ url: z.string().max(300), pairingId: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
-const digest = (purpose: string, token: string) => Crypto.digestStringAsync(
+const payloadSchema = z.object({ url: z.string().max(300), pairingId: z.string().regex(/^[a-f0-9]{64}$/i).transform((id) => id.toLowerCase()) }).strict();
+const digest = async (purpose: string, token: string) => (await Crypto.digestStringAsync(
   Crypto.CryptoDigestAlgorithm.SHA256, `gymnotes-${purpose}-v1:${token}`,
-);
+)).toLowerCase();
 
 export const toolTokenFor = (token: string) => digest('tools', token);
 export const pairingIdFor = (token: string) => digest('pairing', token);
@@ -39,17 +39,18 @@ export async function importAgentConnection(code: string, current: AgentConnecti
   const text = code.trim();
   if (text.length > 20_000) throw new Error('connect.invalidCode');
   const id = await pairingIdFor(current.token);
-  const candidates = [text, ...(text.match(/gymnotes-connect:v1:\{[^\r\n]{1,1100}\}(?=\s|`|$)|(?:gym|https?):\/\/[^\s<>"'`()]+/g) ?? [])];
+  const candidates = [text, ...(text.match(/gymnotes-connect:v1:\s*\{[^{}]{1,1100}\}(?=\s|`|$)|(?:gym|https?):\/\/[^\s<>"'`()]+/g) ?? [])];
   const matches = new Map<string, AgentConnection>();
+  let wrongInvite = false;
   for (const candidate of new Set(candidates)) {
     try {
       const payload = candidate.startsWith(PREFIX) ? payloadSchema.parse(JSON.parse(candidate.slice(PREFIX.length))) : readConnectionLink(candidate);
-      if (payload.pairingId !== id) continue;
       const next = connectionSchema.parse({ ...current, url: payload.url });
+      if (payload.pairingId !== id) { wrongInvite = true; continue; }
       matches.set(next.url, next);
     } catch { /* Ignore surrounding chat text, never an invalid connection. */ }
   }
-  if (matches.size !== 1) throw new Error('connect.invalidCode');
+  if (matches.size !== 1) throw new Error(matches.size === 0 && wrongInvite ? 'connect.wrongInvite' : 'connect.invalidCode');
   return [...matches.values()][0];
 }
 
@@ -62,9 +63,9 @@ export async function buildAgentSetupPrompt(agent: string, connection: AgentConn
         : 'Claude Desktop or another local MCP client: merge mcpServers.gymnotes in its supported configuration.';
   return [
     language === 'pt-BR' ? `Conecte meu GymNotes ao ${agent}. Faca a configuracao. Responda em portugues.` : `Connect my GymNotes to ${agent} and complete the setup for me.`,
-    'Use a local computer agent, not a cloud-only chat. Reuse or clone https://github.com/ompo-dev/Gym.git without overwriting existing changes; install dependencies if missing. Start `npm run connect -- --setup` in the background with this variable in the process environment only:',
+    'Complete the setup yourself using local execution. Do not ask me to edit paths, keys or commands. A cloud-only ChatGPT/Claude chat cannot reach this private peer or use a local MCP config: explain that limitation instead of claiming success or inventing an OAuth connection. Reuse or clone https://github.com/ompo-dev/Gym.git without overwriting existing changes; use Node.js 22+ and npm ci if dependencies are missing. Start `npm run connect -- --setup` in the background with this variable in the process environment only:',
     `GYMNOTES_PAIRING_TOKEN=${connection.token}`,
-    'Windows setup requests administrator consent for GymNotes-only LocalSubnet rules: TCP 3847 for the peer and UDP 5353 for local discovery, without disabling rules or changing network profiles. Do not bypass a declined consent, expose public ports or tunnels, print/commit keys, or kill an unrelated process. If a matching protocol-2 bridge is already running, reuse it.',
+    'Windows setup requests administrator consent for GymNotes-only LocalSubnet rules: TCP 3847 for the peer and UDP 5353 for local discovery, without disabling rules or changing network profiles. Do not bypass a declined consent, expose public ports or tunnels, print/commit keys, or kill an unrelated process. If a matching protocol-2 bridge is already running, reuse it. If port 3847 belongs to an older GymNotes invitation, first verify its executable and script belong to this checkout and authenticate it with the previous locally stored tools key; replace only that verified companion. Otherwise report the conflict.',
     'Configure the local MCP server gymnotes: command=node; args=[resolve the checkout absolute scripts/gymnotes-connect.mjs path,"--mcp"]. Keep all other settings.',
     config,
     `MCP environment: GYMNOTES_CONNECT_TOKEN=${tools}; GYMNOTES_CONNECT_URL=http://127.0.0.1:3847`,

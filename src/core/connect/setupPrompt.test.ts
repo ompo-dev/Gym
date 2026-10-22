@@ -62,6 +62,20 @@ test('phone links cannot add credentials, public destinations or ambiguous addre
   }
 });
 
+test('formatted public codes and uppercase fingerprints still identify the same invitation', async () => {
+  const id = await pairingIdFor(connection.token);
+  const payload = { url: 'ws://192.168.1.10:3847/app', pairingId: id.toUpperCase() };
+  const text = `Pronto!\n\x60\x60\x60\ngymnotes-connect:v1:\n${JSON.stringify(payload, null, 2)}\n\x60\x60\x60\n`;
+  expect(await importAgentConnection(text, connection)).toEqual({ ...connection, url: payload.url });
+});
+
+test('a valid local link for another invitation is distinguished from a malformed code', async () => {
+  await expect(importAgentConnection(code('ws://192.168.1.10:3847/app', 'b'.repeat(64)), connection))
+    .rejects.toThrow('connect.wrongInvite');
+  await expect(importAgentConnection(code('ws://public.example/app', 'b'.repeat(64)), connection))
+    .rejects.toThrow('connect.invalidCode');
+});
+
 test('setup explicitly verifies an app round trip without reading health data', async () => {
   const prompt = await buildAgentSetupPrompt('codex', connection, 'pt-BR');
   expect(prompt).toContain('npm run connect -- --setup');

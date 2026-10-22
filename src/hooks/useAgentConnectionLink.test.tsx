@@ -37,10 +37,10 @@ test('does not duplicate an already open connection modal', async () => {
   expect(useAppModalStore.getState().stack).toEqual(stack);
 });
 
-test.each(['connect.missingInvite', 'connect.invalidCode'])('shows a useful error for %s without granting access', async (error) => {
-  jest.mocked(openAgentConnection).mockRejectedValue(new Error(error));
+test.each(['missingInvite', 'invalidCode', 'wrongInvite'])('shows a useful error for %s without granting access', async (error) => {
+  jest.mocked(openAgentConnection).mockRejectedValue(new Error(`connect.${error}`));
   await renderHook(() => useAgentConnectionLink(true));
-  expect(useAgentConnectionStore.getState().issue).toBe(error === 'connect.missingInvite' ? 'missingInvite' : 'invalidCode');
+  expect(useAgentConnectionStore.getState().issue).toBe(error);
   expect(useAgentConnectionStore.getState().connection).toBeNull();
   expect(useAppModalStore.getState().stack.at(-1)?.id).toBe('settings.connect');
 });
