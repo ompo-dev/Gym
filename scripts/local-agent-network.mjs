@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url';
 
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
+export function networkSetupEnvironment(source = process.env) {
+  // Windows PowerShell must rebuild its own module path, not inherit PowerShell 7's.
+  const excluded = new Set(['PSMODULEPATH', 'GYMNOTES_PAIRING_TOKEN', 'GYMNOTES_CONNECT_TOKEN']);
+  return Object.fromEntries(Object.entries(source).filter(([key]) => !excluded.has(key.toUpperCase())));
+}
+
 /** A dedicated signed runtime lets the firewall grant only GymNotes, never all Node apps. */
 export async function prepareLocalAgentNetwork() {
   if (process.platform !== 'win32') return process.execPath;
@@ -21,7 +27,7 @@ export async function prepareLocalAgentNetwork() {
   const script = join(dirname(fileURLToPath(import.meta.url)), 'install-local-agent-network.ps1');
   await new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', script, '-RuntimePath', runtime], {
-      windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
+      env: networkSetupEnvironment(), windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
     });
     child.stderr.resume();
     child.once('error', () => reject(new Error('connect.networkSetupFailed')));

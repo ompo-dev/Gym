@@ -14,7 +14,8 @@ if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notm
 }
 
 # Private local destinations plus LocalSubnet sources survive DHCP address changes.
-$addresses = @('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')
+# Match the dotted netmasks returned by Windows so repeated setup needs no elevation.
+$addresses = @('10.0.0.0/255.0.0.0', '172.16.0.0/255.240.0.0', '192.168.0.0/255.255.0.0')
 
 $specs = @(
   @{ Name = 'GymNotes.LocalAgent.LocalSubnet'; Protocol = 'TCP'; Port = '3847'; Addresses = $addresses },
