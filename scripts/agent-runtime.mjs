@@ -55,7 +55,7 @@ async function spawnAgent(provider) {
   env.CLAUDE_CONFIG_DIR = home;
   env.GEMINI_CLI_HOME = home;
   env.INITIAL_AGENT_MODE = 'read-only';
-  env.CODEX_CONFIG = JSON.stringify({ approval_policy: 'untrusted', sandbox_mode: 'read-only', features: { shell_tool: false } });
+  env.CODEX_CONFIG = JSON.stringify({ approval_policy: 'on-request', sandbox_mode: 'read-only', features: { shell_tool: false } });
   const args = [...AGENT_PACKAGES[provider].args];
   if (provider === 'gemini') {
     const policy = join(cwd, 'no-tools.toml');
