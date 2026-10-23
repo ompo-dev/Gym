@@ -2,14 +2,26 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { View as MockView } from 'react-native';
 
 import { DayScrollFrame } from './DayScrollFrameFallback';
+import { DayScrollFrame as IOSDayScrollFrame } from './DayScrollFrame.ios';
 
 jest.mock('expo-blur', () => ({ BlurTargetView: MockView }));
 jest.mock('@/components/atoms/SoftEdgeBlur', () => ({ SoftEdgeBlur: () => null }));
+jest.mock('react-native-scroll-edge-bar', () => ({
+  ScrollEdgeBar: () => { throw new Error('The native BottomBar must not own the totals or the background edge'); },
+}));
 const mockFrame = { x: 0, y: 0, width: 400, height: 800 };
 const mockWindow = { width: 400, height: 800, scale: 2, fontScale: 1 };
-jest.mock('react-native', () => new Proxy(jest.requireActual('react-native'), {
-  get: (target, key) => key === 'useWindowDimensions' ? () => mockWindow : Reflect.get(target, key),
-}));
+jest.mock('react-native', () => {
+  const native = jest.requireActual('react-native');
+  const platform = { ...native.Platform, OS: 'ios', Version: 26 };
+  const manager = new Proxy(native.UIManager, {
+    get: (target, key) => key === 'hasViewManagerConfig' ? () => true : Reflect.get(target, key),
+  });
+  return new Proxy(native, {
+    get: (target, key) => key === 'useWindowDimensions' ? () => mockWindow
+      : key === 'Platform' ? platform : key === 'UIManager' ? manager : Reflect.get(target, key),
+  });
+});
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: MockView,
   useSafeAreaInsets: () => ({ top: 59, bottom: 34, left: 0, right: 0 }),
@@ -19,6 +31,20 @@ jest.mock('react-native-safe-area-context', () => ({
 beforeEach(() => {
   mockFrame.y = 0;
   mockFrame.height = 800;
+});
+
+test('iOS 26 uses the same screen-anchored edges even when the native bar module is installed', async () => {
+  mockFrame.height = 750;
+  const screen = await render(<IOSDayScrollFrame
+    header={<MockView testID="header" />}
+    footer={<MockView testID="footer" />}
+    bottomEdgeHeight={54}
+  >{() => <MockView />}</IOSDayScrollFrame>);
+  expect(screen.getByTestId('day-scroll-frame')).toHaveStyle({ height: 800 });
+  expect(screen.getByTestId('day-bottom-edge')).toHaveStyle({ bottom: 0, height: 54 });
+  await fireEvent(screen.getByTestId('footer'), 'layout', { nativeEvent: { layout: { height: 410 } } });
+  expect(screen.getByTestId('day-bottom-edge')).toHaveStyle({ bottom: 0, height: 54 });
+  expect(screen.getByTestId('header')).toBeTruthy();
 });
 
 test('the bottom edge stays fixed below the totals when their panel expands', async () => {
