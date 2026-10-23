@@ -35,6 +35,7 @@ import type { DomainConfig } from '@/domains/types';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 import { useAppStore } from '@/store/useAppStore';
+import { useAppModalStore } from '@/store/useAppModalStore';
 
 interface NoteRowProps<TData, TTotals> {
   entry: Entry;
@@ -149,6 +150,12 @@ function StatusBadge<TData, TTotals>({
   if (entry.status === 'thinking') return <ThinkingIndicator label={t('status.thinking')} />;
   if (entry.status === 'queued') return <ThinkingIndicator label={t('status.queued')} />;
   if (entry.status === 'error') {
+    if (entry.error === 'agent.authRequired') {
+      return <LoggedPressable onPress={() => useAppModalStore.getState().openAppModal({ id: 'settings.connect', domain: entry.domain })}
+        hitSlop={10} accessibilityRole="button" accessibilityLabel={t('agent.authRequired')}>
+        <AppText variant="label" color={colors.danger}>{t('status.signIn')}</AppText>
+      </LoggedPressable>;
+    }
     // Nothing to retry against: there is no proxy to reach and no key to send.
     // Offering "try again" here is a loop the user cannot win — the fix lives
     // in Settings, so say that instead.
@@ -159,10 +166,8 @@ function StatusBadge<TData, TTotals>({
         </AppText>
       );
     }
-    // Retry re-enriches from `text` only, so offering it on an entry with
-    // photos/barcode would quietly rebuild the meal without them. Show the
-    // failed state, no affordance — the user re-adds it.
-    if (entry.media?.length) {
+    // Barcode nutrition has its own import flow; photos retain their original source.
+    if (entry.media?.some((media) => media.kind === 'barcode')) {
       return (
         <AppText variant="label" color={colors.danger}>
           {t('status.failed')}

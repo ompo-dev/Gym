@@ -27,3 +27,25 @@ export function advertisePeer(token, port, factory = createBonjour, interfaces =
   } catch (error) { for (const peer of peers) peer.destroy(); throw error; }
   return () => { for (const peer of peers) peer.destroy(); };
 }
+
+/** Sign-in can precede Wi-Fi readiness; refresh discovery after DHCP/network changes. */
+export function watchPeerDiscovery(token, port, factory, readInterfaces = networkInterfaces, every = setInterval) {
+  let previous;
+  let stop;
+  const refresh = () => {
+    const interfaces = readInterfaces();
+    const next = JSON.stringify(Object.values(interfaces).flatMap((values) => values ?? [])
+      .filter((value) => value.family === 'IPv4').map((value) => value.address).sort());
+    if (next === previous) return;
+    stop?.(); stop = undefined;
+    try { stop = advertisePeer(token, port, factory, interfaces); previous = next; }
+    catch (error) {
+      if (error.message === 'connect.noLAN') previous = next;
+      console.error('GymNotes: aguardando rede local para anunciar a conexao.');
+    }
+  };
+  refresh();
+  const timer = every(refresh, 5000);
+  timer.unref?.();
+  return () => { clearInterval(timer); stop?.(); };
+}

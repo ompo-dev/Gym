@@ -3,7 +3,10 @@
 Nao ha um backend hospedado para esta integracao. O app mantem uma conexao
 WebSocket de saida com uma ponte Node.js no computador do usuario. A ponte
 oferece REST local; o adaptador MCP stdio usa o SDK oficial do protocolo.
-A ponte nao grava o diario nem recebe tokens de login. Os agentes podem manter
+A ponte nao replica o diario. Pedidos de escrita pendentes e recibos recentes ficam
+em uma fila local criptografada em `~/.gymnotes/queue`, separada por pareamento.
+No Windows, a configuracao de inicializacao fica protegida com DPAPI do usuario.
+Os agentes podem manter
 credenciais e historico em seus perfis locais isolados, sujeitos ao provedor.
 
 ## Parear
@@ -14,10 +17,9 @@ credenciais e historico em seus perfis locais isolados, sujeitos ao provedor.
 3. O prompt ja contem o pareamento, a chave separada das ferramentas, o repositorio
    e o formato do cliente. O agente resolve o caminho absoluto e inicia a ponte,
    sem exigir que o usuario edite chaves, comandos ou arquivos de configuracao.
-4. No web do mesmo computador, o app ja tenta conectar ao localhost. No telefone,
-   copie a linha `gymnotes-connect:v1:...` devolvida pelo agente e toque em
-   **Colar conexao do agente**. O codigo publico tem apenas endereco e fingerprint;
-   o app confere o pareamento e preserva a chave e as permissoes locais.
+4. No web do mesmo computador, o app conecta ao localhost. No telefone com build
+   1.0.3+, a descoberta local procura `_gymnotes._tcp`. Basta voltar ao GymNotes.
+   O link privado `/connect` continua sendo um fallback quando Bonjour nao esta disponivel.
 5. Somente leitura e o padrao. Ativar **Permitir criar notas** reaplica a conexao
    com a nova permissao. Desativar revoga as escritas na sessao anterior.
 
@@ -43,7 +45,11 @@ no web, somente na memoria da sessao. Chaves de IA sao independentes.
 
 ## MCP local
 
-Mantenha a ponte acima aberta. Em um cliente MCP stdio, configure:
+No Windows, `--setup` instala um processo oculto do usuario e o inicia com o login
+no Windows. Nao e preciso deixar terminal, Codex ou Claude abertos. O adaptador MCP
+tambem tenta iniciar o processo instalado se ele estiver parado. Em outros sistemas,
+o setup inicia um processo independente, mas nao instala inicializacao automatica.
+Em um cliente MCP stdio, configure:
 
 ```json
 {
@@ -79,9 +85,14 @@ Autenticacao: `Authorization: Bearer CHAVE_DAS_FERRAMENTAS`.
 - `addEntries` passa pela validacao, enriquecimento e desfazer do proprio app.
   O retorno confirma o registro, nao o termino da IA. Consulte o diario depois.
 - Planos nao marcados aparecem identificados no diario mas nao nos totais.
-- `requestId` opcional permite repetir uma chamada com o mesmo ID sem duplicar
-  a escrita entre as ultimas 100 chamadas da sessao do app. Nao repita automaticamente apos
-  timeout/desconexao: a primeira escrita pode ter acontecido.
+- `GET /api/v1/queue` informa quantos pedidos ainda estao pendentes, sem seu conteudo.
+- Apos a primeira permissao autenticada, `addEntries` pode aceitar ate 100 pedidos
+  offline. `queued: true` confirma a fila no computador, nao o registro no telefone.
+  Leituras nunca sao atendidas de um diario em cache. Datas omitidas sao fixadas no
+  dia de aceitacao, usando o ultimo fuso horario informado pelo telefone.
+- `requestId` identifica uma entrega. A fila e os recibos do app evitam repetir uma
+  escrita ja confirmada apos reconexao. Se o app morrer entre iniciar e confirmar
+  uma escrita, a entrega fica pendente em vez de arriscar criar duplicatas.
 - Payloads, tempo de resposta, sessoes e chamadas pendentes sao limitados.
   O app e a ponte validam as chamadas independentemente.
 

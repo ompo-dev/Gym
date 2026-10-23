@@ -107,6 +107,7 @@ export const APP_MODAL_LINKS: Partial<
 > = {
   "day.root": [
     "settings.root",
+    "settings.connect",
     // Reachable straight from a purchase note's badge, not only from Settings:
     // the note IS what stocked the fridge, so making the user go around
     // through Settings to see the result was the long way to its own effect.

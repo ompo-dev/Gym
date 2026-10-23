@@ -10,6 +10,7 @@ import { requestAgent, type AgentProvider, type AgentRequest } from '@/core/conn
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
+import { bus } from '@/core/command/bus';
 import { agentStateSchema, useAgentSettingsStore, type AgentPurpose, type AgentState } from '@/store/useAgentSettingsStore';
 
 function AgentOption({ option, disabled, onChange }: {
@@ -75,6 +76,7 @@ export function AgentAccountPanel({ provider, onPrepare, prepareDisabled = false
       if (action === 'logout' && !controller.signal.aborted) await useAgentSettingsStore.getState().unbind(provider);
       if (!controller.signal.aborted && mounted.current) {
         await useAgentSettingsStore.getState().configureAccount(next, action === 'setOption');
+        if (next.authenticated && (login || action === 'authenticate')) void bus.resumePending().catch(() => {});
         if (!controller.signal.aborted && mounted.current) setState(next);
       }
     } catch (e) {

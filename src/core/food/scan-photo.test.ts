@@ -25,8 +25,9 @@ afterEach(() => { rpc?.close(); rpc = undefined; global.fetch = originalFetch; u
 test('segmentation uses the connected vision agent before an image API key and validates its contours', async () => {
   await useAgentSettingsStore.getState().bind('vision', { provider: 'gemini', choices: { model: 'vision-model' } });
   const send = jest.fn((message: unknown) => {
-    const event = message as { type: string; id: string };
-    if (event.type === 'agent.request') queueMicrotask(() => rpc?.receive({ type: 'agent.result', id: event.id, ok: true, data: { json: { items } } }));
+    const event = message as { type: string; id: string; request: { action: string } };
+    if (event.type === 'agent.request') queueMicrotask(() => rpc?.receive({ type: 'agent.result', id: event.id, ok: true,
+      data: event.request.action === 'inspect' ? { authenticated: true, imageSupported: true } : { json: { items } } }));
   });
   rpc = bindAgentRPC(send);
   expect(await scanFoodPhoto(photo, 'pt-BR', new AbortController().signal)).toMatchObject([{ label: 'Cafe' }]);
@@ -48,8 +49,10 @@ test.each(['own', 'agent'] as const)('an offline vision agent uses the saved ima
 test('a failed vision request does not silently bill an image API key', async () => {
   await useAgentSettingsStore.getState().bind('vision', { provider: 'gemini', choices: {} });
   rpc = bindAgentRPC((message) => {
-    const event = message as { type: string; id: string };
-    if (event.type === 'agent.request') queueMicrotask(() => rpc?.receive({ type: 'agent.result', id: event.id, ok: false, error: 'agent.noVision' }));
+    const event = message as { type: string; id: string; request: { action: string } };
+    if (event.type === 'agent.request') queueMicrotask(() => rpc?.receive(event.request.action === 'inspect'
+      ? { type: 'agent.result', id: event.id, ok: true, data: { authenticated: true, imageSupported: true } }
+      : { type: 'agent.result', id: event.id, ok: false, error: 'agent.noVision' }));
   });
   await expect(scanFoodPhoto(photo, 'pt-BR', new AbortController().signal)).rejects.toThrow('agent.noVision');
   expect(global.fetch).not.toHaveBeenCalled();

@@ -9,6 +9,7 @@ import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
 import { useAgentConnection } from './useAgentConnection';
 
 jest.mock('@/core/tools/appTools', () => ({ appToolDeps: {} }));
+jest.mock('@/core/command/bus', () => ({ bus: { resumePending: jest.fn(async () => 0) } }));
 jest.mock('@/core/connect/session', () => ({ createAgentSession: jest.fn() }));
 jest.mock('@/core/connect/agentRPC', () => ({ bindAgentRPC: jest.fn() }));
 jest.mock('@/core/connect/peerDiscovery', () => ({ startPeerDiscovery: jest.fn(() => jest.fn()) }));

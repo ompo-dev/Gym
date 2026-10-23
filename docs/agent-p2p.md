@@ -28,6 +28,12 @@ their computer's loopback companion; browser tabs cannot browse Bonjour.
   Neither verification reads the diary or runs paid inference.
 - A known live peer is not replaced when setup runs again. Unrelated processes
   and MCP configurations must be preserved.
+- Windows setup installs a hidden current-user launcher at sign-in. Its configuration
+  uses DPAPI; pairing secrets are child-process environment variables, not arguments.
+  A verified, authenticated older companion can be upgraded; unrelated listeners cannot.
+- Pending writes use an AES-GCM local queue, capped at 100 outstanding requests.
+  The last authenticated catalog must grant writes before offline commands are accepted.
+  Reconnection revalidates that permission. `queued=true` is not a delivery receipt.
 
 ## Boundaries
 
@@ -35,6 +41,9 @@ their computer's loopback companion; browser tabs cannot browse Bonjour.
   module and Bonjour permissions cannot be added to 1.0.2 by OTA.
 - Keep the app in the foreground and both devices on the same trusted LAN.
   Cloud-only chats without local execution cannot use this local transport.
+- With the phone suspended or force-closed, commands remain on the computer and
+  replay when GymNotes reconnects. iOS scheduling is opportunistic, not an always-on socket.
+  A powered-off computer cannot receive new local requests. Saved requests survive its restart.
 - HMAC authenticates the peers; the local WebSocket is not a TLS channel.
   Do not expose this transport to public networks or tunnels.
 - Discovery publishes only a fingerprint and protocol version, never the master

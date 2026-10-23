@@ -2,8 +2,8 @@ import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from
 import { Buffer } from 'node:buffer';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { networkInterfaces } from 'node:os';
-import { resolve } from 'node:path';
+import { homedir, networkInterfaces } from 'node:os';
+import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -11,7 +11,9 @@ import { z } from 'zod';
 import { spawn } from 'node:child_process';
 import { agentRequestSchema, createAgentManager } from './agent-runtime.mjs';
 import { prepareLocalAgentNetwork } from './local-agent-network.mjs';
-import { advertisePeer } from './peer-discovery.mjs';
+import { watchPeerDiscovery } from './peer-discovery.mjs';
+import { createCompanionQueue } from './companion-queue.mjs';
+import { installCompanion, startInstalledCompanion } from './companion-service.mjs';
 
 const MAX_BODY = 262_144;
 const keySchema = z.string().regex(/^[a-f0-9]{64}$/i);
@@ -31,6 +33,7 @@ const callSchema = z.object({ name: z.string().min(1).max(80),
   arguments: z.record(z.string(), z.unknown()).default({}), requestId: z.string().min(1).max(100).optional() });
 const helloSchema = z.object({ type: z.literal('hello'), token: keySchema.optional(),
   nonce: keySchema.optional(), proof: keySchema.optional(),
+  timeZone: z.string().max(100).optional(),
   tools: z.array(z.object({ name: z.string().max(80), description: z.string().max(2000),
     parameters: z.record(z.string(), z.unknown()) })).max(30) });
 
@@ -42,7 +45,7 @@ function sameKey(a, b) {
 }
 
 /** Tool forwarding keeps the diary in the app; OAuth credentials stay with the agents. */
-export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs = 30_000, agentFactory, advertise = false, discoveryFactory }) {
+export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs = 30_000, agentFactory, advertise = false, discoveryFactory, queuePath, backgroundManaged = false }) {
   keySchema.parse(token);
   const toolToken = deriveToolToken(token);
   const hosts = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -52,9 +55,18 @@ export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs
   let app = null;
   let catalog = [];
   const pending = new Map();
+  const agents = createAgentManager({ factory: agentFactory });
+  const queue = queuePath ? createCompanionQueue({ path: queuePath, token }) : null;
+  const deliveries = new Map();
+  let flushing = false;
+  let closing = false;
+  let retryDelivery;
   let stopDiscovery;
   const allowed = (request) => {
     try {
+      for (const addresses of Object.values(networkInterfaces())) {
+        for (const address of addresses ?? []) if (address.family === 'IPv4') hosts.add(address.address);
+      }
       const hostURL = new URL(`http://${request.headers.host}`);
       if (!hosts.has(hostURL.hostname) || hostURL.username || hostURL.password || hostURL.pathname !== '/' || hostURL.search || hostURL.hash) return false;
       const origin = request.headers.origin;
@@ -73,8 +85,52 @@ export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs
       app.send(JSON.stringify({ ...payload, id }));
     });
   };
-  const invoke = (raw) => {
+  const queuedResult = (id) => ({ ok: true, queued: true, requestId: id,
+    message: 'Saved in the encrypted local queue. Not yet delivered to GymNotes; it will be sent when the app reconnects.' });
+  const deliver = (item) => {
+    if (deliveries.has(item.id)) return deliveries.get(item.id);
+    const operation = (async () => {
+      if (!app || app.readyState !== WebSocket.OPEN) return queuedResult(item.id);
+      if (!catalog.some((tool) => tool.name === 'addEntries')) {
+        const result = { ok: false, error: 'connect.readOnly' };
+        await queue.settle(item.id, result);
+        return result;
+      }
+      try {
+        const result = await requestApp({ type: 'call', name: 'addEntries', arguments: item.arguments }, item.id);
+        if (['connect.disconnected', 'connect.deliveryPending', 'connect.busy'].includes(result?.error)) return queuedResult(item.id);
+        await queue.settle(item.id, result);
+        return result;
+      } catch { return queuedResult(item.id); }
+    })().finally(() => deliveries.delete(item.id));
+    deliveries.set(item.id, operation);
+    return operation;
+  };
+  const flush = async () => {
+    if (!queue || flushing || closing) return;
+    flushing = true;
+    try {
+      for (const item of queue.pending()) {
+        if (closing || !app || app.readyState !== WebSocket.OPEN) break;
+        if ((await deliver(item)).queued) break;
+      }
+    } catch { console.error('GymNotes: fila local aguardando nova tentativa.'); }
+    finally {
+      flushing = false;
+      if (!closing && queue.count() && app?.readyState === WebSocket.OPEN) {
+        clearTimeout(retryDelivery);
+        retryDelivery = setTimeout(() => { void flush(); }, 5000);
+        retryDelivery.unref();
+      }
+    }
+  };
+  const invoke = async (raw) => {
     const call = callSchema.parse(raw);
+    if (queue && call.name === 'addEntries') {
+      const item = await queue.enqueue(call.requestId ?? randomUUID(), call.arguments);
+      if (item.status !== 'pending') return item.result;
+      return deliver(item);
+    }
     if (!app || app.readyState !== WebSocket.OPEN) throw new Error('app-offline');
     if (!catalog.some((tool) => tool.name === call.name)) throw new Error('tool-unavailable');
     return requestApp({ type: 'call', name: call.name, arguments: call.arguments }, call.requestId);
@@ -109,11 +165,12 @@ export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs
       return;
     }
     if (!sameKey(req.headers.authorization, `Bearer ${toolToken}`)) return reply(401, { error: 'unauthorized' });
-    if (req.url === '/api/v1/peer' && req.method === 'GET') return reply(200, { protocol: 2, discovery: advertise });
+    if (req.url === '/api/v1/peer' && req.method === 'GET') return reply(200, { protocol: 2, discovery: advertise, durableQueue: !!queue, backgroundManaged });
     if (req.url === '/api/v1/tools' && req.method === 'GET') {
       const connected = app?.readyState === WebSocket.OPEN;
-      return reply(200, { connected, tools: connected ? catalog : [] });
+      return reply(200, { connected, tools: connected ? catalog : queue?.catalog().filter((tool) => tool.name === 'addEntries') ?? [] });
     }
+    if (req.url === '/api/v1/queue' && req.method === 'GET') return reply(200, { pending: queue?.count() ?? 0 });
     if (req.url === '/api/v1/ping' && req.method === 'GET') {
       try { return reply(200, await requestApp({ type: 'ping' })); }
       catch { return reply(503, { error: 'app-offline' }); }
@@ -132,7 +189,7 @@ export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs
       if (!call.success) return reply(400, { error: 'invalid-request' });
       return reply(200, await invoke(call.data));
     } catch (error) {
-      const known = ['app-offline', 'tool-unavailable', 'busy', 'app-timeout', 'request-in-progress'];
+      const known = ['app-offline', 'tool-unavailable', 'busy', 'app-timeout', 'request-in-progress', 'request-conflict', 'queue-full', 'queue-corrupt'];
       const reason = known.includes(error.message) ? error.message : 'invalid-request';
       return reply(reason === 'invalid-request' ? 400 : 503, { error: reason });
     }
@@ -149,7 +206,6 @@ export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs
     const nonce = randomBytes(32).toString('hex');
     let clientNonce = null;
     const proof = (side) => createHmac('sha256', Buffer.from(token, 'hex')).update(`gymnotes-${side}-v2:${clientNonce}:${nonce}`).digest('hex');
-    const agents = createAgentManager({ factory: agentFactory });
     const agentCalls = new Map();
     let alive = true;
     const authTimer = setTimeout(() => client.close(1008), 5000);
@@ -159,7 +215,7 @@ export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs
       alive = false;
       client.ping();
     }, 15_000);
-    client.on('message', (bytes) => {
+    client.on('message', async (bytes) => {
       try {
         const message = JSON.parse(bytes.toString());
         if (!authenticated) {
@@ -177,7 +233,9 @@ export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs
           authenticated = true;
           app = client;
           catalog = hello.data.tools;
+          if (queue) await queue.remember(catalog, hello.data.timeZone);
           client.send(JSON.stringify({ type: 'ready' }));
+          void flush();
           return;
         }
         if (message.type === 'agent.cancel') { agentCalls.get(message.id)?.controller.abort(); return; }
@@ -214,7 +272,6 @@ export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs
       clearInterval(heartbeat);
       for (const call of agentCalls.values()) call.controller.abort();
       agentCalls.clear();
-      void agents.close();
       if (app !== client) return;
       app = null;
       catalog = [];
@@ -227,20 +284,23 @@ export function createBridge({ token, host = '127.0.0.1', port = 3847, timeoutMs
   });
   return {
     server,
-    start: () => new Promise((resolve, reject) => {
+    start: async () => { await queue?.ready; return new Promise((resolve, reject) => {
       server.once('error', reject);
       server.listen(port, host, () => {
         if (advertise) {
-          try { stopDiscovery = advertisePeer(token, server.address().port, discoveryFactory); }
+          try { stopDiscovery = watchPeerDiscovery(token, server.address().port, discoveryFactory); }
           catch { console.error('GymNotes: descoberta local indisponivel.'); }
         }
         resolve(server.address());
       });
-    }),
+    }); },
     close: async () => {
+      closing = true;
+      clearTimeout(retryDelivery);
       stopDiscovery?.();
       for (const client of ws.clients) client.terminate();
       ws.close();
+      await agents.close();
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
     },
@@ -254,7 +314,23 @@ async function serveMCP(token, endpoint) {
   if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.protocol !== 'http:' || url.username || url.password) {
     throw new Error('MCP bridge must be on localhost.');
   }
+  let lastStart = 0;
   const api = async (path, body) => {
+    if (url.port === '3847' && Date.now() - lastStart > 15_000) {
+      lastStart = Date.now();
+      try {
+        await fetch(new URL('/api/v1/peer', url), { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(1000) });
+      } catch {
+        if (await startInstalledCompanion()) {
+          for (let attempt = 0; attempt < 20; attempt++) {
+            try {
+              await fetch(new URL('/api/v1/peer', url), { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500), redirect: 'error' });
+              break;
+            } catch { await new Promise((resolve) => setTimeout(resolve, 250)); }
+          }
+        }
+      }
+    }
     const response = await fetch(new URL(`/api/v1/${path}`, url), {
       method: body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(35_000),
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -265,9 +341,11 @@ async function serveMCP(token, endpoint) {
   };
   const server = new Server({ name: 'gymnotes', version: '1.0.0' }, { capabilities: { tools: { listChanged: true } } });
   server.setRequestHandler('tools/list', async () => {
-    const { tools } = await api('tools');
-    return { tools: tools.map(({ name, description, parameters }) => ({ name, description, inputSchema: parameters,
-      annotations: { readOnlyHint: name !== 'addEntries', destructiveHint: false, openWorldHint: name === 'addEntries' } })) };
+    try {
+      const { tools } = await api('tools');
+      return { tools: tools.map(({ name, description, parameters }) => ({ name, description, inputSchema: parameters,
+        annotations: { readOnlyHint: name !== 'addEntries', destructiveHint: false, openWorldHint: name === 'addEntries' } })) };
+    } catch { return { tools: [] }; }
   });
   server.setRequestHandler('tools/call', async (request) => {
     try {
@@ -301,24 +379,44 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       const runtime = await prepareLocalAgentNetwork();
       const existing = await fetch('http://127.0.0.1:3847/api/v1/peer', {
         headers: { authorization: `Bearer ${deriveToolToken(token)}` }, signal: AbortSignal.timeout(2000), redirect: 'error',
-      }).then(async (response) => response.ok ? response.json() : null).catch(() => null);
-      if (existing?.protocol === 2 && existing.discovery === true) {
-        console.error('GymNotes: ponto P2P existente reutilizado. Volte ao app na mesma rede.');
-      } else {
+      }).catch((error) => {
+        if (error.cause?.code === 'ECONNREFUSED') return null;
+        throw new Error('connect.portConflict');
+      });
+      const peer = existing?.ok ? await existing.json() : null;
+      if (existing && (!existing.ok || peer?.protocol !== 2)) throw new Error('connect.portConflict');
+      if (process.platform === 'win32') {
+        await installCompanion({ token, runtime, script: fileURLToPath(import.meta.url),
+          replaceVerifiedPeer: !!peer && (!peer.durableQueue || !peer.discovery || !peer.backgroundManaged) });
+        let ready = false;
+        for (let attempt = 0; attempt < 80; attempt++) {
+          const current = await fetch('http://127.0.0.1:3847/api/v1/peer', {
+            headers: { authorization: `Bearer ${deriveToolToken(token)}` }, signal: AbortSignal.timeout(1000), redirect: 'error',
+          }).then((response) => response.ok ? response.json() : null).catch(() => null);
+          if (current?.protocol === 2 && current.durableQueue && current.discovery && current.backgroundManaged) { ready = true; break; }
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        if (!ready) throw new Error('connect.serviceFailed');
+        console.error('GymNotes: conexao em segundo plano pronta. Inicia com o Windows, sem terminal. Volte ao app na mesma rede.');
+      } else if (!peer) {
         const child = spawn(runtime, [fileURLToPath(import.meta.url), '--lan'], {
           cwd: resolve(fileURLToPath(new URL('..', import.meta.url))),
-          env: { ...process.env, GYMNOTES_PAIRING_TOKEN: token }, windowsHide: true, stdio: 'inherit',
+          env: { ...process.env, GYMNOTES_PAIRING_TOKEN: token }, detached: true, stdio: 'ignore',
         });
-        child.once('error', () => { console.error('Nao foi possivel iniciar o GymNotes.'); process.exitCode = 1; });
-        child.once('close', (code) => { process.exitCode = code ?? 1; });
+        await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+        child.unref();
+        console.error('GymNotes: conexao iniciada sem terminal. Inicio automatico disponivel no Windows.');
       }
     }
     else if (process.argv.includes('--mcp')) await serveMCP(token, process.env.GYMNOTES_CONNECT_URL ?? 'http://127.0.0.1:3847');
     else {
       const host = process.argv.includes('--lan') ? '0.0.0.0' : '127.0.0.1';
-      const bridge = createBridge({ token, host, advertise: host === '0.0.0.0' });
-      await bridge.start();
-      console.error('GymNotes: ponte local pronta na porta 3847. Nenhum dado e salvo aqui.');
+      const bridge = createBridge({ token, host, advertise: host === '0.0.0.0',
+        backgroundManaged: process.env.GYMNOTES_COMPANION_SERVICE === '1',
+        queuePath: join(homedir(), '.gymnotes', 'queue', `${derivePairingId(token)}.bin`) });
+      try { await bridge.start(); }
+      catch (error) { if (error.code === 'EADDRINUSE') process.exitCode = 2; throw error; }
+      console.error('GymNotes: ponte local pronta na porta 3847. Pedidos pendentes ficam na fila local criptografada.');
       if (host === '0.0.0.0') console.error('P2P ativo: volte ao GymNotes na mesma rede. O pareamento e automatico.');
       if (host === '0.0.0.0') {
         for (const addresses of Object.values(networkInterfaces())) for (const address of addresses ?? []) {
@@ -332,5 +430,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       process.once('SIGINT', stop);
       process.once('SIGTERM', stop);
     }
-  } catch { console.error('Nao foi possivel iniciar. Verifique a chave de 64 caracteres e a porta 3847.'); process.exitCode = 1; }
+  } catch (error) {
+    console.error(error.message === 'connect.portConflict'
+      ? 'A porta 3847 pertence a outra conexao. Nada foi encerrado.'
+      : 'Nao foi possivel iniciar o GymNotes. Verifique o pareamento, a inicializacao local e a porta 3847.');
+    process.exitCode ||= 1;
+  }
 }

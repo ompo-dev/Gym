@@ -22,7 +22,7 @@ const workoutOk = () => ({ exercise: 'Supino reto', kind: 'série' });
 
 function harness(
   enrichFn: (req: EnrichRequest) => Promise<EnrichResponse>,
-  extraDeps: Partial<Pick<BusDeps, 'getUserContext' | 'getPantry' | 'isOffline' | 'onOffline'>> = {},
+  extraDeps: Partial<Pick<BusDeps, 'getUserContext' | 'getPantry' | 'isOffline' | 'onOffline' | 'loadMedia'>> = {},
 ) {
   const day: Record<Domain, { date: string; entries: Entry[] }> = {
     food: { date: TODAY, entries: [] },
@@ -105,14 +105,41 @@ test('whole-photo results preserve photos, split plans and never launch a second
 });
 
 test('add keeps media attachments after enrich resolves', async () => {
-const media = [{ id: 'photo-1', kind: 'foodPhoto' as const, uri: 'file://meal.jpg', description: '' }];
-  const { bus, day } = harness(async () => foodOk());
+  const media = [{ id: 'photo-1', kind: 'foodPhoto' as const, uri: 'file://meal.jpg', description: '' }];
+  const { bus, day } = harness(async () => foodOk(), { loadMedia: async () => [{ id: 'photo-1', kind: 'foodPhoto', base64: 'AAAA' }] });
   await bus.addEntry('foto do alimento', 'food', media);
 
   expect(day.food.entries[0].media).toEqual(media);
   await flush();
   expect(day.food.entries[0].status).toBe('done');
   expect(day.food.entries[0].media).toEqual(media);
+});
+
+test('photos are restored on retry, persisted descriptions are kept, and distinct photos never share nutrition cache', async () => {
+  const inference = jest.fn(async (): Promise<EnrichResponse> => ({ ...foodOk(), mediaDescriptions: [{ id: 'photo', description: 'Described meal' }] } as EnrichResponse));
+  const loadMedia = jest.fn(async (entry: Entry) => [{ id: 'photo', kind: 'foodPhoto' as const, base64: entry.media![0].uri! }]);
+  const { bus, day } = harness(inference, { loadMedia });
+  for (const uri of ['first-image', 'second-image']) {
+    await bus.addEntry('Imagens anexadas', 'food', [{ id: 'photo', kind: 'foodPhoto', uri, description: '' }]);
+    await flush();
+  }
+  expect(inference).toHaveBeenCalledTimes(2);
+  expect(inference.mock.calls[0][0].media?.[0].base64).toBe('first-image');
+  expect(inference.mock.calls[1][0].media?.[0].base64).toBe('second-image');
+  expect(day.food.entries[0].media?.[0].description).toBe('Described meal');
+  bus.retry(day.food.entries[0]);
+  await flush();
+  expect(loadMedia).toHaveBeenCalledTimes(3);
+  expect(day.food.entries[0].status).toBe('done');
+});
+
+test('a missing photo never launches text-only inference', async () => {
+  const inference = jest.fn(async () => foodOk());
+  const { bus, day } = harness(inference, { loadMedia: async () => { throw new Error('media.sourceMissing'); } });
+  await bus.addEntry('Imagens anexadas', 'food', [{ id: 'photo', kind: 'foodPhoto', description: '' }]);
+  await flush();
+  expect(inference).not.toHaveBeenCalled();
+  expect(day.food.entries[0]).toMatchObject({ status: 'error', error: 'media.sourceMissing' });
 });
 
 test('editing an entry re-enriches with the new text', async () => {

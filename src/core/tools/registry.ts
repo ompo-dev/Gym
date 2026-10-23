@@ -40,6 +40,10 @@ export interface ToolDeps {
   savedMeals: { all: () => Promise<SavedMeal[]> };
   today: () => string;
   goals?: () => unknown;
+  deliveries?: {
+    get: (id: string) => Promise<string | null>;
+    set: (id: string, value: string) => Promise<void>;
+  };
 }
 
 /** Stable keys, in the spirit of `ENRICH_ERROR`. */

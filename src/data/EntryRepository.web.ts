@@ -137,7 +137,7 @@ export const EntryRepository = {
         (entry) =>
           entry.status === "thinking" ||
           entry.status === "queued" ||
-          (entry.status === "error" && entry.error === "enrich.offline"),
+            (entry.status === "error" && ['enrich.offline', 'agent.authRequired', 'agent.offline'].includes(entry.error ?? '')),
       )
       .sort(byCreatedAtAsc);
   },

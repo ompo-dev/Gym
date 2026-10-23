@@ -140,7 +140,7 @@ export const EntryRepository = {
     const rows = await db.getAllAsync<Row>(
       `SELECT * FROM entries
         WHERE status IN ('thinking', 'queued')
-           OR (status = 'error' AND error = 'enrich.offline')
+             OR (status = 'error' AND error IN ('enrich.offline', 'agent.authRequired', 'agent.offline'))
         ORDER BY createdAt ASC`,
     );
     return rows.map(toEntry);

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 
-import { advertisePeer } from '../peer-discovery.mjs';
+import { advertisePeer, watchPeerDiscovery } from '../peer-discovery.mjs';
 
 const token = 'a'.repeat(64);
 const address = (value, internal = false) => ({ address: value, internal });
@@ -52,5 +52,26 @@ test('a publish failure releases every previously started interface', () => {
     publish: () => { if (++attempts === 2) throw new Error('fixture-failure'); },
     destroy: () => { closed += 1; },
   }), { Ethernet: [address('192.168.1.7'), address('10.0.0.8')] }), /fixture-failure/);
+  assert.equal(closed, 2);
+});
+
+test('discovery waits for Wi-Fi at sign-in and republishes after DHCP changes', () => {
+  let interfaces = {};
+  let refresh;
+  const addresses = [];
+  let closed = 0;
+  const stop = watchPeerDiscovery(token, 3847, (options) => {
+    addresses.push(options.interface);
+    return { publish: () => {}, destroy: () => { closed++; } };
+  }, () => interfaces, (callback) => { refresh = callback; return { unref() {} }; });
+  assert.deepEqual(addresses, []);
+  interfaces = { WiFi: [{ ...address('192.168.1.7'), family: 'IPv4' }] };
+  refresh(); refresh();
+  assert.deepEqual(addresses, ['192.168.1.7']);
+  interfaces = { WiFi: [{ ...address('192.168.1.9'), family: 'IPv4' }] };
+  refresh();
+  assert.deepEqual(addresses, ['192.168.1.7', '192.168.1.9']);
+  assert.equal(closed, 1);
+  stop();
   assert.equal(closed, 2);
 });

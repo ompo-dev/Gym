@@ -36,7 +36,7 @@ function stopChild(child) {
 function launch(provider, context, args) {
   const descriptor = AGENT_PACKAGES[provider];
   // npm supplies its own absolute CLI path. No shell, user command or prompt is executable.
-  const npm = process.env.npm_execpath;
+  const npm = process.env.GYMNOTES_NPM_CLI ?? process.env.npm_execpath;
   if (!npm || !basename(npm).startsWith('npm-cli.')) throw new Error('agent.startWithNpm');
   return spawn(process.execPath, [npm, 'exec', '--yes', `--package=${descriptor.package}`, '--', descriptor.bin, ...args], {
     cwd: context.cwd, env: context.env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'],

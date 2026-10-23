@@ -6,7 +6,8 @@ import { enrich } from './client';
 import type { ApiKeys } from './types';
 
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: {} } }));
-jest.mock('expo-crypto', () => ({ randomUUID: () => 'fixture-call' }));
+let mockCallId = 0;
+jest.mock('expo-crypto', () => ({ randomUUID: () => `fixture-call-${++mockCallId}` }));
 jest.mock('@/data/SettingsRepository', () => ({ SettingsRepository: { get: async () => null, set: async () => {} } }));
 let mockApiKeys: ApiKeys;
 jest.mock('@/store/useAppStore', () => ({ useAppStore: { getState: () => ({ apiKeys: mockApiKeys }) } }));
@@ -18,14 +19,15 @@ const descriptions = { descriptions: [{ id: 'photo', description: 'Prato de arro
 const req = { text: 'arroz e frango', domain: 'food' as const, locale: 'pt-BR', userContext: 'Meta diaria de teste: 2000 kcal' };
 const photo = { id: 'photo', kind: 'foodPhoto' as const, base64: 'dGVzdA==', mimeType: 'image/jpeg' };
 
-function connect(reply: (request: AgentRequest) => unknown = () => food) {
+function connect(reply: (request: AgentRequest) => unknown = () => food, authenticated = true, imageSupported = true) {
   const requests: AgentRequest[] = [];
   rpc = bindAgentRPC((message) => {
     const event = message as { type: string; id: string; request: AgentRequest };
     if (event.type !== 'agent.request') return;
-    requests.push(event.request);
+    if (event.request.action === 'generate') requests.push(event.request);
     queueMicrotask(() => {
-      try { rpc?.receive({ type: 'agent.result', id: event.id, ok: true, data: { json: reply(event.request) } }); }
+      try { rpc?.receive({ type: 'agent.result', id: event.id, ok: true, data: event.request.action === 'inspect'
+        ? { authenticated, imageSupported } : { json: reply(event.request) } }); }
       catch { rpc?.receive({ type: 'agent.result', id: event.id, ok: false, error: 'agent.failed' }); }
     });
   });
@@ -82,6 +84,28 @@ test('an agent failure never silently sends the note to a paid API fallback', as
   await useAgentSettingsStore.getState().bind('text', { provider: 'codex', choices: {} });
   connect(() => { throw new Error('fixture failure'); });
   expect(await enrich(req)).toEqual({ ok: false, error: 'agent.failed' });
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test('a paired agent without an account does not steal a photo from the configured image API', async () => {
+  await useAgentSettingsStore.getState().bind('text', { provider: 'codex', choices: {} });
+  await useAgentSettingsStore.getState().bind('vision', { provider: 'codex', choices: {} });
+  const requests = connect(() => food, false);
+  global.fetch = jest.fn(async (url) => Response.json({ choices: [{ message: { content: JSON.stringify(
+    String(url).includes('openai') ? descriptions : food,
+  ) } }] })) as typeof fetch;
+  expect(await enrich({ ...req, media: [photo] })).toMatchObject({ ok: true, data: food });
+  expect(requests).toHaveLength(0);
+  expect(global.fetch).toHaveBeenCalledTimes(2);
+});
+
+test('without fallback keys an unauthenticated agent requests login before sending a photo', async () => {
+  mockApiKeys = { mode: 'agent', chat: '', image: '' };
+  await useAgentSettingsStore.getState().bind('text', { provider: 'codex', choices: {} });
+  await useAgentSettingsStore.getState().bind('vision', { provider: 'codex', choices: {} });
+  const requests = connect(() => food, false);
+  expect(await enrich({ ...req, media: [photo] })).toEqual({ ok: false, error: 'agent.authRequired' });
+  expect(requests).toHaveLength(0);
   expect(global.fetch).not.toHaveBeenCalled();
 });
 

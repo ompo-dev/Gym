@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { Keyboard } from 'react-native';
 
 import { enrich } from '@/core/enrich/client';
+import { loadEntryPhotos } from '@/core/food/retry-media';
 import { isDeviceOffline } from '@/core/net/connectivity';
 import { buildOnboardingPromptContext, buildWorkoutPromptContext } from '@/core/onboarding';
 import { EntryRepository } from '@/data/EntryRepository';
@@ -16,6 +17,7 @@ import { CommandBus } from './CommandBus';
 export const bus = new CommandBus({
   repo: EntryRepository,
   enrichFn: enrich,
+  loadMedia: loadEntryPhotos,
   getLocale: getLang,
   getUserContext: async (domain) => {
     const profile = useAppStore.getState().onboardingProfile;

@@ -162,6 +162,7 @@ export interface RepoPort {
 export interface BusDeps {
   repo: RepoPort;
   enrichFn: (req: EnrichRequest) => Promise<EnrichResponse>;
+  loadMedia?: (entry: Entry) => Promise<NonNullable<EnrichRequest['media']>>;
   store: StorePort;
   locale?: string;
   getLocale?: () => string;
@@ -210,6 +211,7 @@ export class CommandBus {
   private readonly undoStack: Command[] = [];
   private readonly cache = new Lru<string, EnrichData>(CACHE_SIZE);
   private readonly inflight = new Map<string, Promise<EnrichResponse>>();
+  private readonly enriching = new Map<string, Promise<void>>();
   private readonly attempts = new Map<string, number>();
   private readonly cancelled = new Set<string>();
 
@@ -329,34 +331,25 @@ export class CommandBus {
    * unfinished rows are touched. Awaits each enrich so a background task can hold
    * the process open until the drain settles instead of returning into a suspend.
    *
-   * Media notes are skipped: `runEnrich` only re-sends `text`, so resuming one
-   * would rebuild the meal without its photos — the same reason the retry button
-   * is hidden for them (see docs/data-flows.md §3).
+   * Photo notes are resumed only when their original media can be restored.
    */
   async resumePending(): Promise<number> {
     const pending = (await this.deps.repo.findPending?.()) ?? [];
-    // ponytail: skip media here rather than in SQL — the column is JSON, and the
-    // set is tiny, so filtering in JS is simpler than a LIKE on serialized text.
-    const drainable = pending.filter((entry) => !entry.media?.length);
+    const drainable = pending.filter((entry) => !entry.media?.length ||
+      (this.deps.loadMedia && entry.media.every((media) => media.kind !== 'barcode')));
     if (!drainable.length) return 0;
     log.note('resume pending', {
       count: drainable.length,
       skippedMedia: pending.length - drainable.length,
     });
-    // ponytail: unbounded fan-out; pending is normally a handful. Add a
-    // concurrency cap if a user can realistically pile up dozens while offline.
-    await Promise.all(
-      drainable.map(async (entry) => {
-        this.attempts.delete(entry.id);
-        this.cancelled.delete(entry.id);
-        if (entry.status !== 'thinking') {
-          await this.setStatus(entry.domain, entry.id, 'thinking');
-        }
-        await this.runEnrich(entry).catch(() => {
-          /* runEnrich already routed the failure to queued/error */
-        });
-      }),
-    );
+    for (const entry of drainable) {
+      this.attempts.delete(entry.id);
+      this.cancelled.delete(entry.id);
+      if (entry.status !== 'thinking') await this.setStatus(entry.domain, entry.id, 'thinking');
+      await this.runEnrich(entry).catch(() => {
+        /* runEnrich already routed the failure to queued/error */
+      });
+    }
     return drainable.length;
   }
 
@@ -410,7 +403,12 @@ export class CommandBus {
   }
 
   private async runEnrich(entry: Entry): Promise<void> {
-    await this.runEnrichInner(entry);
+    const identity = `${entry.id}:${hashKey(entry.domain, `${entry.text}:${JSON.stringify(entry.media)}`)}`;
+    const existing = this.enriching.get(identity);
+    if (existing) return existing;
+    const operation = this.runEnrichInner(entry).finally(() => this.enriching.delete(identity));
+    this.enriching.set(identity, operation);
+    return operation;
   }
 
   private async runEnrichInner(entry: Entry): Promise<void> {
@@ -440,7 +438,7 @@ export class CommandBus {
         : entry.text;
     const key = hashKey(
       entry.domain,
-      `${locale}:${userContext ?? ''}:${normalizeText(normalizedCacheText)}`,
+      `${locale}:${userContext ?? ''}:${normalizeText(normalizedCacheText)}${entry.media?.length ? `:media:${entry.id}:${JSON.stringify(entry.media)}` : ''}`,
     );
 
     const cached = this.cache.get(key);
@@ -664,15 +662,20 @@ export class CommandBus {
 
     let promise = this.inflight.get(key);
     if (!promise) {
-      promise = this.deps.enrichFn(
-        {
-        text: entry.text,
-        domain: entry.domain,
-        context: undefined,
-        intent,
-        userContext,
-        locale,
-      });
+      promise = (async () => {
+        let media: EnrichRequest['media'];
+        if (entry.media?.length) {
+          log.media('photo.enrich.start', { id: entry.id, count: entry.media.length });
+          if (!this.deps.loadMedia) return { ok: false as const, error: 'media.sourceMissing' };
+          try { media = await this.deps.loadMedia(entry); }
+          catch (error) {
+            log.media('photo.restore.failed', { id: entry.id });
+            return { ok: false as const, error: error instanceof Error ? error.message : 'media.sourceMissing' };
+          }
+        }
+        return this.deps.enrichFn({ text: entry.text, domain: entry.domain, media,
+          context: undefined, intent, userContext, locale });
+      })();
       this.inflight.set(key, promise);
     }
 
@@ -683,11 +686,19 @@ export class CommandBus {
       if (this.cancelled.has(entry.id)) return;
 
       if (!res.ok) {
+        if (entry.media?.length) log.media('photo.enrich.failed', { id: entry.id, reason: res.error });
         await this.setError(entry.domain, entry.id, res.error);
         return;
       }
 
+      if (entry.media?.length && res.mediaDescriptions?.length) {
+        const descriptions = new Map(res.mediaDescriptions.map((item) => [item.id, item.description]));
+        entry = { ...entry, media: entry.media.map((item) => ({ ...item,
+          description: item.description.trim() || item.cutouts?.length ? item.description : descriptions.get(item.id) ?? item.description })) };
+        await this.patch(entry.domain, entry.id, { media: entry.media });
+      }
       await this.resolveFood(entry, res.data, key);
+      if (entry.media?.length) log.media('photo.enrich.done', { id: entry.id, count: entry.media.length });
     } catch {
       this.inflight.delete(key);
       if (this.cancelled.has(entry.id)) return;

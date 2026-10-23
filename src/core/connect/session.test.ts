@@ -47,6 +47,34 @@ test('replaying a request cannot create duplicate notes', async () => {
   expect(a).toMatchObject({ ok: true });
   expect(run).toHaveBeenCalledTimes(1);
 });
+
+test('a durable receipt prevents a duplicate after reconnect and rejects changed arguments', async () => {
+  const saved = new Map<string, string>();
+  const dependencies = { ...deps, deliveries: {
+    get: async (id: string) => saved.get(id) ?? null,
+    set: async (id: string, value: string) => { saved.set(id, value); },
+  } };
+  const request = { type: 'call', id: 'durable', name: 'addEntries', arguments: { entries: [{ domain: 'food', text: 'fixture' }] } };
+  const first = createAgentSession(dependencies, true);
+  const reply = await first.call(request);
+  first.close();
+  const restored = createAgentSession(dependencies, true);
+  expect(await restored.call(request)).toEqual(reply);
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(await restored.call({ ...request, arguments: { entries: [{ domain: 'food', text: 'different' }] } }))
+    .toMatchObject({ ok: false, error: 'connect.requestConflict' });
+  const readOnly = createAgentSession(dependencies, false);
+  expect(await readOnly.call(request)).toMatchObject({ ok: false, error: 'connect.readOnly' });
+});
+
+test('an interrupted delivery fails closed instead of creating possible duplicates', async () => {
+  const dependencies = { ...deps, deliveries: {
+    get: async () => JSON.stringify({ digest: 'unknown', status: 'running' }), set: jest.fn(),
+  } };
+  expect(await createAgentSession(dependencies, true).call({ type: 'call', id: 'interrupted', name: 'addEntries', arguments: {} }))
+    .toMatchObject({ ok: false });
+  expect(run).not.toHaveBeenCalled();
+});
 test('revoking a session prevents subsequent writes', async () => {
   const session = createAgentSession(deps, true);
   session.close();

@@ -3,6 +3,8 @@ import { TextInput as MockTextInput } from 'react-native';
 
 import type { Entry } from '@/core/types';
 import { NoteRow } from './NoteRow';
+import { useAppModalStore } from '@/store/useAppModalStore';
+import { t } from '@/i18n';
 
 jest.mock('@/components/atoms/AppIcon', () => ({ AppIcon: () => null }));
 jest.mock('@/components/molecules/ThinkingIndicator', () => ({ ThinkingIndicator: () => null }));
@@ -23,4 +25,16 @@ test.each(['food', 'workout'] as const)('%s notes report focus without editing o
   await fireEvent(screen.getByLabelText(domain === 'food' ? 'Banana' : 'Exercise'), 'focus');
   expect(focus).toHaveBeenCalledTimes(1);
   expect(edit).not.toHaveBeenCalled();
+});
+
+test('an unauthenticated photo opens account login instead of repeating a failing inference', async () => {
+  useAppModalStore.getState().closeAllAppModals();
+  const retry = jest.fn();
+  const entry = { id: 'photo', domain: 'food', text: 'Imagens anexadas', status: 'error', error: 'agent.authRequired' } as Entry;
+  const screen = await render(<NoteRow entry={entry} config={{ id: 'food', accent: '#ff9900' } as any}
+    onEdit={jest.fn()} onDelete={jest.fn()} onRetry={retry} />);
+  await fireEvent.press(screen.getByLabelText(t('agent.authRequired')));
+  expect(useAppModalStore.getState().stack.at(-1)).toEqual({ id: 'settings.connect', domain: 'food' });
+  expect(retry).not.toHaveBeenCalled();
+  useAppModalStore.getState().closeAllAppModals();
 });

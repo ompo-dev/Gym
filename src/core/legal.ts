@@ -106,6 +106,10 @@ const pt = {
         body: 'A conexão com agentes é opcional e usa seu computador, sem backend hospedado do GymNotes. Ferramentas autorizadas recebem os dados solicitados. A análise por conta de agente envia o texto, contexto e imagens necessários ao provedor escolhido. Tokens de login permanecem no perfil isolado do agente no computador; o app salva apenas a seleção de modelo e esforço. Agentes podem manter credenciais e histórico conforme suas configurações. A chave de pareamento fica no armazenamento seguro do iOS/Android ou só na memória no web. A chave das ferramentas é separada e não controla contas. Conexões ws/HTTP locais não são criptografadas. Desconectar remove o acesso no app; pare a conexão no computador para revogar também clientes REST. Copiar diário e metas envia esses dados à área de transferência por sua ação. A comunidade usa mocks locais, sem consultas ou publicações externas; o rascunho fica no aparelho. Apagar dados locais não remove informações já recebidas por agentes ou provedores.',
       },
       {
+        title: 'Fila local no computador',
+        body: 'Pedidos de notas feitos pelo agente enquanto o telefone esta offline ficam em uma fila criptografada no seu computador, em .gymnotes/queue. A fila conserva ate 100 pedidos pendentes e ate 100 recibos recentes com o pedido original. O Windows protege a configuracao de pareamento com DPAPI do usuario e inicia o processo sem janela ao entrar na conta. O envio depende de o computador estar ligado e o app reconectar na rede local. Apagar os dados no telefone nao apaga essa fila; remover a conexao no computador e seus arquivos locais revoga e remove esses pedidos.',
+      },
+      {
         title: 'Compartilhamento',
         body:
           'Não vendemos seus dados pessoais. Compartilhamos dados apenas quando necessário para operar recursos que você usa, como IA, leitura de códigos de barras, notificações, diagnóstico técnico ou infraestrutura do app.',
@@ -226,6 +230,10 @@ const en = {
       {
         title: 'Local connection and feedback',
         body: 'Agent connections are optional and use your computer, not a hosted GymNotes backend. Authorized tools receive the requested data. Agent account analysis sends required text, context and images to your selected provider. Login tokens remain in an isolated agent profile on the computer; the app saves only model and effort selections. Agents may retain credentials and history according to their settings. The pairing key stays in iOS/Android secure storage or web session memory. The separate tools key cannot control accounts. Local ws/HTTP connections are unencrypted. Disconnecting removes app access; stop the computer connection to revoke REST clients too. Copying your diary and goals places them on the clipboard at your request. Community views use local mocks without external requests or publication; drafts stay on the device. Deleting local data does not remove information already received by agents or providers.',
+      },
+      {
+        title: 'Local computer queue',
+        body: 'Agent note requests made while the phone is offline stay in an encrypted queue on your computer under .gymnotes/queue. It retains up to 100 pending requests and up to 100 recent receipts with the original request. Windows protects pairing setup with CurrentUser DPAPI and starts the hidden companion at sign-in. Delivery requires a running computer and the app reconnecting on the local network. Erasing phone data does not erase this queue; removing the computer connection and its local files revokes and removes these requests.',
       },
       {
         title: 'Sharing',

@@ -8,14 +8,15 @@ import { bindAgentRPC } from '@/core/connect/agentRPC';
 import { peerProof, verifyPeer } from '@/core/connect/peerAuth';
 import { startPeerDiscovery } from '@/core/connect/peerDiscovery';
 import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
+import { bus } from '@/core/command/bus';
 
 export function useAgentConnection(ready: boolean) {
   const connection = useAgentConnectionStore((s) => s.connection);
-  const [active, setActive] = useState(AppState.currentState === 'active');
+  const [active, setActive] = useState(AppState.currentState !== 'background');
   const canRun = Platform.OS === 'web' || active;
   useEffect(() => {
     void useAgentConnectionStore.getState().hydrate();
-    const sub = AppState.addEventListener('change', (state) => setActive(state === 'active'));
+    const sub = AppState.addEventListener('change', (state) => setActive(state !== 'background'));
     return () => sub.remove();
   }, []);
 
@@ -67,13 +68,15 @@ export function useAgentConnection(ready: boolean) {
             if (!clientNonce || !verifyPeer(connection.token, clientNonce, message.nonce, message.proof)) { ws.close(1008, 'wrong-key'); return; }
             helloSent = true;
             ws.send(JSON.stringify({ type: 'hello', nonce: message.nonce,
-              proof: peerProof(connection.token, message.nonce, 'app', clientNonce), tools: session.catalog() }));
+              proof: peerProof(connection.token, message.nonce, 'app', clientNonce), tools: session.catalog(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
           } else if (message.type === 'ready' && !authenticated) {
             if (!helloSent) { ws.close(1008, 'wrong-key'); return; }
             authenticated = true;
             clearTimeout(timeout);
             agentRPC = bindAgentRPC((message) => ws.send(JSON.stringify(message)));
             setStatus('connected');
+            void bus.resumePending().catch(() => {});
           } else if (agentRPC?.receive(message)) {
             return;
           } else if (message.type === 'ping' && authenticated && typeof message.id === 'string' && message.id.length <= 100) {

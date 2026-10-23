@@ -6,14 +6,65 @@ import { once } from 'node:events';
 import { request } from 'node:http';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, sep } from 'node:path';
 import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { WebSocket } from 'ws';
 
 import { createBridge, derivePairingId, deriveToolToken, pairingCode, pairingLink } from '../gymnotes-connect.mjs';
+import { createCompanionQueue } from '../companion-queue.mjs';
 
 const token = 'a'.repeat(64);
 const toolToken = deriveToolToken(token);
+
+test('offline writes are durable, replay on reconnect, and never advertise offline reads', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'gymnotes-bridge-'));
+  const queuePath = join(directory, 'queue.bin');
+  // Cleanup is registered before setup, so the bridge is closed first by the explicit finally.
+  const queue = createCompanionQueue({ path: queuePath, token });
+  const writeTool = { name: 'addEntries', description: 'Write notes', parameters: { type: 'object' } };
+  await queue.remember([writeTool]);
+  const bridge = createBridge({ token, port: 0, queuePath, timeoutMs: 100 });
+  const address = await bridge.start();
+  const base = `http://127.0.0.1:${address.port}`;
+  const api = async (path, body) => (await fetch(`${base}/api/v1/${path}`, {
+    method: body ? 'POST' : 'GET', headers: { authorization: `Bearer ${toolToken}`, 'content-type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })).json();
+  try {
+    const call = { name: 'addEntries', requestId: 'persisted-write', arguments: { entries: [{ domain: 'food', text: 'fixture meal' }] } };
+    assert.deepEqual(await api('tools'), { connected: false, tools: [writeTool] });
+    assert.equal((await api('call', call)).queued, true);
+    assert.equal((await api('queue')).pending, 1);
+    const app = await pair(base, token, [writeTool]);
+    let calls = 0;
+    const applied = new Promise((resolve) => app.on('message', (bytes) => {
+      const event = JSON.parse(bytes.toString());
+      if (event.type !== 'call') return;
+      calls++;
+      assert.equal(event.id, call.requestId);
+      assert.match(event.arguments.entries[0].date, /^\d{4}-\d{2}-\d{2}$/);
+      app.send(JSON.stringify({ type: 'result', id: event.id, result: { ok: true, message: 'registered' } }));
+      resolve();
+    }));
+    await applied;
+    for (let i = 0; i < 100 && (await api('queue')).pending; i++) await delay(5);
+    assert.equal((await api('queue')).pending, 0);
+    assert.deepEqual(await api('call', call), { ok: true, message: 'registered' });
+    assert.equal(calls, 1);
+    app.close();
+    await once(app, 'close');
+    const restored = createCompanionQueue({ path: queuePath, token });
+    await restored.ready;
+    assert.equal(restored.count(), 0);
+  } finally {
+    await bridge.close();
+    assert.ok(resolve(directory).startsWith(resolve(tmpdir()) + sep));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 test('public connection code contains no pairing or tools secret', () => {
   const code = pairingCode(token, 'ws://192.168.1.10:3847/app');
   assert.ok(code.startsWith('gymnotes-connect:v1:'));

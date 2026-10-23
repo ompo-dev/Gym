@@ -703,7 +703,7 @@ export function DayTemplate<TData, TTotals>({
       if (!entryText && barcodeData.length === 0) return;
       setFoodMediaDrafts([]);
 
-      if (barcodeData.length === 0 && !foodPhotoMedia?.length) {
+      if (barcodeData.length === 0) {
         addEntry(entryText, entryMedia);
         return;
       }
@@ -725,8 +725,6 @@ export function DayTemplate<TData, TTotals>({
 
         let parsedFood: FoodData | null = null;
         let describedMedia = entryMedia;
-        let enrichFailed = false;
-        let enrichError: string = ENRICH_ERROR.failed;
         log.media('photo.enrich.start', { id: entry.id, count: aiMedia?.length ?? 0 });
 
         if (noteText || foodPhotoMedia?.length) {
@@ -761,32 +759,11 @@ export function DayTemplate<TData, TTotals>({
             }
             parsedFood =
               parsed?.success && parsed.data.items.length ? parsed.data : null;
-            enrichFailed = !response.ok || !parsed?.success || !parsedFood;
-            if (!response.ok) enrichError = response.error;
+            if (!response.ok) log.media('photo.enrich.failed', { id: entry.id, reason: response.error });
           } catch (error) {
             parsedFood = null;
-            enrichFailed = true;
             log.media('photo.enrich.exception', { id: entry.id, reason: error instanceof Error ? error.message : ENRICH_ERROR.failed });
           }
-        }
-
-        // The AI is the only source of numbers here unless a barcode supplied
-        // some. Falling through on failure would save a "done" meal whose items
-        // are all zeros — a silent 0 kcal lunch. Mark it errored instead.
-        // ponytail: no retry affordance for these (NoteRow hides it when the
-        // entry has media) because runEnrich only re-sends `text` and would drop
-        // the photos. Upgrade path: move this path into CommandBus and re-read
-        // media[].uri so a retry can rebuild the composite request.
-        if (enrichFailed && barcodeData.length === 0) {
-          const failure = {
-            media: describedMedia,
-            status: "error" as const,
-            error: enrichError,
-          };
-          await EntryRepository.update(entry.id, failure);
-          useAppStore.getState().upsertEntry("food", { ...entry, ...failure });
-          log.media('photo.enrich.failed', { id: entry.id, reason: enrichError });
-          return;
         }
 
         const describedFoodPhotoMedia = describedMedia && expandPhotoCutouts(describedMedia).filter(

@@ -6,6 +6,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { DeepSeekTransportError, runEnrichEngine } from './deepseek';
 import { resolveProviderCredential } from './providers';
 import { agentJsonTransport, availableAgentTransports } from '@/core/connect/agentTransport';
+import { isAgentConnected } from '@/core/connect/agentRPC';
 
 import { ENRICH_UNCONFIGURED } from './types';
 
@@ -123,7 +124,12 @@ export async function enrich(req: EnrichRequest): Promise<EnrichResponse> {
   const keys = activeKeys(Boolean(agents.text));
   const needsVision = req.domain === 'food' && req.media?.some((media) => !media.description?.trim());
   const agentMode = Boolean(agents.text && (!needsVision || agents.vision)) ||
-    (useAppStore.getState().apiKeys.mode === 'agent' && !keys);
+    ((useAppStore.getState().apiKeys.mode === 'agent' || isAgentConnected()) && !keys);
+  if (agentMode && (!agents.text || (needsVision && !agents.vision))) {
+    const error = agents.unavailable ?? 'agent.authRequired';
+    log.connect('agent.unavailable', { reason: error, needsVision: Boolean(needsVision) });
+    return { ok: false, error };
+  }
   const usesAgent = agentMode || Boolean(keys && (agents.text || (needsVision && agents.vision)));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), usesAgent ? 180_000 : needsVision ? 60_000 : TIMEOUT_MS);
