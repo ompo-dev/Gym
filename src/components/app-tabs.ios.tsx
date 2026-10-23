@@ -18,14 +18,14 @@ export default function AppTabs() {
   return (
     <NativeTabs>
       {food && (
-        <NativeTabs.Trigger name="index">
+        <NativeTabs.Trigger name="index" disableAutomaticContentInsets>
           <Label>{t('diet.title')}</Label>
           <Icon sf={{ default: 'fork.knife', selected: 'fork.knife' }} />
         </NativeTabs.Trigger>
       )}
 
       {workout && (
-        <NativeTabs.Trigger name="workout">
+        <NativeTabs.Trigger name="workout" disableAutomaticContentInsets>
           <Label>{t('workout.title')}</Label>
           <Icon sf={{ default: 'dumbbell', selected: 'dumbbell.fill' }} />
         </NativeTabs.Trigger>

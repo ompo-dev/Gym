@@ -19,24 +19,31 @@ export function DayScrollFrame({ header, footer, children }: DayScrollFrameProps
   const [top, setTop] = useState(64);
   const [bottom, setBottom] = useState(safe.bottom + 100);
   const tint = colors.background === '#242424' ? 'systemMaterialDark' : 'light';
-  return <SafeAreaView style={styles.fill} edges={['top', 'left', 'right']}>
-    <View style={styles.fill}>
-      <BlurTargetView ref={target} style={styles.fill}>{children({ top, bottom })}</BlurTargetView>
-      <View pointerEvents="none" style={[styles.top, { height: top + 24 }]}>
-        <SoftEdgeBlur edge="top" blurTarget={target} tint={tint} />
+  return <View style={styles.fill}>
+    <BlurTargetView ref={target} style={styles.fill}>
+      <View style={[styles.fill, { paddingLeft: safe.left, paddingRight: safe.right }]}>
+        {children({ top: safe.top + top, bottom })}
       </View>
-      <View pointerEvents="none" style={[styles.bottom, { height: bottom + 24 }]}>
-        <SoftEdgeBlur edge="bottom" blurTarget={target} tint={tint} />
-      </View>
-      <View pointerEvents="box-none" style={styles.top}
-        onLayout={({ nativeEvent }) => setTop(nativeEvent.layout.height)}>
-        {header}
-      </View>
-      <View pointerEvents="box-none" style={styles.bottom} onLayout={({ nativeEvent }) => setBottom(nativeEvent.layout.height)}>
-        {footer}
-      </View>
+    </BlurTargetView>
+    <View pointerEvents="none" style={[styles.top, { height: safe.top + top + 24 }]}>
+      <SoftEdgeBlur edge="top" blurTarget={target} tint={tint} />
     </View>
-  </SafeAreaView>;
+    <View pointerEvents="none" style={[styles.bottom, { height: bottom + 24 }]}>
+      <SoftEdgeBlur edge="bottom" blurTarget={target} tint={tint} />
+    </View>
+    {/* Insets protect the controls, while the scroll background and blur reach the screen edges. */}
+    <SafeAreaView pointerEvents="box-none" style={StyleSheet.absoluteFill} edges={['top', 'left', 'right']}>
+      <View pointerEvents="box-none" style={styles.fill}>
+        <View pointerEvents="box-none" style={styles.top}
+          onLayout={({ nativeEvent }) => setTop(nativeEvent.layout.height)}>
+          {header}
+        </View>
+        <View pointerEvents="box-none" style={styles.bottom} onLayout={({ nativeEvent }) => setBottom(nativeEvent.layout.height)}>
+          {footer}
+        </View>
+      </View>
+    </SafeAreaView>
+  </View>;
 }
 
 const styles = StyleSheet.create({
