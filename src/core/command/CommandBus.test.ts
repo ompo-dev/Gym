@@ -977,6 +977,43 @@ test('resumePending re-drives stuck notes, skipping media and done', async () =>
 
 // ---- usage caps -------------------------------------------------------------
 
+test('startup and peer reconnect share one photo drain instead of resetting statuses twice', async () => {
+  let finish!: (value: EnrichResponse) => void;
+  const inference = jest.fn(() => new Promise<EnrichResponse>((resolve) => { finish = resolve; }));
+  const { bus, rows } = harness(inference, { loadMedia: async () => [{ id: 'photo', kind: 'foodPhoto', base64: 'AAAA' }] });
+  rows.set('pending-photo', { id: 'pending-photo', text: 'photo', domain: 'food', date: TODAY, createdAt: 1,
+    status: 'queued', error: null, data: null, media: [{ id: 'photo', kind: 'foodPhoto', uri: 'original', description: '' }] });
+  const startup = bus.resumePending();
+  const reconnect = bus.resumePending();
+  expect(startup).toBe(reconnect);
+  await flush();
+  expect(inference).toHaveBeenCalledTimes(1);
+  finish(foodOk());
+  await expect(startup).resolves.toBe(1);
+  expect(rows.get('pending-photo')?.status).toBe('done');
+});
+
+test('resuming a queued photo invalidates its old retry timer after it succeeds', async () => {
+  const inference = jest.fn().mockRejectedValueOnce(new Error('network')).mockResolvedValue(foodOk());
+  const { bus, scheduled, day } = harness(inference);
+  await bus.addEntry('burger', 'food'); await flush();
+  expect(day.food.entries[0].status).toBe('queued');
+  await bus.resumePending();
+  expect(day.food.entries[0].status).toBe('done');
+  scheduled[0].fn(); await flush();
+  expect(inference).toHaveBeenCalledTimes(2);
+});
+
+test('a photo deadline is terminal with a retry action, not five more silent uploads', async () => {
+  const { bus, scheduled, day } = harness(async () => ({ ok: false, error: 'enrich.timeout' }), {
+    loadMedia: async () => [{ id: 'photo', kind: 'foodPhoto', base64: 'AAAA' }],
+  });
+  await bus.addEntry('photo', 'food', [{ id: 'photo', kind: 'foodPhoto', uri: 'original', description: '' }]);
+  await flush();
+  expect(day.food.entries[0]).toMatchObject({ status: 'error', error: 'enrich.timeout' });
+  expect(scheduled).toHaveLength(0);
+});
+
 test('addEntry returns false and adds nothing when combined food+workout count is at the daily cap', async () => {
   const { bus, day } = harness(async () => foodOk());
   // Fill to exactly the cap across both domains.

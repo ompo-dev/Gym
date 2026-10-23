@@ -136,6 +136,7 @@ export function AgentAccountPanel({ provider, onPrepare, prepareDisabled = false
     {state && !state.authenticated ? state.authMethods.map((method) => <SettingsRow key={method.id} title={method.name}
       subtitle={method.description ?? undefined} icon="externalLink" disabled={busy || status !== 'connected'}
       onPress={() => { void run('authenticate', { methodId: method.id }); }} />) : null}
+    {!state?.authenticated ? <AppText variant="caption" color={colors.textSecondary}>{t('agent.modelNotReady')}</AppText> : null}
     {state?.authenticated ? <>
       <AppText variant="caption" color={colors.success}>{t('agent.authenticated')}</AppText>
       {state.options.map((option) => <AgentOption key={option.id} option={option} disabled={busy || status !== 'connected'}

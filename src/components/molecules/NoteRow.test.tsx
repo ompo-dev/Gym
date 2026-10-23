@@ -38,3 +38,13 @@ test('an unauthenticated photo opens account login instead of repeating a failin
   expect(retry).not.toHaveBeenCalled();
   useAppModalStore.getState().closeAllAppModals();
 });
+
+test('a timed out photo keeps a clear retry action', async () => {
+  const retry = jest.fn();
+  const entry = { id: 'photo', domain: 'food', text: 'Imagens anexadas', status: 'error', error: 'enrich.timeout' } as Entry;
+  const screen = await render(<NoteRow entry={entry} config={{ id: 'food', accent: '#ff9900' } as any}
+    onEdit={jest.fn()} onDelete={jest.fn()} onRetry={retry} />);
+  expect(screen.getByText(t('status.timedOut'))).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: t('status.retry') }));
+  expect(retry).toHaveBeenCalledWith(entry);
+});

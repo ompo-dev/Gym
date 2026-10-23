@@ -1,4 +1,5 @@
 import { log } from '@/core/log';
+import { requestAiText, type AiHttpRequest, type AiHttpResponse } from './http';
 
 import type { EnrichMediaInput } from './types';
 
@@ -87,9 +88,9 @@ function visionPrompt(language: string, mediaOrder: string): string {
 
 async function readJsonText(
   provider: Exclude<AiProviderId, 'deepseek'>,
-  response: Response,
+  response: AiHttpResponse,
 ): Promise<string> {
-  const raw = await response.text();
+  const raw = response.body;
   if (response.status === 429 || response.status >= 500) {
     log.error(`${provider} ${response.status} (retryable)`, { body: raw });
     throw new AiProviderTransportError(provider, `AI service unavailable (${response.status})`);
@@ -105,6 +106,11 @@ async function readJsonText(
   } catch {
     log.error(`${provider} envelope not JSON`, { body: raw });
     throw new Error('AI returned invalid JSON');
+  }
+
+  if (provider === 'gemini' && (envelope as { status?: string })?.status === 'incomplete') {
+    log.error('gemini output limit', { reason: 'enrich.outputLimit' });
+    throw new Error('enrich.outputLimit');
   }
 
   const content = extractProviderText(envelope);
@@ -149,11 +155,11 @@ function extractProviderText(envelope: unknown): string | undefined {
 async function postProviderJson(
   provider: Exclude<AiProviderId, 'deepseek'>,
   url: string,
-  init: RequestInit,
+  init: AiHttpRequest,
 ): Promise<unknown> {
-  let response: Response;
+  let response: AiHttpResponse;
   try {
-    response = await fetch(url, init);
+    response = await requestAiText(url, init);
   } catch (e) {
     log.error(`${provider} unreachable`, { message: e instanceof Error ? e.message : String(e) });
     throw new AiProviderTransportError(provider, e instanceof Error ? e.message : 'network failure');
@@ -232,9 +238,10 @@ export async function callVisionJson({
             },
           },
           generation_config: {
-            temperature: 0.2,
-            max_output_tokens: maxTokens,
-            ...(customPrompt ? { thinking_level: 'minimal' } : {}),
+            // Thinking shares the output budget; 700 tokens could end before
+            // the caption. 3.8 Flash supports low, not minimal or temperature.
+            max_output_tokens: maxTokens + 2048,
+            thinking_level: 'low',
           },
         }),
         signal,
@@ -344,7 +351,7 @@ export async function callTextJson({
             type: 'text',
             mime_type: 'application/json',
           },
-          generation_config: { temperature: 0.2, max_output_tokens: maxTokens },
+          generation_config: { thinking_level: 'low', max_output_tokens: maxTokens + 2048 },
         }),
         signal,
       },

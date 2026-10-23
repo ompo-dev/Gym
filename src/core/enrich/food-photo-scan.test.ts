@@ -25,7 +25,7 @@ test('managed route uses the Gemini image key and returns validated independent 
   const [url, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
   expect(url).toContain('generativelanguage.googleapis.com');
   expect(options.headers).toMatchObject({ 'x-goog-api-key': 'test-image-key' });
-  expect(JSON.parse(options.body as string).generation_config.thinking_level).toBe('minimal');
+  expect(JSON.parse(options.body as string).generation_config.thinking_level).toBe('low');
 });
 
 test('invalid uploads never reach the provider and unsupported own keys never use managed keys', async () => {

@@ -8,6 +8,7 @@ import { t } from '@/i18n';
 import { Colors } from '@/constants/theme';
 import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
 import { ConnectSheet } from './ConnectSheet';
+import { AgentAccountPanel } from './AgentAccountPanel';
 
 jest.mock('expo-crypto', () => ({ CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
   getRandomBytesAsync: async () => new Uint8Array(32).fill(10),
@@ -97,6 +98,7 @@ test('account login is available only after the peer really connects', async () 
   expect(screen.queryByText(t('connect.accountModels'))).toBeNull();
   await act(() => useAgentConnectionStore.setState({ status: 'connected' }));
   expect(screen.getByRole('button', { name: t('connect.accountModels') })).toBeTruthy();
+  expect(AgentAccountPanel).toHaveBeenCalled();
 });
 
 test('pasting the public handoff pairs a private address without changing permission or secret', async () => {

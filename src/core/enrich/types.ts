@@ -28,6 +28,7 @@ export type EnrichIntent = (typeof ENRICH_INTENTS)[number];
  * without dragging the store — and the SQLite layer behind it — into the tree.
  */
 export const ENRICH_UNCONFIGURED = 'enrich.unconfigured';
+export const ENRICH_TIMEOUT = 'enrich.timeout';
 
 export interface EnrichMediaInput {
   id: string;

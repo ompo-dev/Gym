@@ -1,3 +1,7 @@
+// Node has no native XHR. Provider contract tests use fetch fixtures; the
+// native transport has its own XHR lifecycle tests in http.native.test.ts.
+jest.mock('./src/core/enrich/http', () => jest.requireActual('./src/core/enrich/http.ts'));
+
 // Reanimated 4 (SDK 57) eagerly initialises react-native-worklets on import, and
 // that native module is absent in the node test env (`loadUnpackers` crashes).
 // Reanimated's own bundled mock re-imports the real module, so it crashes too.

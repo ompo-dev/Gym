@@ -56,7 +56,7 @@ export function ConnectSheet({ onClose, nested }: {
   const textAgent = useAgentSettingsStore((s) => s.text?.provider);
   const pairedAgent = connection?.agent ?? textAgent ?? 'mcp';
   const [advanced, setAdvanced] = useState(false);
-  const [accountVisible, setAccountVisible] = useState(false);
+  const [accountVisible, setAccountVisible] = useState(true);
   const [hydrated, setHydrated] = useState(Platform.OS === 'web');
   const [toolToken, setToolToken] = useState('');
   const [agent, setAgent] = useState<AgentId>(connection ? pairedAgent : 'claude');
@@ -192,7 +192,7 @@ export function ConnectSheet({ onClose, nested }: {
       <View style={styles.agents}>{AGENTS.map((item) => <LoggedPressable key={item.id}
           accessibilityRole="radio" accessibilityState={{ checked: item.id === agent }} accessibilityLabel={item.label}
           disabled={busy}
-          onPress={() => { setAgent(item.id); setAccountVisible(false); }}
+          onPress={() => { setAgent(item.id); setAccountVisible(true); }}
           style={[styles.agent, { borderColor: status === 'connected' && item.id === pairedAgent ? colors.success : item.id === agent ? colors.accent : colors.border,
             backgroundColor: colors.backgroundElement }]}>
           <AgentLogo agent={item.id} size={32} /><AppText variant="secondary" style={styles.grow}>{item.label}</AppText>

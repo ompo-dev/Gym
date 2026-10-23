@@ -27,7 +27,7 @@ import {
   swiftForegroundStyle,
 } from '@/components/onboarding/onboardingNative';
 import { Radii, Spacing } from '@/constants/theme';
-import { ENRICH_UNCONFIGURED } from '@/core/enrich/types';
+import { ENRICH_TIMEOUT, ENRICH_UNCONFIGURED } from '@/core/enrich/types';
 import type { Entry } from '@/core/types';
 import { foodNoteKind, sumFoodData } from '@/domains/food';
 import type { FoodData, FoodEntryData } from '@/domains/schemas';
@@ -177,7 +177,7 @@ function StatusBadge<TData, TTotals>({
     return (
       <LoggedPressable onPress={() => onRetry(entry)} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('status.retry')}>
         <AppText variant="label" color={colors.danger}>
-          {t('status.retry')}
+          {t(entry.error === ENRICH_TIMEOUT ? 'status.timedOut' : 'status.retry')}
         </AppText>
       </LoggedPressable>
     );

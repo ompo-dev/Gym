@@ -1,5 +1,5 @@
 import { NetworkError, enrich } from './client';
-import { ENRICH_UNCONFIGURED } from './types';
+import { ENRICH_TIMEOUT, ENRICH_UNCONFIGURED } from './types';
 
 import type { ApiKeys } from './types';
 
@@ -30,6 +30,20 @@ const oneFood = {
 };
 
 const req = { text: 'arroz e frango', domain: 'food' as const, locale: 'pt-BR' };
+
+test('a photo completes Gemini vision then DeepSeek nutrition and returns the description with the meal', async () => {
+  mockApiKeys = { mode: 'own', chat: 'deepseek:chat-fixture', image: 'gemini:image-fixture' };
+  const descriptions = [{ id: 'photo', description: 'Prato com arroz e frango' }];
+  const fetchMock = jest.fn().mockResolvedValueOnce(Response.json({ status: 'completed', output_text: JSON.stringify({ descriptions }) }))
+    .mockResolvedValueOnce(aiReply(oneFood));
+  global.fetch = fetchMock;
+  await expect(enrich({ ...req, media: [{ id: 'photo', kind: 'foodPhoto', base64: 'AAAA' }] }))
+    .resolves.toMatchObject({ ok: true, data: oneFood, mediaDescriptions: descriptions });
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock.mock.calls[0][0]).toContain('googleapis.com');
+  expect(fetchMock.mock.calls[1][0]).toContain('deepseek.com');
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body).messages[1].content).toContain(descriptions[0].description);
+});
 
 test('calls DeepSeek directly with the user key instead of the proxy', async () => {
   mockApiKeys = { mode: 'own', chat: 'user-key', image: '' };
@@ -105,6 +119,21 @@ test('a rejected key is terminal, not retried', async () => {
   // Retrying a 401 five times cannot make the key valid.
   const res = await enrich(req);
   expect(res).toMatchObject({ ok: false });
+});
+
+test.each(['upload', 'body'])('a stalled photo %s settles at the deadline even when native fetch ignores abort', async (stage) => {
+  jest.useFakeTimers();
+  try {
+    mockApiKeys = { mode: 'own', chat: 'user-key', image: 'gemini:image-key' };
+    const hanging = new Promise<never>(() => {});
+    global.fetch = jest.fn(() => stage === 'upload' ? hanging : Promise.resolve({
+      ok: true, status: 200, text: () => hanging,
+    })) as unknown as typeof fetch;
+    const result = enrich({ ...req, media: [{ id: 'photo', kind: 'foodPhoto', base64: 'AAAA' }] });
+    await jest.advanceTimersByTimeAsync(60_000);
+    await expect(result).resolves.toEqual({ ok: false, error: ENRICH_TIMEOUT });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  } finally { jest.useRealTimers(); }
 });
 
 // One request, one JSON answer, no negotiation. There was a streaming layer

@@ -214,6 +214,8 @@ export class CommandBus {
   private readonly enriching = new Map<string, Promise<void>>();
   private readonly attempts = new Map<string, number>();
   private readonly cancelled = new Set<string>();
+  private readonly retries = new Map<string, object>();
+  private pendingDrain: Promise<number> | null = null;
 
   constructor(private readonly deps: BusDeps) {}
 
@@ -316,6 +318,7 @@ export class CommandBus {
   retry(entry: Entry): void {
     log.note(`retry ${entry.domain}`, { id: entry.id });
     this.attempts.delete(entry.id);
+    this.retries.delete(entry.id);
     this.cancelled.delete(entry.id);
     void this.setStatus(entry.domain, entry.id, 'thinking');
     this.enqueueEnrich(entry);
@@ -333,7 +336,14 @@ export class CommandBus {
    *
    * Photo notes are resumed only when their original media can be restored.
    */
-  async resumePending(): Promise<number> {
+  resumePending(): Promise<number> {
+    if (this.pendingDrain) return this.pendingDrain;
+    const operation = this.drainPending().finally(() => { this.pendingDrain = null; });
+    this.pendingDrain = operation;
+    return operation;
+  }
+
+  private async drainPending(): Promise<number> {
     const pending = (await this.deps.repo.findPending?.()) ?? [];
     const drainable = pending.filter((entry) => !entry.media?.length ||
       (this.deps.loadMedia && entry.media.every((media) => media.kind !== 'barcode')));
@@ -343,7 +353,8 @@ export class CommandBus {
       skippedMedia: pending.length - drainable.length,
     });
     for (const entry of drainable) {
-      this.attempts.delete(entry.id);
+      if (entry.status === 'error') this.attempts.delete(entry.id);
+      this.retries.delete(entry.id);
       this.cancelled.delete(entry.id);
       if (entry.status !== 'thinking') await this.setStatus(entry.domain, entry.id, 'thinking');
       await this.runEnrich(entry).catch(() => {
@@ -361,6 +372,7 @@ export class CommandBus {
 
   cancelEnrich(id: string): void {
     this.cancelled.add(id);
+    this.retries.delete(id);
   }
 
   enqueueEnrich(entry: Entry): void {
@@ -810,8 +822,11 @@ export class CommandBus {
     const delay = Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), BACKOFF_MAX_MS);
     log.note('queued for retry', { id: entry.id, attempt, delayMs: delay });
     await this.setStatus(entry.domain, entry.id, 'queued');
+    const retry = {};
+    this.retries.set(entry.id, retry);
     const fn = () => {
-      if (this.cancelled.has(entry.id)) return;
+      if (this.cancelled.has(entry.id) || this.retries.get(entry.id) !== retry) return;
+      this.retries.delete(entry.id);
       void this.runEnrich(entry).catch(() => {});
     };
     if (this.deps.schedule) this.deps.schedule(fn, delay);
@@ -824,6 +839,7 @@ export class CommandBus {
     meta?: Partial<Entry>,
   ): Promise<void> {
     this.attempts.delete(entry.id);
+    this.retries.delete(entry.id);
     const items =
       'items' in data ? data.items.length : 'purchase' in data ? data.purchase.length : undefined;
     log.note(`resolved ${entry.domain}`, {
@@ -841,6 +857,7 @@ export class CommandBus {
   }
 
   private setError(domain: Domain, id: string, error: string): Promise<void> {
+    this.retries.delete(id);
     log.error(`note failed ${domain}`, { id, reason: error });
     return this.patch(domain, id, { status: 'error', error });
   }

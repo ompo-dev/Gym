@@ -8,7 +8,7 @@ import { resolveProviderCredential } from './providers';
 import { agentJsonTransport, availableAgentTransports } from '@/core/connect/agentTransport';
 import { isAgentConnected } from '@/core/connect/agentRPC';
 
-import { ENRICH_UNCONFIGURED } from './types';
+import { ENRICH_TIMEOUT, ENRICH_UNCONFIGURED } from './types';
 
 import type { EnrichKeys, EnrichRequest, EnrichResponse } from './types';
 
@@ -132,7 +132,14 @@ export async function enrich(req: EnrichRequest): Promise<EnrichResponse> {
   }
   const usesAgent = agentMode || Boolean(keys && (agents.text || (needsVision && agents.vision)));
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), usesAgent ? 180_000 : needsVision ? 60_000 : TIMEOUT_MS);
+  let timer: ReturnType<typeof setTimeout>;
+  // Race the whole operation: some native fetch readers never reject on abort.
+  const timeout = new Promise<EnrichResponse>((resolve) => {
+    timer = setTimeout(() => {
+      resolve({ ok: false, error: ENRICH_TIMEOUT });
+      controller.abort();
+    }, usesAgent ? 180_000 : needsVision ? 60_000 : TIMEOUT_MS);
+  });
   // The whole request in one line: what went out, and — on the returned span —
   // how long it took and whether the model answered or failed.
   const end = log.time('ai', `enrich ${req.domain}/${req.intent ?? 'parse'}`, {
@@ -142,19 +149,20 @@ export async function enrich(req: EnrichRequest): Promise<EnrichResponse> {
     hasContext: Boolean(req.userContext),
   });
   try {
-    const res = agentMode
-      ? await runEnrichEngine({ ...req, intent: req.intent ?? 'parse' }, { chat: '', image: '', chatProvider: 'gemini', imageProvider: 'gemini' }, controller.signal,
+    const operation = agentMode
+      ? runEnrichEngine({ ...req, intent: req.intent ?? 'parse' }, { chat: '', image: '', chatProvider: 'gemini', imageProvider: 'gemini' }, controller.signal,
         { text: agents.text ?? agentJsonTransport, vision: agents.vision ?? agentJsonTransport })
         .catch((error) => ({ ok: false as const, error: error instanceof Error && error.message.startsWith('agent.') ? error.message : 'agent.failed' }))
       : keys
-      ? await enrichDirect(req, keys, controller.signal, agents)
-      : await enrichViaProxy(req, controller.signal);
+      ? enrichDirect(req, keys, controller.signal, agents)
+      : enrichViaProxy(req, controller.signal);
+    const res = await Promise.race([operation, timeout]);
     end(res.ok ? { ok: true } : { ok: false, error: res.error });
     return res;
   } catch (e) {
     end({ threw: e instanceof Error ? e.message : String(e) });
     throw e;
   } finally {
-    clearTimeout(timer);
+    clearTimeout(timer!);
   }
 }

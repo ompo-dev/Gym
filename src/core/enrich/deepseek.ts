@@ -1,4 +1,5 @@
 import { log } from '@/core/log';
+import { requestAiText, type AiHttpResponse } from './http';
 import { normalizeForEnrich } from '@/core/enrich/normalize';
 import {
   foodEditPrompt,
@@ -227,9 +228,9 @@ async function callDeepSeekJson(
     messages: messages.map((m) => ({ role: m.role, content: describeContent(m.content) })),
   });
 
-  let res: Response;
+  let res: AiHttpResponse;
   try {
-    res = await fetch(DEEPSEEK_URL, {
+    res = await requestAiText(DEEPSEEK_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -252,7 +253,7 @@ async function callDeepSeekJson(
 
   // Read the body as text once, so the raw upstream answer is available to log
   // whether it parses or not — the failing body is the whole point of logging.
-  const raw = await res.text();
+  const raw = res.body;
 
   // Rate limits and upstream outages are exactly what backoff is for; a
   // rejected key is not, and must stay terminal so the caller does not burn
