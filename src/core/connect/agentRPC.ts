@@ -26,6 +26,10 @@ interface AgentRPC {
 }
 let current: AgentRPC | null = null;
 
+export function isAgentConnected(): boolean {
+  return current !== null;
+}
+
 export function bindAgentRPC(send: (message: unknown) => void): AgentRPC {
   const pending = new Map<string, Pending>();
   let closed = false;

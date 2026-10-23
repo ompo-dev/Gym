@@ -47,6 +47,8 @@ export interface EnrichMediaDescription {
  * key so the request never touches our quota. The mode is stored explicitly
  * rather than inferred from "has a key" because billing reads it, and because a
  * user may keep a key saved while temporarily switching back.
+ * A configured, connected account agent takes priority in every mode; `agent`
+ * retains saved user keys as a fallback when that peer is unavailable.
  */
 export type ApiKeyMode = 'managed' | 'own' | 'agent';
 

@@ -8,7 +8,6 @@ import { AgentAccountPanel } from './AgentAccountPanel';
 
 jest.mock('@/core/connect/agentRPC', () => ({ requestAgent: jest.fn() }));
 jest.mock('@/data/SettingsRepository', () => ({ SettingsRepository: { get: async () => null, set: async () => {} } }));
-jest.mock('@/store/useAppStore', () => ({ useAppStore: { getState: () => ({ apiKeys: {}, setApiKeys: async () => {} }) } }));
 jest.mock('@/components/atoms/AppIcon', () => ({ AppIcon: () => null }));
 
 const signedOut = { provider: 'codex', authenticated: false, imageSupported: true,
@@ -40,6 +39,10 @@ test('offline sign-in prepares the prompt, then signs in once pairing completes'
   expect(requestAgent).toHaveBeenLastCalledWith({ provider: 'codex', action: 'authenticate', methodId: 'chat-gpt' }, expect.any(AbortSignal));
   expect(screen.getByText(t('agent.authenticated'))).toBeTruthy();
   expect(screen.getByText('Effort')).toBeTruthy();
+  expect(useAgentSettingsStore.getState()).toMatchObject({
+    text: { provider: 'codex', choices: { model: 'a', effort: 'high' } },
+    vision: { provider: 'codex', choices: { model: 'a', effort: 'high' } },
+  });
 });
 
 test('canceling a queued login does not authenticate when the bridge later connects', async () => {
@@ -56,8 +59,18 @@ test('an already authenticated account loads its real options without signing in
   const screen = await render(<AgentAccountPanel provider="codex" onPrepare={async () => true} />);
   await fireEvent.press(screen.getByRole('button', { name: /ChatGPT \/ Codex/ }));
   expect(requestAgent).toHaveBeenCalledTimes(1);
-  await fireEvent.press(screen.getByRole('button', { name: t('agent.useText') }));
   expect(useAgentSettingsStore.getState().text).toEqual({ provider: 'codex', choices: { model: 'a', effort: 'high' } });
+});
+
+test('canceling authentication ignores a late successful reply without configuring an account', async () => {
+  useAgentConnectionStore.setState({ status: 'connected' });
+  let finish!: (value: unknown) => void;
+  jest.mocked(requestAgent).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  const screen = await render(<AgentAccountPanel provider="codex" onPrepare={prepare} />);
+  await fireEvent.press(screen.getByRole('button', { name: /ChatGPT \/ Codex/ }));
+  await fireEvent.press(screen.getByRole('button', { name: t('common.cancel') }));
+  await act(async () => { finish(signedIn); });
+  expect(useAgentSettingsStore.getState()).toMatchObject({ text: null, vision: null });
 });
 
 test('disconnecting the app revokes a queued sign-in', async () => {

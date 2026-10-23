@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { createHash, randomBytes as mockRandomBytes } from 'node:crypto';
+import { createHash, randomBytes as mockRandomBytes, randomUUID as mockRandomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { request } from 'node:http';
 import { resolve } from 'node:path';
@@ -10,10 +10,11 @@ import { Platform } from 'react-native';
 import { WebSocket as NodeSocket } from 'ws';
 
 import { appToolDeps } from '@/core/tools/appTools';
+import { requestAgent } from '@/core/connect/agentRPC';
 import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
 import { useAgentConnection } from './useAgentConnection';
 
-jest.mock('expo-crypto', () => ({ getRandomBytesAsync: async () => new Uint8Array(mockRandomBytes(32)) }));
+jest.mock('expo-crypto', () => ({ getRandomBytesAsync: async () => new Uint8Array(mockRandomBytes(32)), randomUUID: () => mockRandomUUID() }));
 jest.mock('@/core/tools/appTools', () => {
   const notes: string[] = [];
   return { appToolDeps: {
@@ -50,7 +51,7 @@ async function stop(child: ChildProcessWithoutNullStreams | undefined) {
   await closed;
 }
 
-test('the real app transport pairs with the Node companion and creates a fixture note through MCP', async () => {
+test('the real transport handles MCP writes and app-to-agent text/photos in both directions', async () => {
   const originalOS = Platform.OS;
   const originalSocket = globalThis.WebSocket;
   const token = mockRandomBytes(32).toString('hex');
@@ -58,13 +59,34 @@ test('the real app transport pairs with the Node companion and creates a fixture
   const script = resolve('scripts/gymnotes-connect.mjs');
   const companion = spawn(process.execPath, ['--input-type=module', '--eval', `
     const { createBridge } = await import(${JSON.stringify(pathToFileURL(script).href)});
-    const bridge = createBridge({ token: process.env.GYMNOTES_PAIRING_TOKEN, port: 0 });
+    const { agent, methods, PROTOCOL_VERSION } = await import('@agentclientprotocol/sdk/unstable');
+    const agentFactory = async () => {
+      const toAgent = new TransformStream();
+      const toClient = new TransformStream();
+      const fixture = agent({ name: 'fixture' })
+        .onRequest(methods.agent.initialize, () => ({ protocolVersion: PROTOCOL_VERSION,
+          agentCapabilities: { promptCapabilities: { image: true } }, authMethods: [] }))
+        .onRequest(methods.agent.session.new, () => ({ sessionId: 'fixture-session', configOptions: [] }))
+        .onRequest(methods.agent.session.prompt, async ({ params, client }) => {
+          const result = {
+            textReceived: params.prompt.some((block) => block.type === 'text' && block.text.includes('synthetic app request')),
+            photoReceived: params.prompt.some((block) => block.type === 'image' && block.data === 'dGVzdA=='),
+          };
+          await client.notify(methods.client.session.update, { sessionId: params.sessionId,
+            update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: JSON.stringify(result) } } });
+          return { stopReason: 'end_turn' };
+        });
+      const connection = fixture.connect({ writable: toClient.writable, readable: toAgent.readable });
+      return { cwd: process.cwd(), target: { writable: toAgent.writable, readable: toClient.readable }, stop: async () => connection.close() };
+    };
+    const bridge = createBridge({ token: process.env.GYMNOTES_PAIRING_TOKEN, port: 0, agentFactory });
     const address = await bridge.start();
     console.log(JSON.stringify({ port: address.port }));
   `], { env: { ...process.env, GYMNOTES_PAIRING_TOKEN: token }, stdio: ['pipe', 'pipe', 'pipe'] });
   const companionOutput = createInterface({ input: companion.stdout });
   let client: ChildProcessWithoutNullStreams | undefined;
   let unmount: (() => Promise<void>) | undefined;
+  let unsubscribe: (() => void) | undefined;
   try {
     const [line] = await once(companionOutput, 'line', { signal: AbortSignal.timeout(5000) });
     const base = `http://127.0.0.1:${JSON.parse(line).port}`;
@@ -72,10 +94,18 @@ test('the real app transport pairs with the Node companion and creates a fixture
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
     globalThis.WebSocket = NodeSocket as unknown as typeof WebSocket;
     useAgentConnectionStore.setState({ connection: { url: `${base.replace('http:', 'ws:')}/app`, token, allowWrites: true }, status: 'offline' });
+    let inspected: Promise<unknown> | undefined;
+    unsubscribe = useAgentConnectionStore.subscribe((state) => {
+      if (state.status === 'connected' && !inspected) inspected = requestAgent({ provider: 'codex', action: 'inspect' });
+    });
     const hook = await renderHook(() => useAgentConnection(true));
     unmount = hook.unmount;
     await waitFor(() => expect(useAgentConnectionStore.getState().status).toBe('connected'), { timeout: 5000 });
+    expect(await inspected).toMatchObject({ authenticated: true, imageSupported: true });
     expect(await api(base, key, 'ping')).toEqual({ ok: true, data: { connected: true } });
+    const generated = await requestAgent({ provider: 'codex', action: 'generate', choices: {},
+      messages: [{ role: 'user', content: 'synthetic app request' }], media: [{ base64: 'dGVzdA==', mimeType: 'image/jpeg' }] });
+    expect(generated).toEqual({ json: { textReceived: true, photoReceived: true } });
     client = spawn(process.execPath, [script, '--mcp'], {
       env: { ...process.env, GYMNOTES_CONNECT_TOKEN: key, GYMNOTES_CONNECT_URL: base }, stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -100,6 +130,7 @@ test('the real app transport pairs with the Node companion and creates a fixture
     await act(async () => useAgentConnectionStore.getState().disconnect());
     await waitFor(async () => expect(await api(base, key, 'tools')).toEqual({ connected: false, tools: [] }));
   } finally {
+    unsubscribe?.();
     await unmount?.();
     companionOutput.close();
     await stop(client);

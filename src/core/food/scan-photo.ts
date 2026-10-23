@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { apiBase } from '@/core/enrich/client';
 import { runFoodPhotoScan, type PhotoScanRequest } from '@/core/enrich/food-photo-scan';
 import { resolveProviderCredential } from '@/core/enrich/providers';
-import { agentJsonTransport } from '@/core/connect/agentTransport';
+import { agentJsonTransport, availableAgentTransports } from '@/core/connect/agentTransport';
 import type { FoodPhotoCutout } from '@/core/types';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -49,9 +49,13 @@ export async function prepareFoodPhoto(photo: CapturedFoodPhoto): Promise<Prepar
 
 export async function scanFoodPhoto(photo: PreparedFoodPhoto, locale: string, signal: AbortSignal): Promise<FoodPhotoCutout[]> {
   const input: PhotoScanRequest = { base64: photo.base64, mimeType: photo.mimeType, locale };
+  const { vision } = await availableAgentTransports();
   const keys = useAppStore.getState().apiKeys;
-  if (keys.mode === 'agent') return runFoodPhotoScan(input, { provider: 'gemini', key: '' }, signal, agentJsonTransport);
-  if (keys.mode === 'own') {
+  if (vision) return runFoodPhotoScan(input, { provider: 'gemini', key: '' }, signal, vision);
+  if (keys.mode === 'agent' && !keys.image.trim() && !keys.chat.trim()) {
+    return runFoodPhotoScan(input, { provider: 'gemini', key: '' }, signal, agentJsonTransport);
+  }
+  if (keys.mode !== 'managed') {
     const rawKey = keys.image.trim() || keys.chat.trim();
     if (!rawKey) throw new Error('photoScan.unconfigured');
     const credential = resolveProviderCredential(rawKey, keys.image.trim() ? 'gemini' : 'deepseek');

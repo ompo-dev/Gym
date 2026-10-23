@@ -72,8 +72,8 @@ export function useAgentConnection(ready: boolean) {
             if (!helloSent) { ws.close(1008, 'wrong-key'); return; }
             authenticated = true;
             clearTimeout(timeout);
-            setStatus('connected');
             agentRPC = bindAgentRPC((message) => ws.send(JSON.stringify(message)));
+            setStatus('connected');
           } else if (agentRPC?.receive(message)) {
             return;
           } else if (message.type === 'ping' && authenticated && typeof message.id === 'string' && message.id.length <= 100) {

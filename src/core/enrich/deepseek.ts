@@ -395,9 +395,11 @@ export async function runEnrichEngine(
   input: EnrichEngineInput,
   keys: EngineKeys,
   signal?: AbortSignal,
-  transport?: JsonModelTransport,
+  transport?: JsonModelTransport | { text?: JsonModelTransport; vision?: JsonModelTransport },
 ): Promise<EnrichResponse> {
   const { text, domain, intent, currentFood, media, context, userContext, locale } = input;
+  const textTransport = typeof transport === 'function' ? transport : transport?.text;
+  const visionTransport = typeof transport === 'function' ? transport : transport?.vision;
 
   const language = locale?.toLowerCase().startsWith('en') ? 'English' : 'Brazilian Portuguese';
   // Any food note with photos, not just a plain parse. Gating this on
@@ -406,7 +408,7 @@ export async function runEnrichEngine(
   // exactly the pictures worth reading.
   const mediaDescriptions =
     domain === 'food'
-      ? await describeFoodMedia(keys.image, keys.imageProvider ?? 'deepseek', media, language, signal, transport)
+      ? await describeFoodMedia(keys.image, keys.imageProvider ?? 'deepseek', media, language, signal, visionTransport)
       : [];
   const mediaContext = mediaDescriptions
     .map((item, index) => `Image ${index + 1} mediaId=${item.id}: ${item.description}`)
@@ -446,8 +448,8 @@ export async function runEnrichEngine(
   ];
   const maxTokens = MAX_TOKENS[intent] ?? 1100;
   const raw =
-    transport
-      ? await transport({ messages, maxTokens, signal })
+    textTransport
+      ? await textTransport({ messages, maxTokens, signal })
       : !keys.chatProvider || keys.chatProvider === 'deepseek'
       ? await callDeepSeekJson(keys.chat, messages, maxTokens, signal)
       : await callTextJson({

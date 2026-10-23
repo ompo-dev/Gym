@@ -43,6 +43,7 @@ interface State {
   vision: AgentBinding | null;
   hydrate: () => Promise<void>;
   bind: (purpose: AgentPurpose, binding: AgentBinding) => Promise<void>;
+  configureAccount: (state: AgentState, updateChoices?: boolean) => Promise<void>;
   unbind: (provider: AgentBinding['provider']) => Promise<void>;
   reset: () => void;
 }
@@ -61,6 +62,22 @@ export const useAgentSettingsStore = create<State>((set, get) => ({
   bind: (purpose, binding) => {
     const parsed = bindingSchema.parse(binding);
     return updateBindings((current) => ({ text: current.text, vision: current.vision, [purpose]: parsed }));
+  },
+  configureAccount: (state, updateChoices = false) => {
+    const account = agentStateSchema.parse(state);
+    if (!account.authenticated) return Promise.resolve();
+    const binding = { provider: account.provider,
+      choices: Object.fromEntries(account.options.map((option) => [option.id, option.currentValue])) };
+    return updateBindings((current) => {
+      const select = (purpose: AgentPurpose) => {
+        const previous = current[purpose];
+        if (purpose === 'vision' && !account.imageSupported) {
+          return updateChoices && previous?.provider === account.provider ? null : previous;
+        }
+        return !previous || (updateChoices && previous.provider === account.provider) ? binding : previous;
+      };
+      return { text: select('text'), vision: select('vision') };
+    });
   },
   unbind: (provider) => updateBindings((current) => ({ text: current.text?.provider === provider ? null : current.text,
     vision: current.vision?.provider === provider ? null : current.vision })),

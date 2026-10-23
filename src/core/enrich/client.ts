@@ -5,7 +5,7 @@ import { useAppStore } from '@/store/useAppStore';
 
 import { DeepSeekTransportError, runEnrichEngine } from './deepseek';
 import { resolveProviderCredential } from './providers';
-import { agentJsonTransport } from '@/core/connect/agentTransport';
+import { agentJsonTransport, availableAgentTransports } from '@/core/connect/agentTransport';
 
 import { ENRICH_UNCONFIGURED } from './types';
 
@@ -52,12 +52,12 @@ export function apiBase(): string | null {
  * rather than at each call site — there are four of those and forgetting one
  * would silently bill the wrong key.
  */
-function activeKeys(): EnrichKeys | undefined {
+function activeKeys(hasTextAgent: boolean): EnrichKeys | undefined {
   const keys = useAppStore.getState().apiKeys;
-  if (keys.mode !== 'own') return undefined;
+  if (keys.mode === 'managed') return undefined;
   const chat = keys.chat.trim();
-  if (!chat) return undefined;
   const image = keys.image.trim();
+  if (!chat && !(hasTextAgent && image)) return undefined;
   return image ? { chat, image } : { chat };
 }
 
@@ -70,6 +70,7 @@ async function enrichDirect(
   req: EnrichRequest,
   keys: EnrichKeys,
   signal: AbortSignal,
+  agents: Awaited<ReturnType<typeof availableAgentTransports>>,
 ): Promise<EnrichResponse> {
   const { keys: _ignored, ...input } = req;
   const chat = resolveProviderCredential(keys.chat, 'deepseek');
@@ -84,6 +85,7 @@ async function enrichDirect(
         imageProvider: image.provider,
       },
       signal,
+      agents,
     );
   } catch (e) {
     if (e instanceof DeepSeekTransportError) throw new NetworkError(e.message);
@@ -117,24 +119,29 @@ async function enrichViaProxy(
 }
 
 export async function enrich(req: EnrichRequest): Promise<EnrichResponse> {
-  const agentMode = useAppStore.getState().apiKeys.mode === 'agent';
-  const keys = activeKeys();
+  const agents = await availableAgentTransports();
+  const keys = activeKeys(Boolean(agents.text));
+  const needsVision = req.domain === 'food' && req.media?.some((media) => !media.description?.trim());
+  const agentMode = Boolean(agents.text && (!needsVision || agents.vision)) ||
+    (useAppStore.getState().apiKeys.mode === 'agent' && !keys);
+  const usesAgent = agentMode || Boolean(keys && (agents.text || (needsVision && agents.vision)));
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), agentMode ? 180_000 : TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), usesAgent ? 180_000 : TIMEOUT_MS);
   // The whole request in one line: what went out, and — on the returned span —
   // how long it took and whether the model answered or failed.
   const end = log.time('ai', `enrich ${req.domain}/${req.intent ?? 'parse'}`, {
-    via: agentMode ? 'local-agent' : keys ? 'own-key' : 'proxy',
+    via: agentMode ? 'local-agent' : usesAgent ? 'local-agent+own-key' : keys ? 'own-key' : 'proxy',
     chars: req.text.length,
     media: req.media?.length ?? 0,
     hasContext: Boolean(req.userContext),
   });
   try {
     const res = agentMode
-      ? await runEnrichEngine({ ...req, intent: req.intent ?? 'parse' }, { chat: '', image: '', chatProvider: 'gemini', imageProvider: 'gemini' }, controller.signal, agentJsonTransport)
+      ? await runEnrichEngine({ ...req, intent: req.intent ?? 'parse' }, { chat: '', image: '', chatProvider: 'gemini', imageProvider: 'gemini' }, controller.signal,
+        { text: agents.text ?? agentJsonTransport, vision: agents.vision ?? agentJsonTransport })
         .catch((error) => ({ ok: false as const, error: error instanceof Error && error.message.startsWith('agent.') ? error.message : 'agent.failed' }))
       : keys
-      ? await enrichDirect(req, keys, controller.signal)
+      ? await enrichDirect(req, keys, controller.signal, agents)
       : await enrichViaProxy(req, controller.signal);
     end(res.ok ? { ok: true } : { ok: false, error: res.error });
     return res;

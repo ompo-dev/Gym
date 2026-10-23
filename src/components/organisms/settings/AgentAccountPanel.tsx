@@ -11,7 +11,6 @@ import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
 import { agentStateSchema, useAgentSettingsStore, type AgentPurpose, type AgentState } from '@/store/useAgentSettingsStore';
-import { useAppStore } from '@/store/useAppStore';
 
 function AgentOption({ option, disabled, onChange }: {
   option: AgentState['options'][number]; disabled: boolean; onChange: (value: string | boolean) => void;
@@ -74,7 +73,10 @@ export function AgentAccountPanel({ provider, onPrepare, prepareDisabled = false
         next = agentStateSchema.parse(await requestAgent({ provider, action: 'authenticate', methodId: next.authMethods[0].id }, controller.signal));
       }
       if (action === 'logout' && !controller.signal.aborted) await useAgentSettingsStore.getState().unbind(provider);
-      if (!controller.signal.aborted) setState(next);
+      if (!controller.signal.aborted && mounted.current) {
+        await useAgentSettingsStore.getState().configureAccount(next, action === 'setOption');
+        if (!controller.signal.aborted && mounted.current) setState(next);
+      }
     } catch (e) {
       if (!controller.signal.aborted) setError(e instanceof Error && /^agent\.[a-zA-Z]+$/.test(e.message) ? e.message : 'agent.failed');
     } finally {
@@ -91,8 +93,6 @@ export function AgentAccountPanel({ provider, onPrepare, prepareDisabled = false
     try {
       const choices = Object.fromEntries(state.options.map((option) => [option.id, option.currentValue]));
       await useAgentSettingsStore.getState().bind(purpose, { provider, choices });
-      const app = useAppStore.getState();
-      if (useAgentSettingsStore.getState().text) await app.setApiKeys({ ...app.apiKeys, mode: 'agent' });
     } catch { if (mounted.current) setError('agent.failed'); }
     finally { running.current = false; if (mounted.current) setBusy(false); }
   };
