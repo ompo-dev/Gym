@@ -1,7 +1,8 @@
-import { BlurTargetView, BlurView } from 'expo-blur';
+import { BlurTargetView } from 'expo-blur';
 import { type ReactNode, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SoftEdgeBlur } from '@/components/atoms/SoftEdgeBlur';
 import { useColors } from '@/hooks/use-colors';
 
 export interface DayScrollFrameProps {
@@ -17,22 +18,29 @@ export function DayScrollFrame({ header, footer, children }: DayScrollFrameProps
   const target = useRef<View>(null);
   const [top, setTop] = useState(64);
   const [bottom, setBottom] = useState(safe.bottom + 100);
-  return <View style={[styles.fill, { paddingTop: safe.top, paddingLeft: safe.left, paddingRight: safe.right }]}>
-    <BlurTargetView ref={target} style={styles.fill}>{children({ top, bottom })}</BlurTargetView>
-    <View pointerEvents="box-none" style={styles.top}
-      onLayout={({ nativeEvent }) => setTop(nativeEvent.layout.height)}>
-      <BlurView pointerEvents="none" blurTarget={target} blurMethod="dimezisBlurViewSdk31Plus" tint={colors.background === '#242424' ? 'systemMaterialDark' : 'light'} intensity={30} style={StyleSheet.absoluteFill} />
-      {header}
+  const tint = colors.background === '#242424' ? 'systemMaterialDark' : 'light';
+  return <SafeAreaView style={styles.fill} edges={['top', 'left', 'right']}>
+    <View style={styles.fill}>
+      <BlurTargetView ref={target} style={styles.fill}>{children({ top, bottom })}</BlurTargetView>
+      <View pointerEvents="none" style={[styles.top, { height: top + 24 }]}>
+        <SoftEdgeBlur edge="top" blurTarget={target} tint={tint} />
+      </View>
+      <View pointerEvents="none" style={[styles.bottom, { height: bottom + 24 }]}>
+        <SoftEdgeBlur edge="bottom" blurTarget={target} tint={tint} />
+      </View>
+      <View pointerEvents="box-none" style={styles.top}
+        onLayout={({ nativeEvent }) => setTop(nativeEvent.layout.height)}>
+        {header}
+      </View>
+      <View pointerEvents="box-none" style={styles.bottom} onLayout={({ nativeEvent }) => setBottom(nativeEvent.layout.height)}>
+        {footer}
+      </View>
     </View>
-    <View pointerEvents="box-none" style={styles.bottom} onLayout={({ nativeEvent }) => setBottom(nativeEvent.layout.height)}>
-      <BlurView pointerEvents="none" blurTarget={target} blurMethod="dimezisBlurViewSdk31Plus" tint={colors.background === '#242424' ? 'systemMaterialDark' : 'light'} intensity={26} style={StyleSheet.absoluteFill} />
-      {footer}
-    </View>
-  </View>;
+  </SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  top: { position: 'absolute', top: 0, left: 0, right: 0, paddingBottom: 8 },
+  top: { position: 'absolute', top: 0, left: 0, right: 0 },
   bottom: { position: 'absolute', bottom: 0, left: 0, right: 0 },
 });
