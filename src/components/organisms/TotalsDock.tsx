@@ -50,7 +50,7 @@ export function TotalsDock({
   const [contentHeight, setContentHeight] = useState<number>(Metrics.dock);
   const progress = useSharedValue(0);
   const panelHeight = useSharedValue<number>(Metrics.dock);
-  const expandedHeight = Math.min(contentHeight + 36, Math.max(Metrics.dock, windowHeight * 0.6));
+  const expandedHeight = Math.min(Math.max(contentHeight, Metrics.dock), Math.max(Metrics.dock, windowHeight * 0.6));
   useEffect(() => {
     onHeightChange?.(expanded ? expandedHeight : Metrics.dock);
     progress.value = withTiming(expanded ? 1 : 0, { duration: 180 });
@@ -94,12 +94,11 @@ export function TotalsDock({
       </LoggedPressable>
       </Animated.View>
       {children ? <Animated.View style={[styles.details, detailsStyle]} pointerEvents={expanded ? 'auto' : 'none'} accessibilityElementsHidden={!expanded} importantForAccessibility={!expanded ? 'no-hide-descendants' : 'auto'}>
-        <LoggedPressable accessibilityRole="button" accessibilityLabel={t('common.close')} onPress={onPress} style={styles.close}>
-          <AppIcon name="chevronDown" size={20} color={colors.textSecondary} />
+        <LoggedPressable accessibilityRole="button" accessibilityLabel={t('common.close')} onPress={onPress} style={styles.detailsButton}>
+          <ScrollView style={{ maxHeight: expandedHeight }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            <View onLayout={({ nativeEvent }) => setContentHeight(nativeEvent.layout.height)}>{children}</View>
+          </ScrollView>
         </LoggedPressable>
-        <ScrollView style={{ maxHeight: Math.max(0, expandedHeight - 36) }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-          <View onLayout={({ nativeEvent }) => setContentHeight(nativeEvent.layout.height)}>{children}</View>
-        </ScrollView>
       </Animated.View> : null}
     </GlassSurface>
     </Animated.View>
@@ -122,8 +121,8 @@ const styles = StyleSheet.create({
   shell: { position: 'absolute', bottom: 0, left: 0, right: 0, overflow: 'hidden' },
   summary: { ...StyleSheet.absoluteFill, justifyContent: 'center' },
   summaryButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.one, paddingHorizontal: Spacing.three },
-  details: { position: 'absolute', top: 0, left: 0, right: 0 },
-  close: { height: 36, alignItems: 'center', justifyContent: 'center' },
+  details: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  detailsButton: { flex: 1 },
   dock: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -384,6 +384,7 @@ export function DayTemplate<TData, TTotals>({
   >(null);
   const [foodMediaMenuVisible, setFoodMediaMenuVisible] = useState(false);
   const [cameraMode, setCameraMode] = useState<FoodMediaAction | null>(null);
+  const [composerFocusRequest, setComposerFocusRequest] = useState(0);
   const [foodMediaDrafts, setFoodMediaDrafts] = useState<FoodMediaDraft[]>([]);
   const [savedExerciseEntryIds, setSavedExerciseEntryIds] = useState<
     Set<string>
@@ -888,6 +889,11 @@ export function DayTemplate<TData, TTotals>({
     [foodMediaDrafts, date],
   );
 
+  const handleCloseFoodCamera = useCallback(() => {
+    setCameraMode(null);
+    setComposerFocusRequest((request) => request + 1);
+  }, []);
+
   const openPendingBarcodeDraft = useCallback(() => {
     const draft = pendingBarcodeDraft.current;
     if (!draft || !barcodeCaptureDismissed.current) return;
@@ -1317,7 +1323,7 @@ export function DayTemplate<TData, TTotals>({
                   drafts={foodMediaDrafts}
                   onPhoto={handlePhotoCaptured}
                   onBarcode={handleBarcodeScanned}
-                  onClose={() => setCameraMode(null)}
+                  onClose={handleCloseFoodCamera}
                 />
               ) : null}
              {(keyboardVisible || Platform.OS === "web") && isFood && !IOS_NATIVE_ENABLED ? (
@@ -1459,6 +1465,7 @@ export function DayTemplate<TData, TTotals>({
         >
           <NotesList
             scrollInsets={scrollInsets}
+            composerFocusRequest={composerFocusRequest}
             entries={entries}
             config={config}
             keyboardVisible={keyboardVisible}

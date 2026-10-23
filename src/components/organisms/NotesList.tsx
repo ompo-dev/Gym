@@ -42,6 +42,7 @@ interface NotesListProps<TData, TTotals> {
   onOpenFoodDetails?: (entry: Entry) => void;
   onOpenPantry?: () => void;
   scrollInsets?: { top: number; bottom: number };
+  composerFocusRequest?: number;
 }
 
 function getPreviousWorkoutEntryId(entries: Entry[], index: number): string | null {
@@ -144,6 +145,7 @@ export function NotesList<TData, TTotals>({
   onOpenFoodDetails,
   onOpenPantry,
   scrollInsets,
+  composerFocusRequest = 0,
 }: NotesListProps<TData, TTotals>) {
   const containerRef = useRef<View | null>(null);
   const listRef = useRef<FlatList<Entry> | null>(null);
@@ -206,6 +208,12 @@ export function NotesList<TData, TTotals>({
       if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!composerFocusRequest) return;
+    if (focusTimer.current) clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(() => newInputRef.current?.focus(), 80);
+  }, [composerFocusRequest]);
 
   const measureViewport = (afterMeasure?: () => void) => {
     const container = containerRef.current;

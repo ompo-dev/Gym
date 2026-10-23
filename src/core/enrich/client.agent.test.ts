@@ -1,4 +1,5 @@
 import { bindAgentRPC, type AgentRequest } from '@/core/connect/agentRPC';
+import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
 import { useAgentSettingsStore } from '@/store/useAgentSettingsStore';
 
 import { enrich } from './client';
@@ -33,6 +34,7 @@ function connect(reply: (request: AgentRequest) => unknown = () => food) {
 
 beforeEach(() => {
   useAgentSettingsStore.getState().reset();
+  useAgentConnectionStore.setState({ connection: null, status: 'offline', issue: null });
   mockApiKeys = { mode: 'own', chat: 'deepseek:test-key', image: 'openai:test-image-key' };
   global.fetch = jest.fn() as typeof fetch;
 });
@@ -40,6 +42,19 @@ afterEach(() => {
   rpc?.close(); rpc = undefined;
   global.fetch = originalFetch;
   useAgentSettingsStore.getState().reset();
+  useAgentConnectionStore.setState({ connection: null, status: 'offline', issue: null });
+});
+
+test('the selected connected agent is the default for text and images without extra role setup', async () => {
+  useAgentConnectionStore.setState({
+    connection: { url: 'ws://127.0.0.1:3847/app', token: 'a'.repeat(64), allowWrites: true, agent: 'codex' },
+    status: 'connected',
+    issue: null,
+  });
+  const requests = connect((request) => request.media?.length ? descriptions : food);
+  expect(await enrich({ ...req, media: [photo] })).toMatchObject({ ok: true, data: food });
+  expect(requests.map((request) => request.provider)).toEqual(['codex', 'codex']);
+  expect(global.fetch).not.toHaveBeenCalled();
 });
 
 test.each(['own', 'managed', 'agent'] as const)('connected text agent takes priority in %s mode and keeps the full nutrition pipeline', async (mode) => {

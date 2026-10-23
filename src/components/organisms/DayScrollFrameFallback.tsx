@@ -15,17 +15,17 @@ export function DayScrollFrame({ header, footer, children }: DayScrollFrameProps
   const safe = useSafeAreaInsets();
   const colors = useColors();
   const target = useRef<View>(null);
-  const [top, setTop] = useState(safe.top + 64);
+  const [top, setTop] = useState(64);
   const [bottom, setBottom] = useState(safe.bottom + 100);
-  return <View style={[styles.fill, { paddingLeft: safe.left, paddingRight: safe.right }]}>
+  return <View style={[styles.fill, { paddingTop: safe.top, paddingLeft: safe.left, paddingRight: safe.right }]}>
     <BlurTargetView ref={target} style={styles.fill}>{children({ top, bottom })}</BlurTargetView>
-    <View pointerEvents="box-none" style={[styles.top, { paddingTop: safe.top }]}
+    <View pointerEvents="box-none" style={styles.top}
       onLayout={({ nativeEvent }) => setTop(nativeEvent.layout.height)}>
-      <BlurView pointerEvents="none" blurTarget={target} blurMethod="dimezisBlurViewSdk31Plus" tint={colors.background === '#242424' ? 'systemMaterialDark' : 'light'} intensity={70} style={StyleSheet.absoluteFill} />
+      <BlurView pointerEvents="none" blurTarget={target} blurMethod="dimezisBlurViewSdk31Plus" tint={colors.background === '#242424' ? 'systemMaterialDark' : 'light'} intensity={30} style={StyleSheet.absoluteFill} />
       {header}
     </View>
     <View pointerEvents="box-none" style={styles.bottom} onLayout={({ nativeEvent }) => setBottom(nativeEvent.layout.height)}>
-      <BlurView pointerEvents="none" blurTarget={target} blurMethod="dimezisBlurViewSdk31Plus" tint={colors.background === '#242424' ? 'systemMaterialDark' : 'light'} intensity={65} style={StyleSheet.absoluteFill} />
+      <BlurView pointerEvents="none" blurTarget={target} blurMethod="dimezisBlurViewSdk31Plus" tint={colors.background === '#242424' ? 'systemMaterialDark' : 'light'} intensity={26} style={StyleSheet.absoluteFill} />
       {footer}
     </View>
   </View>;
