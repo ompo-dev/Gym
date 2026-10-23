@@ -6,19 +6,27 @@ import { DayScrollFrame as IOSDayScrollFrame } from './DayScrollFrame.ios';
 
 jest.mock('expo-blur', () => ({ BlurTargetView: MockView }));
 jest.mock('@/components/atoms/SoftEdgeBlur', () => ({ SoftEdgeBlur: () => null }));
+jest.mock('@/components/atoms/BottomEdgeBlur', () => ({ BottomEdgeBlur: () => null }));
 jest.mock('react-native-scroll-edge-bar', () => ({
   ScrollEdgeBar: () => { throw new Error('The native BottomBar must not own the totals or the background edge'); },
 }));
 const mockFrame = { x: 0, y: 0, width: 400, height: 800 };
 const mockWindow = { width: 400, height: 800, scale: 2, fontScale: 1 };
+let mockRootY = 0;
 jest.mock('react-native', () => {
   const native = jest.requireActual('react-native');
+  const React = jest.requireActual('react');
+  const MeasuredView = React.forwardRef(function MeasuredView(props: any, ref: any) {
+    React.useImperativeHandle(ref, () => ({ measureInWindow: (callback: Function) => callback(0, mockRootY, 400, 750) }));
+    return React.createElement(native.View, props);
+  });
   const platform = { ...native.Platform, OS: 'ios', Version: 26 };
   const manager = new Proxy(native.UIManager, {
     get: (target, key) => key === 'hasViewManagerConfig' ? () => true : Reflect.get(target, key),
   });
   return new Proxy(native, {
     get: (target, key) => key === 'useWindowDimensions' ? () => mockWindow
+      : key === 'View' ? MeasuredView
       : key === 'Platform' ? platform : key === 'UIManager' ? manager : Reflect.get(target, key),
   });
 });
@@ -29,8 +37,25 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 beforeEach(() => {
+  mockRootY = 0;
   mockFrame.y = 0;
   mockFrame.height = 800;
+});
+
+test.each([-32, 0, 28])('uses the measured window origin (%i), not the nested safe-area coordinate', async (y) => {
+  mockFrame.y = 48;
+  mockFrame.height = 700;
+  mockRootY = y;
+  const screen = await render(<IOSDayScrollFrame header={<MockView testID="header" />}
+    footer={<MockView testID="footer" />} bottomEdgeHeight={90}>{() => <MockView />}</IOSDayScrollFrame>);
+  await fireEvent(screen.getByTestId('day-scroll-frame'), 'layout', { nativeEvent: { layout: { height: 750 } } });
+  expect(screen.getByTestId('day-scroll-frame')).toHaveStyle({ height: 800 - y });
+  expect(screen.getByTestId('day-scroll-controls')).toHaveStyle({ bottom: 800 - y - 700 });
+  expect(screen.getByTestId('day-bottom-edge')).toHaveStyle({ bottom: 0, height: 90 });
+  expect(screen.getByTestId('day-top-edge')).toHaveStyle({ top: 0, height: 147 });
+  await fireEvent(screen.getByTestId('footer'), 'layout', { nativeEvent: { layout: { height: 410 } } });
+  expect(screen.getByTestId('day-scroll-frame')).toHaveStyle({ height: 800 - y });
+  expect(screen.getByTestId('day-bottom-edge')).toHaveStyle({ bottom: 0, height: 90 });
 });
 
 test('iOS 26 uses the same screen-anchored edges even when the native bar module is installed', async () => {
