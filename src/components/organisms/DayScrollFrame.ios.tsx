@@ -5,8 +5,8 @@ import { DayScrollFrame as Fallback, type DayScrollFrameProps } from './DayScrol
 // Keep existing OTA binaries usable until the native module is installed.
 const nativeEdges = Number(Platform.Version) >= 26 && UIManager.hasViewManagerConfig('RNScrollEdgeBar');
 
-export function DayScrollFrame({ header, footer, children }: DayScrollFrameProps) {
-  if (!nativeEdges) return <Fallback header={header} footer={footer}>{children}</Fallback>;
+export function DayScrollFrame({ header, footer, bottomEdgeHeight, children }: DayScrollFrameProps) {
+  if (!nativeEdges) return <Fallback header={header} footer={footer} bottomEdgeHeight={bottomEdgeHeight}>{children}</Fallback>;
   // safeAreaBar owns the system inset; another safe-area wrapper moves the header.
   return <ScrollEdgeBar style={{ flex: 1 }} prefersGlassEffect topEdgeEffectStyle="soft" bottomEdgeEffectStyle="soft">
     <ScrollEdgeBar.TopBar>{header}</ScrollEdgeBar.TopBar>

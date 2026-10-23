@@ -1,9 +1,7 @@
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
-  Keyboard,
   type LayoutChangeEvent,
-  Platform,
   StyleSheet,
   TextInput,
   View,
@@ -19,6 +17,7 @@ import { COMPOSER_TRAY } from '@/core/appModals';
 import type { Entry } from '@/core/types';
 import type { DomainConfig } from '@/domains/types';
 import { useColors } from '@/hooks/use-colors';
+import { useFocusedNoteScroll } from '@/hooks/useFocusedNoteScroll';
 import { t } from '@/i18n';
 
 import { FoodMediaDraftTray, type FoodMediaDraft } from './FoodMediaDraftTray';
@@ -155,19 +154,13 @@ export function NotesList<TData, TTotals>({
   );
   const [viewportHeight, setViewportHeight] = useState(0);
   const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const newInputCenterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollEndTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const centerNewInputRef = useRef<(animated: boolean) => void>(() => {});
   const newInputFocused = useRef(false);
   const lastScrolledEntriesKey = useRef<string | null>(null);
-  const entriesLength = useRef(entries.length);
-  const scrollY = useRef(0);
-  const listHeight = useRef(0);
-  const listWindowY = useRef(0);
-  const keyboardTop = useRef<number | null>(null);
-  const focusedLine = useRef<{ index: number; screenY: number; height: number } | null>(null);
+  const { centerFocused, onFocusLine, scrollHandlers } = useFocusedNoteScroll(
+    containerRef, listRef, scrollInsets,
+  );
   const entriesKey = entries.map((entry) => entry.id).join('|');
-  entriesLength.current = entries.length;
 
   const scheduleScrollToEnd = (animated = false) => {
     if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
@@ -177,34 +170,8 @@ export function NotesList<TData, TTotals>({
   };
 
   useEffect(() => {
-    // `willShow` (iOS) fires as the keyboard STARTS rising and already carries
-    // its final frame, so centring the focused line here — animated — rides the
-    // rise instead of snapping into place after it settled (`didShow`). Android
-    // has no will-event; `didShow` there is close enough on its faster keyboard.
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const show = Keyboard.addListener(showEvent, ({ endCoordinates }) => {
-      keyboardTop.current = endCoordinates.screenY;
-      if (focusedLine.current) measureViewport(() => scrollLineToCenter(focusedLine.current!, true));
-    });
-    const hide = Keyboard.addListener('keyboardDidHide', () => {
-      keyboardTop.current = null;
-      if (focusedLine.current?.index === entriesLength.current) {
-        centerNewInputRef.current(false);
-        return;
-      }
-      if (focusedLine.current) measureViewport(() => scrollLineToCenter(focusedLine.current!, false));
-    });
-
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
-  useEffect(() => {
     return () => {
       if (focusTimer.current) clearTimeout(focusTimer.current);
-      if (newInputCenterTimer.current) clearTimeout(newInputCenterTimer.current);
       if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
     };
   }, []);
@@ -214,61 +181,6 @@ export function NotesList<TData, TTotals>({
     if (focusTimer.current) clearTimeout(focusTimer.current);
     focusTimer.current = setTimeout(() => newInputRef.current?.focus(), 80);
   }, [composerFocusRequest]);
-
-  const measureViewport = (afterMeasure?: () => void) => {
-    const container = containerRef.current;
-    if (!container) {
-      afterMeasure?.();
-      return;
-    }
-    container.measureInWindow((_x, y, _width, height) => {
-      listWindowY.current = y;
-      listHeight.current = height;
-      afterMeasure?.();
-    });
-  };
-
-  const scrollLineToCenter = (
-    target: { index: number; screenY: number; height: number },
-    animated: boolean,
-  ) => {
-    if (!listHeight.current) return;
-    const visibleTop = listWindowY.current + Spacing.four;
-    const visibleBottom = keyboardTop.current
-      ? Math.min(listWindowY.current + listHeight.current, keyboardTop.current - Spacing.four)
-      : listWindowY.current + listHeight.current;
-    const visibleHeight = Math.max(0, visibleBottom - visibleTop);
-    if (visibleHeight <= 0) return;
-    const desiredCenter = visibleTop + visibleHeight / 2;
-    const lineCenter = target.screenY + target.height / 2;
-    const delta = lineCenter - desiredCenter;
-    if (Math.abs(delta) < 8) return;
-    const offset = Math.max(0, scrollY.current + delta);
-    scrollY.current = offset;
-    listRef.current?.scrollToOffset({ offset, animated });
-  };
-
-  const centerLine = (index: number, layout: { screenY: number; height: number }) => {
-    const target = { index, ...layout };
-    focusedLine.current = target;
-    measureViewport(() => scrollLineToCenter(target, true));
-  };
-
-  const centerNewInput = (animated: boolean) => {
-    const input = newInputRef.current;
-    if (!input) return;
-    input.measureInWindow((_x, y, _width, height) => {
-      const target = { index: entries.length, screenY: y, height };
-      focusedLine.current = target;
-      measureViewport(() => scrollLineToCenter(target, animated));
-    });
-  };
-  centerNewInputRef.current = centerNewInput;
-
-  const scheduleNewInputCenter = (animated = true) => {
-    if (newInputCenterTimer.current) clearTimeout(newInputCenterTimer.current);
-    newInputCenterTimer.current = setTimeout(() => centerNewInput(animated), 32);
-  };
 
   const focusNewExercise = () => {
     let attempts = 0;
@@ -299,30 +211,17 @@ export function NotesList<TData, TTotals>({
 
   const handleNewInputFocus = () => {
     newInputFocused.current = true;
-    scheduleNewInputCenter(true);
+    onFocusLine();
   };
 
   const handleNewInputBlur = () => {
     newInputFocused.current = false;
-    scheduleNewInputCenter(false);
   };
 
   const handleLayout = (event: LayoutChangeEvent) => {
     const height = event.nativeEvent.layout.height;
     setViewportHeight((current) => (current === height ? current : height));
-    // Only re-centre while something is actually being edited. iOS refires
-    // layout when the app returns from background; without this guard it yanks
-    // the scroll to a stale `focusedLine`, which read as the list "jumping"
-    // every time you left and came back to the app.
-    const isEditing = keyboardTop.current !== null || newInputFocused.current;
-    if (!isEditing) return;
-    measureViewport(() => {
-      if (focusedLine.current?.index === entriesLength.current) {
-        centerNewInput(false);
-        return;
-      }
-      if (focusedLine.current) scrollLineToCenter(focusedLine.current, false);
-    });
+    centerFocused(false);
   };
 
   // The tall bottom padding only exists to centre a focused line while the
@@ -350,9 +249,7 @@ export function NotesList<TData, TTotals>({
         style={styles.list}
         data={entries}
         keyExtractor={(entry) => entry.id}
-        onScroll={({ nativeEvent }) => {
-          scrollY.current = nativeEvent.contentOffset.y;
-        }}
+        {...scrollHandlers}
         scrollEventThrottle={16}
         renderItem={({ item, index }) => (
           <View>
@@ -384,9 +281,7 @@ export function NotesList<TData, TTotals>({
                   ? () => focusWorkoutExercise(getPreviousWorkoutEntryId(entries, index))
                   : undefined
               }
-              onFocusWorkoutLine={
-                config.id === 'workout' ? (layout) => centerLine(index, layout) : undefined
-              }
+              onFocusLine={onFocusLine}
               autoFocusWorkoutExercise={
                 config.id === 'workout' && item.id === pendingWorkoutExerciseFocusId
               }
@@ -401,17 +296,9 @@ export function NotesList<TData, TTotals>({
             />
           </View>
         )}
-        onScrollToIndexFailed={({ averageItemLength, index }) => {
-          listRef.current?.scrollToOffset({ offset: averageItemLength * index, animated: true });
-          setTimeout(() => {
-            if (focusedLine.current?.index === index) {
-              measureViewport(() => scrollLineToCenter(focusedLine.current!, true));
-            }
-          }, 32);
-        }}
         onContentSizeChange={() => {
-          if (newInputFocused.current) {
-            scheduleNewInputCenter(true);
+          if (newInputFocused.current || TextInput.State.currentlyFocusedInput()) {
+            centerFocused();
             return;
           }
           if (lastScrolledEntriesKey.current !== entriesKey) {
@@ -436,7 +323,7 @@ export function NotesList<TData, TTotals>({
         }
         contentContainerStyle={[styles.content, { paddingTop: scrollInsets?.top ?? 0, paddingBottom: contentPaddingBottom + (scrollInsets?.bottom ?? 0) }]}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
+        keyboardDismissMode="none"
         automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       />

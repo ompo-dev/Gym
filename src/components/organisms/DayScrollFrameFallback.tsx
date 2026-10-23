@@ -8,11 +8,12 @@ import { useColors } from '@/hooks/use-colors';
 export interface DayScrollFrameProps {
   header: ReactNode;
   footer: ReactNode;
+  bottomEdgeHeight: number;
   children: (insets: { top: number; bottom: number }) => ReactNode;
 }
 
 /** Content scrolls behind the bars; padding keeps the first and last rows reachable. */
-export function DayScrollFrame({ header, footer, children }: DayScrollFrameProps) {
+export function DayScrollFrame({ header, footer, bottomEdgeHeight, children }: DayScrollFrameProps) {
   const safe = useSafeAreaInsets();
   const colors = useColors();
   const target = useRef<View>(null);
@@ -28,7 +29,8 @@ export function DayScrollFrame({ header, footer, children }: DayScrollFrameProps
     <View pointerEvents="none" style={[styles.top, { height: safe.top + top + 24 }]}>
       <SoftEdgeBlur edge="top" blurTarget={target} tint={tint} />
     </View>
-    <View pointerEvents="none" style={[styles.bottom, { height: bottom + 24 }]}>
+    {/* The screen edge belongs to the tabs, not the expanding totals panel. */}
+    <View testID="day-bottom-edge" pointerEvents="none" style={[styles.bottom, { height: bottomEdgeHeight }]}>
       <SoftEdgeBlur edge="bottom" blurTarget={target} tint={tint} />
     </View>
     {/* Insets protect the controls, while the scroll background and blur reach the screen edges. */}

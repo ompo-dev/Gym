@@ -1286,7 +1286,7 @@ export function DayTemplate<TData, TTotals>({
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <DayScrollFrame header={
+      <DayScrollFrame bottomEdgeHeight={insets.bottom + TAB_BAR_CLEARANCE} header={
         <View
           style={styles.paddedHeader}
           onStartShouldSetResponderCapture={dismissStatsPanelResponder}

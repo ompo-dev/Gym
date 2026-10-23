@@ -52,7 +52,7 @@ interface NoteRowProps<TData, TTotals> {
   onOpenPantry?: () => void;
   onFocusNewWorkoutExercise?: () => void;
   onDeleteWorkoutExercise?: () => void;
-  onFocusWorkoutLine?: (layout: { screenY: number; height: number }) => void;
+  onFocusLine?: () => void;
   autoFocusWorkoutExercise?: boolean;
   onWorkoutExerciseAutoFocused?: () => void;
 }
@@ -212,9 +212,11 @@ function FoodRow<TData, TTotals>({
   onTogglePlanned,
   onOpenFoodDetails,
   onOpenPantry,
+  onFocusLine,
 }: NoteRowProps<TData, TTotals>) {
   const colors = useColors();
   const [text, setText] = useState(entry.text);
+  const inputRef = useRef<TextInput>(null);
   const deletedRef = useRef(false);
   const completed = entry.completedAt != null;
   const completeProgress = useSharedValue(completed ? 1 : 0);
@@ -262,8 +264,13 @@ function FoodRow<TData, TTotals>({
       {leading}
       <View style={styles.inputWrap}>
         <TextInput
+          ref={inputRef}
           value={text}
           onChangeText={setText}
+          onFocus={onFocusLine}
+          onContentSizeChange={() => {
+            if (inputRef.current?.isFocused()) onFocusLine?.();
+          }}
           onBlur={commit}
           onEndEditing={commit}
           multiline
@@ -324,7 +331,7 @@ function NoteRowInner<TData, TTotals>(props: NoteRowProps<TData, TTotals>) {
     exerciseSaved,
     onFocusNewWorkoutExercise,
     onDeleteWorkoutExercise,
-    onFocusWorkoutLine,
+    onFocusLine,
     autoFocusWorkoutExercise,
     onWorkoutExerciseAutoFocused,
   } = props;
@@ -344,7 +351,7 @@ function NoteRowInner<TData, TTotals>(props: NoteRowProps<TData, TTotals>) {
           initialExerciseSaved={exerciseSaved}
           onFocusNewExercise={onFocusNewWorkoutExercise}
           onDeleteExercise={onDeleteWorkoutExercise}
-          onFocusLine={onFocusWorkoutLine}
+          onFocusLine={onFocusLine}
           autoFocusExercise={autoFocusWorkoutExercise}
           onExerciseAutoFocused={onWorkoutExerciseAutoFocused}
         />
