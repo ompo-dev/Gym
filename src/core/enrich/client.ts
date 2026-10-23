@@ -126,7 +126,7 @@ export async function enrich(req: EnrichRequest): Promise<EnrichResponse> {
     (useAppStore.getState().apiKeys.mode === 'agent' && !keys);
   const usesAgent = agentMode || Boolean(keys && (agents.text || (needsVision && agents.vision)));
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), usesAgent ? 180_000 : TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), usesAgent ? 180_000 : needsVision ? 60_000 : TIMEOUT_MS);
   // The whole request in one line: what went out, and — on the returned span —
   // how long it took and whether the model answered or failed.
   const end = log.time('ai', `enrich ${req.domain}/${req.intent ?? 'parse'}`, {

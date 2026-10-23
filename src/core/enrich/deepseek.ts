@@ -375,15 +375,15 @@ async function describeFoodMedia(
             signal,
           }, transport);
     const parsed = MediaDescriptionsSchema.safeParse(raw);
-    if (transport && (!parsed.success || mediaToDescribe.some((item) => !parsed.data.descriptions.some((description) => description.id === item.id)))) {
-      throw new Error('agent.invalidResponse');
+    if (!parsed.success || mediaToDescribe.some((item) => !parsed.data.descriptions.some((description) => description.id === item.id && description.description.trim()))) {
+      throw new Error(transport ? 'agent.invalidResponse' : 'enrich.parse');
     }
     return parsed.success ? [...provided, ...parsed.data.descriptions] : provided;
   } catch (e) {
     if (transport) throw e;
     if (e instanceof AiProviderTransportError) throw new DeepSeekTransportError(e.message);
-    // Captioning is best-effort: a blind parse still beats failing the note.
-    return provided;
+    log.media('photo.describe.failed', { provider, count: mediaToDescribe.length, reason: e instanceof Error ? e.message : 'enrich.failed' });
+    throw e;
   }
 }
 

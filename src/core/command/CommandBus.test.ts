@@ -87,6 +87,23 @@ test('add is optimistic then resolves to done with parsed data', async () => {
   expect((entry.data as { items: { calories: number }[] }).items[0].calories).toBe(620);
 });
 
+test('whole-photo results preserve photos, split plans and never launch a second inference', async () => {
+  const inference = jest.fn(async () => foodOk());
+  const { bus, rows, day } = harness(inference);
+  const media = [{ id: 'photo-1', kind: 'foodPhoto' as const, uri: 'data:image/jpeg;base64,AAAA', description: 'banana' }];
+  const entry: Entry = { id: 'photo-entry', text: 'crie refeicoes com isso', domain: 'food', date: TODAY, createdAt: 1, status: 'thinking', data: null, error: null, media };
+  rows.set(entry.id, entry); day.food.entries.push(entry);
+  await bus.resolveFood(entry, { notes: [
+    { text: 'Cafe da tarde', planned: true, data: { items: [{ label: 'banana', calories: 90, protein: 1, carbs: 22, fat: 0 }] } },
+    { text: 'Jantar', planned: true, data: { items: [{ label: 'omelete', calories: 200, protein: 20, carbs: 2, fat: 14 }] } },
+  ] });
+  expect(day.food.entries).toHaveLength(2);
+  expect(day.food.entries[0].media).toEqual(media);
+  expect(day.food.entries.every((item) => item.planned && !item.completedAt && item.status === 'done')).toBe(true);
+  expect(rows.has(entry.id)).toBe(false);
+  expect(inference).not.toHaveBeenCalled();
+});
+
 test('add keeps media attachments after enrich resolves', async () => {
 const media = [{ id: 'photo-1', kind: 'foodPhoto' as const, uri: 'file://meal.jpg', description: '' }];
   const { bus, day } = harness(async () => foodOk());

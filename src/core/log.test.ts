@@ -1,4 +1,4 @@
-import { _setOnForTest, clearLogBuffer, getLogBuffer, log, logConfig } from "./log";
+import { _setOnForTest, clearLogBuffer, getLogBuffer, formatLogs, LOG_LIMIT, log, logConfig } from "./log";
 
 // Enable the ring buffer push path (console stays quiet because emit only logs
 // to console when ON is true — we set it true just for the ring buffer path).
@@ -39,11 +39,11 @@ test("log with huge meta is clipped to ~520 chars max", () => {
 
 test("log with small meta is stored as-is", () => {
   clearLogBuffer();
-  log.ai("small", { key: "value" });
+  log.ai("small", { count: 2 });
   const buffer = getLogBuffer();
   expect(buffer.length).toBeGreaterThanOrEqual(1);
   const entry = buffer[0];
-  expect(entry.meta).toBe('{"key":"value"}');
+  expect(entry.meta).toBe('{"count":2}');
 });
 
 test("log with undefined meta stores no meta field", () => {
@@ -62,4 +62,17 @@ test("captures to the ring when ON is false but logConfig.capture is true", () =
   expect(getLogBuffer()).toHaveLength(1);
   // restore for the other tests:
   _setOnForTest(true);
+});
+
+test('exports all 500 newest events without credentials, images or note text', () => {
+  _setOnForTest(false);
+  logConfig.capture = true;
+  clearLogBuffer();
+  for (let i = 0; i < LOG_LIMIT + 10; i++) log.media(`photo.${i}`, { count: i, token: 'private-key', text: 'private-note', base64: 'private-image' });
+  const output = formatLogs();
+  expect(output.split('\n')).toHaveLength(500);
+  expect(output).toContain('photo.509');
+  expect(output).not.toContain('photo.9 ');
+  expect(output).not.toMatch(/private-key|private-note|private-image/);
+  expect(output.length).toBeGreaterThan(4000);
 });

@@ -1,4 +1,5 @@
 import * as Crypto from 'expo-crypto';
+import { log } from '@/core/log';
 
 export type AgentProvider = 'codex' | 'claude' | 'gemini';
 export type AgentChoice = string | boolean;
@@ -40,18 +41,21 @@ export function bindAgentRPC(send: (message: unknown) => void): AgentRPC {
       if (pending.size >= 8) return Promise.reject(new Error('agent.busy'));
       return new Promise((resolve, reject) => {
         const id = Crypto.randomUUID();
+        const end = log.time('connect', `agent.${request.action}`, { id, provider: request.provider, media: request.media?.length ?? 0 });
         const cancel = () => {
           pending.delete(id);
           cleanup();
+          end({ ok: false, reason: 'agent.cancelled' });
           try { send({ type: 'agent.cancel', id }); } catch { /* Already disconnected. */ }
           reject(new Error('agent.cancelled'));
         };
         const timer = setTimeout(cancel, 180_000);
         const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', cancel); };
-        pending.set(id, { resolve, reject, cleanup });
+        pending.set(id, { resolve: (value) => { end({ ok: true }); resolve(value); },
+          reject: (error) => { end({ ok: false, reason: error.message }); reject(error); }, cleanup });
         signal?.addEventListener('abort', cancel, { once: true });
         try { send({ type: 'agent.request', id, request }); }
-        catch { pending.delete(id); cleanup(); reject(new Error('agent.offline')); }
+        catch { pending.delete(id); cleanup(); end({ ok: false, reason: 'agent.offline' }); reject(new Error('agent.offline')); }
       });
     },
     receive(message: { type?: unknown; id?: unknown; ok?: unknown; data?: unknown; error?: unknown }): boolean {

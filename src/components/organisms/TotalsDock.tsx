@@ -1,4 +1,6 @@
-import { StyleSheet, View } from 'react-native';
+import { type ReactNode, useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { LoggedPressable } from '@/components/atoms/Logged';
 
 import { AppIcon, type AppIconName } from '@/components/atoms/AppIcon';
@@ -8,6 +10,7 @@ import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
 import type { TotalItem } from '@/domains/types';
 import { useColors } from '@/hooks/use-colors';
+import { t } from '@/i18n';
 
 const iconByKey: Record<string, AppIconName> = {
   cal: 'flame',
@@ -27,6 +30,9 @@ interface TotalsDockProps {
   /** Fill the parent's height instead of using `minHeight` — lets the caller
    *  animate the bar's height (the keyboard dock shrinks it toward the buttons). */
   fill?: boolean;
+  expanded?: boolean;
+  children?: ReactNode;
+  onHeightChange?: (height: number) => void;
 }
 
 export function TotalsDock({
@@ -35,20 +41,43 @@ export function TotalsDock({
   onPress,
   attachedTop = false,
   fill = false,
+  expanded = false,
+  children,
+  onHeightChange,
 }: TotalsDockProps) {
   const colors = useColors();
+  const { height: windowHeight } = useWindowDimensions();
+  const [contentHeight, setContentHeight] = useState<number>(Metrics.dock);
+  const progress = useSharedValue(0);
+  const panelHeight = useSharedValue<number>(Metrics.dock);
+  const expandedHeight = Math.min(contentHeight + 36, Math.max(Metrics.dock, windowHeight * 0.6));
+  useEffect(() => {
+    onHeightChange?.(expanded ? expandedHeight : Metrics.dock);
+    progress.value = withTiming(expanded ? 1 : 0, { duration: 180 });
+    panelHeight.value = withSpring(expanded ? expandedHeight : Metrics.dock, { damping: 28, stiffness: 280, overshootClamping: true });
+  }, [expanded, expandedHeight, panelHeight, progress, onHeightChange]);
+  const shellStyle = useAnimatedStyle(() => ({
+    height: compact ? '100%' : panelHeight.value,
+    borderRadius: 28 - progress.value * 4,
+  }));
+  const summaryStyle = useAnimatedStyle(() => ({ opacity: 1 - progress.value }));
+  const detailsStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const visibleItems = items;
-  const body = (
+  return <View style={fill ? styles.pressableFill : { height: Metrics.dock }}>
+    <Animated.View style={[styles.shell, shellStyle]}>
     <GlassSurface
       glass="regular"
       // Interactive glass when it's a button, matching the header day-changer.
-      isInteractive={!!onPress}
+      isInteractive={!!onPress && !expanded}
       style={[
         styles.dock,
         compact && styles.dockCompact,
-        fill && styles.dockFill,
+        styles.dockFill,
+        expanded && { borderRadius: Radii.xl },
         attachedTop && styles.attachedTop,
       ]}>
+      <Animated.View style={[styles.summary, summaryStyle]} pointerEvents={expanded ? 'none' : 'auto'} accessibilityElementsHidden={expanded} importantForAccessibility={expanded ? 'no-hide-descendants' : 'auto'}>
+      <LoggedPressable onPress={onPress} accessibilityRole="button" accessibilityLabel="Open totals details" accessibilityState={{ expanded }} style={styles.summaryButton}>
       {visibleItems.map((item, index) => (
         <View key={item.key} style={styles.itemGroup}>
           {index > 0 ? (
@@ -62,21 +91,19 @@ export function TotalsDock({
           </View>
         </View>
       ))}
+      </LoggedPressable>
+      </Animated.View>
+      {children ? <Animated.View style={[styles.details, detailsStyle]} pointerEvents={expanded ? 'auto' : 'none'} accessibilityElementsHidden={!expanded} importantForAccessibility={!expanded ? 'no-hide-descendants' : 'auto'}>
+        <LoggedPressable accessibilityRole="button" accessibilityLabel={t('common.close')} onPress={onPress} style={styles.close}>
+          <AppIcon name="chevronDown" size={20} color={colors.textSecondary} />
+        </LoggedPressable>
+        <ScrollView style={{ maxHeight: Math.max(0, expandedHeight - 36) }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          <View onLayout={({ nativeEvent }) => setContentHeight(nativeEvent.layout.height)}>{children}</View>
+        </ScrollView>
+      </Animated.View> : null}
     </GlassSurface>
-  );
-
-  return onPress ? (
-    <LoggedPressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel="Open totals details"
-      style={fill ? styles.pressableFill : undefined}
-    >
-      {body}
-    </LoggedPressable>
-  ) : (
-    body
-  );
+    </Animated.View>
+  </View>;
 }
 
 function TotalMarker({ item }: { item: TotalItem }) {
@@ -92,6 +119,11 @@ function TotalMarker({ item }: { item: TotalItem }) {
 }
 
 const styles = StyleSheet.create({
+  shell: { position: 'absolute', bottom: 0, left: 0, right: 0, overflow: 'hidden' },
+  summary: { ...StyleSheet.absoluteFill, justifyContent: 'center' },
+  summaryButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.one, paddingHorizontal: Spacing.three },
+  details: { position: 'absolute', top: 0, left: 0, right: 0 },
+  close: { height: 36, alignItems: 'center', justifyContent: 'center' },
   dock: {
     flexDirection: 'row',
     alignItems: 'center',

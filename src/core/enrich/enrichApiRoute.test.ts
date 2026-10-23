@@ -227,7 +227,7 @@ test('media: MAX_PHOTOS_PER_NOTE photos validates (200)', async () => {
   process.env.GEMINI_API_KEY = 'gemini-key';
   const fetchMock = jest.fn(async (url: RequestInfo | URL) => {
     if (String(url).includes('generativelanguage.googleapis.com')) {
-      return Response.json({ output_text: JSON.stringify({ descriptions: [] }) });
+      return Response.json({ steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify({ descriptions: mediaN(MAX_PHOTOS_PER_NOTE).map((item) => ({ id: item.id, description: 'Alimento visivel na foto' })) }) }] }] });
     }
     return Response.json({
       choices: [

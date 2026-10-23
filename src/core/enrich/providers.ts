@@ -123,9 +123,16 @@ function extractProviderText(envelope: unknown): string | undefined {
     choices?: { message?: { content?: string } }[];
     content?: { type?: string; text?: string }[];
     output?: { content?: { type?: string; text?: string }[] }[];
+    steps?: { type?: string; content?: { type?: string; text?: string }[] }[];
+    outputs?: { type?: string; text?: string }[];
   };
   if (typeof value.output_text === 'string') return value.output_text;
   if (typeof value.outputText === 'string') return value.outputText;
+  const geminiText = value.steps?.filter((step) => step.type === 'model_output').at(-1)?.content
+    ?.filter((part) => part.type === 'text' && typeof part.text === 'string').map((part) => part.text).join('');
+  if (geminiText) return geminiText;
+  const legacyGeminiText = value.outputs?.filter((part) => part.type === 'text' && typeof part.text === 'string').map((part) => part.text).join('');
+  if (legacyGeminiText) return legacyGeminiText;
   const choiceText = value.choices?.[0]?.message?.content;
   if (typeof choiceText === 'string') return choiceText;
   const anthropicText = value.content
@@ -201,6 +208,7 @@ export async function callVisionJson({
         },
         body: JSON.stringify({
           model: process.env.GEMINI_VISION_MODEL ?? 'gemini-3.8-flash',
+          store: false,
           input: parts,
           response_format: {
             type: 'text',
@@ -330,6 +338,7 @@ export async function callTextJson({
         },
         body: JSON.stringify({
           model: process.env.GEMINI_TEXT_MODEL ?? process.env.GEMINI_VISION_MODEL ?? 'gemini-3.8-flash',
+          store: false,
           input: [system, user].filter(Boolean).join('\n\n'),
           response_format: {
             type: 'text',

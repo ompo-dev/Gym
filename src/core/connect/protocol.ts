@@ -21,6 +21,7 @@ export const connectionSchema = z.object({
   url: z.string().transform(localSocketURL),
   token: z.string().regex(/^[a-f0-9]{64}$/i),
   allowWrites: z.boolean().default(false),
+  agent: z.enum(['claude', 'chatgpt', 'claudecode', 'codex', 'gemini', 'mcp']).optional(),
 });
 export type AgentConnection = z.output<typeof connectionSchema>;
 

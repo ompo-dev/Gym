@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert, StyleSheet, TextInput, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import * as Clipboard from 'expo-clipboard';
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import * as BackgroundTask from "expo-background-task";
@@ -8,10 +9,10 @@ import { AppIcon } from "@/components/atoms/AppIcon";
 import { AppText } from "@/components/atoms/AppText";
 import { SettingsRow } from "@/components/molecules/SettingsRow";
 import { todayISO, setDevDayOffset, getDevDayOffset } from "@/core/date";
-import { FEATURE_FLAGS } from "@/core/dev/flags";
+import { DEFAULT_FLAGS, FEATURE_FLAGS } from "@/core/dev/flags";
 import { LIMIT_DEFAULTS, LIMIT_KEYS } from "@/core/dev/limits";
 import { buildMockEntries } from "@/core/dev/mockData";
-import { getLogBuffer, clearLogBuffer, logConfig } from "@/core/log";
+import { formatLogs, LOG_LIMIT, clearLogBuffer, logConfig, log } from "@/core/log";
 import {
   debugFireReminder,
   getScheduledSlots,
@@ -44,6 +45,7 @@ const MEAL_TYPES: MealType[] = ["breakfast", "lunch", "dinner"];
 type FeatureLabel = Record<string, string>;
 const FEATURE_LABELS: FeatureLabel = {
   camera: "Câmera",
+  foodPhotoCutouts: "Recorte de alimentos (experimental)",
   savedMeals: "Refeições salvas",
   savedExercises: "Exercícios salvos",
   pantry: "Geladeira",
@@ -80,6 +82,7 @@ export function DeveloperSheet({
   const [notifBody, setNotifBody] = useState("");
   const [verbose, setVerbose] = useState(logConfig.verbose);
   const [capture, setCapture] = useState(logConfig.capture);
+  const [logs, setLogs] = useState<string | null>(null);
 
   const devFlags = useAppStore((s) => s.devFlags);
   const setFeature = useAppStore((s) => s.setFeature);
@@ -181,31 +184,23 @@ export function DeveloperSheet({
   // ---- logs -----------------------------------------------------------------
 
   const showLogs = () => {
-    const buffer = getLogBuffer();
-    const last50 = buffer.slice(0, 50);
-    const text = last50
-      .map((e) => `${e.ts} [${e.category}] ${e.event}${e.meta ? " " + e.meta : ""}`)
-      .join("\n");
-    Alert.alert(
-      `Logs (${buffer.length} total, últimos 50)`,
-      text.slice(0, 4000) || "Vazio",
-    );
+    setLogs(formatLogs() || 'Vazio');
   };
 
-  const copyLogs = () => {
-    const buffer = getLogBuffer();
-    const text = buffer
-      .map((e) => `${e.ts} [${e.category}] ${e.event}${e.meta ? " " + e.meta : ""}`)
-      .join("\n");
-    // ponytail: no clipboard dep — show in Alert, user copies manually.
-    Alert.alert(
-      `Logs (${buffer.length} entradas)`,
-      text.slice(0, 4000) || "Vazio",
-    );
+  const copyLogs = async () => {
+    try {
+      const copied = await Clipboard.setStringAsync(formatLogs() || 'Vazio');
+      if (copied === false) throw new Error('clipboard.failed');
+      Alert.alert('Logs', 'Logs copiados.');
+    } catch {
+      log.error('logs.copy.failed');
+      Alert.alert('Erro', 'Nao foi possivel copiar. Abra Ver logs para selecionar o texto.');
+    }
   };
 
   const clearLogs = () => {
     clearLogBuffer();
+    setLogs(null);
     Alert.alert("OK", "Logs limpos");
   };
 
@@ -227,8 +222,8 @@ export function DeveloperSheet({
     const tz = await getStoredTimeZone();
     const locale = getLang();
     const version = Constants.expoConfig?.version ?? "?";
-    const flagsOn = FEATURE_FLAGS.filter((f) => devFlags[f]);
-    const flagsOff = FEATURE_FLAGS.filter((f) => !devFlags[f]);
+    const flagsOn = FEATURE_FLAGS.filter((f) => devFlags[f] ?? DEFAULT_FLAGS[f]);
+    const flagsOff = FEATURE_FLAGS.filter((f) => !(devFlags[f] ?? DEFAULT_FLAGS[f]));
     const text = [
       `Fila pendente: ${pending.length}`,
       `Offline: ${offline}`,
@@ -413,7 +408,7 @@ export function DeveloperSheet({
             title={FEATURE_LABELS[flag]}
             trailing={
               <Toggle
-                value={devFlags[flag]}
+                value={devFlags[flag] ?? DEFAULT_FLAGS[flag]}
                 onValueChange={(v) => setFeature(flag, v)}
                 label={FEATURE_LABELS[flag]}
               />
@@ -474,7 +469,7 @@ export function DeveloperSheet({
 
         <SettingsRow
           title="Capturar logs"
-          subtitle="Grava no buffer de memória (padrão: dev sim, release não)"
+          subtitle="Historico local de ate 500 eventos, sem chaves ou fotos"
           trailing={
             <Toggle
               value={capture}
@@ -488,7 +483,7 @@ export function DeveloperSheet({
 
         <SettingsRow
           title="Ver logs"
-          subtitle="Últimos 50 (mais recente primeiro)"
+          subtitle={`Ultimos ${LOG_LIMIT} (mais recente primeiro)`}
           trailing={
             <AppIcon name="fileText" color={colors.accent} size={18} />
           }
@@ -514,6 +509,11 @@ export function DeveloperSheet({
           }
           onPress={clearLogs}
         />
+        {logs !== null ? <View style={styles.notifInputs}>
+          <ScrollView style={{ maxHeight: 360 }} nestedScrollEnabled>
+            <AppText selectable variant="caption">{logs}</AppText>
+          </ScrollView>
+        </View> : null}
       </Section>
 
       {/* ---- Phase 5: Estado ---- */}

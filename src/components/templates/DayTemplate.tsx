@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Keyboard, Platform, StyleSheet, View } from "react-native";
 import {
-  SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import Animated, {
@@ -10,6 +9,8 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
+  useSharedValue,
+  withSpring,
   type SharedValue,
 } from "react-native-reanimated";
 
@@ -27,6 +28,7 @@ import {
 } from "@/components/onboarding/onboardingNative";
 import { AppModalHost } from "@/components/organisms/AppModalHost";
 import { DayHeader } from "@/components/organisms/DayHeader";
+import { DayScrollFrame } from "@/components/organisms/DayScrollFrame";
 import { FoodGoalsSheet } from "@/components/organisms/FoodGoalsSheet";
 import { FoodCameraBlock } from "@/components/organisms/FoodCameraBlock";
 import { FoodMediaActionMenu } from "@/components/organisms/FoodMediaActionMenu";
@@ -44,6 +46,8 @@ import { BottomTabInset, Metrics, Radii, Spacing } from "@/constants/theme";
 import { APP_MODAL_TRANSITION_MS, canOpenAppModal } from "@/core/appModals";
 import type { Command } from "@/core/command/Command";
 import { ENRICH_ERROR } from "@/core/command/CommandBus";
+import { bus } from "@/core/command/bus";
+import { log } from "@/core/log";
 import { enrich } from "@/core/enrich/client";
 import type {
   EnrichMediaDescription,
@@ -441,12 +445,17 @@ export function DayTemplate<TData, TTotals>({
   // same width via an animated right margin, so dock, buttons and footer all
   // ride the single `keyboard.height` clock and opening is closing reversed.
   const dockButtonsWidth = dockButtonCount * (Metrics.dockButton + DOCK_GAP);
+  const dockHeight = useSharedValue<number>(Metrics.dock);
+  const onDockHeightChange = useCallback((height: number) => {
+    dockHeight.value = withSpring(height, { damping: 28, stiffness: 280, overshootClamping: true });
+  }, [dockHeight]);
+  const dockRowStyle = useAnimatedStyle(() => ({ height: dockHeight.value }));
   const dockFillStyle = useAnimatedStyle(() => ({
     // + a half-gap so the bar sits a full DOCK_GAP from the first button, the
     // same distance the buttons keep from each other.
     marginRight: kbProgress.value * (dockButtonsWidth + Spacing.two),
     // Shrink the bar's height to the buttons' as it rises, on the same clock.
-    height: Metrics.dock - kbProgress.value * (Metrics.dock - DOCK_COMPACT_H),
+    height: dockHeight.value - kbProgress.value * (dockHeight.value - DOCK_COMPACT_H),
   }));
 
   const modalStack = useAppModalStore((state) => state.stack);
@@ -716,6 +725,8 @@ export function DayTemplate<TData, TTotals>({
         let parsedFood: FoodData | null = null;
         let describedMedia = entryMedia;
         let enrichFailed = false;
+        let enrichError: string = ENRICH_ERROR.failed;
+        log.media('photo.enrich.start', { id: entry.id, count: aiMedia?.length ?? 0 });
 
         if (noteText || foodPhotoMedia?.length) {
           try {
@@ -738,21 +749,23 @@ export function DayTemplate<TData, TTotals>({
                 locale,
               ),
             });
+            describedMedia = response.ok
+              ? withGeneratedDescriptions(entryMedia, response.mediaDescriptions) : entryMedia;
             const parsed = response.ok
               ? foodSchema.safeParse(response.data)
               : null;
+            if (response.ok && !parsed?.success) {
+              await bus.resolveFood({ ...entry, media: describedMedia }, response.data);
+              return;
+            }
             parsedFood =
               parsed?.success && parsed.data.items.length ? parsed.data : null;
-            enrichFailed = !response.ok || !parsed?.success;
-            describedMedia = response.ok
-              ? withGeneratedDescriptions(
-                  entryMedia,
-                  response.mediaDescriptions,
-                )
-              : entryMedia;
-          } catch {
+            enrichFailed = !response.ok || !parsed?.success || !parsedFood;
+            if (!response.ok) enrichError = response.error;
+          } catch (error) {
             parsedFood = null;
             enrichFailed = true;
+            log.media('photo.enrich.exception', { id: entry.id, reason: error instanceof Error ? error.message : ENRICH_ERROR.failed });
           }
         }
 
@@ -767,10 +780,11 @@ export function DayTemplate<TData, TTotals>({
           const failure = {
             media: describedMedia,
             status: "error" as const,
-            error: ENRICH_ERROR.failed,
+            error: enrichError,
           };
           await EntryRepository.update(entry.id, failure);
           useAppStore.getState().upsertEntry("food", { ...entry, ...failure });
+          log.media('photo.enrich.failed', { id: entry.id, reason: enrichError });
           return;
         }
 
@@ -807,6 +821,7 @@ export function DayTemplate<TData, TTotals>({
         // the scanned product beside them counts the mayonnaise twice: once in
         // the jar, once in the meal made out of it.
         const data = foodSchema.parse({
+          ...parsedFood,
           items: [...(parsedFood?.recipe ? [] : barcodeItems), ...foodItems],
           reasoning:
             parsedFood?.reasoning ||
@@ -815,20 +830,8 @@ export function DayTemplate<TData, TTotals>({
               : t("details.reasoningFallback")),
           confidence,
         });
-        const done: Entry = {
-          ...entry,
-          media: describedMedia,
-          status: "done",
-          data,
-          error: null,
-        };
-        await EntryRepository.update(entry.id, {
-          media: describedMedia,
-          status: "done",
-          data,
-          error: null,
-        });
-        useAppStore.getState().upsertEntry("food", done);
+        await bus.resolveFood({ ...entry, media: describedMedia }, data);
+        log.media('photo.enrich.done', { id: entry.id, items: data.items.length, recipe: !!data.recipe });
       })();
     },
     [addEntry, date, foodMediaDrafts, isFood],
@@ -1277,7 +1280,7 @@ export function DayTemplate<TData, TTotals>({
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+      <DayScrollFrame header={
         <View
           style={styles.paddedHeader}
           onStartShouldSetResponderCapture={dismissStatsPanelResponder}
@@ -1295,44 +1298,7 @@ export function DayTemplate<TData, TTotals>({
             isOffline={isOffline}
           />
         </View>
-
-        <View
-          style={styles.paddedBody}
-          onStartShouldSetResponderCapture={dismissStatsPanelResponder}
-        >
-          <NotesList
-            entries={entries}
-            config={config}
-            keyboardVisible={keyboardVisible}
-            canAddEmpty={isFood && foodMediaDrafts.length > 0}
-            mediaDrafts={isFood ? foodMediaDrafts : undefined}
-            onChangeMediaDescription={(id, description) =>
-              setFoodMediaDrafts((current) =>
-                current.map((draft) =>
-                  draft.id === id ? { ...draft, description } : draft,
-                ),
-              )
-            }
-            onRemoveMediaDraft={(id) =>
-              setFoodMediaDrafts((current) =>
-                current.filter((draft) => draft.id !== id),
-              )
-            }
-            onAdd={handleAddEntry}
-            onAddMedia={isFood && featureCamera && Platform.OS === "web"
-              ? () => setFoodMediaMenuVisible((current) => !current)
-              : undefined}
-            onEdit={editEntry}
-            onDelete={handleDelete}
-            onRetry={retryEntry}
-            onTogglePlanned={isFood ? handleTogglePlannedEntry : undefined}
-            onSaveExercise={!isFood && featureSavedExercises ? handleSaveWorkoutExercise : undefined}
-            savedExerciseEntryIds={!isFood && featureSavedExercises ? savedExerciseEntryIds : undefined}
-            onOpenFoodDetails={isFood ? openFoodEntryDetails : undefined}
-            onOpenPantry={isFood && featurePantry ? openPantry : undefined}
-          />
-        </View>
-
+      } footer={
         <Animated.View style={[styles.footer, footerAnimStyle]}>
           {undoVisible ? (
             <UndoToast label={t("undo.deleted")} onUndo={handleUndo} />
@@ -1345,14 +1311,7 @@ export function DayTemplate<TData, TTotals>({
                 absolute. `box-none` so taps fall through the empty area to the
                 list, which is what dismisses them. */}
             <View style={styles.floatingPanels} pointerEvents="box-none">
-              {foodTotals ? (
-                <FoodGoalsSheet
-                  totals={foodTotals}
-                  visible={foodGoalsVisible}
-                  date={date}
-                />
-              ) : null}
-              {isFood && cameraMode ? (
+             {isFood && cameraMode ? (
                 <FoodCameraBlock
                   mode={cameraMode}
                   drafts={foodMediaDrafts}
@@ -1361,14 +1320,7 @@ export function DayTemplate<TData, TTotals>({
                   onClose={() => setCameraMode(null)}
                 />
               ) : null}
-              {!isFood ? (
-                <WorkoutProgressSheet
-                  date={date}
-                  entries={entries}
-                  visible={workoutProgressVisible}
-                />
-              ) : null}
-              {(keyboardVisible || Platform.OS === "web") && isFood && !IOS_NATIVE_ENABLED ? (
+             {(keyboardVisible || Platform.OS === "web") && isFood && !IOS_NATIVE_ENABLED ? (
                 <FoodMediaActionMenu
                   visible={foodMediaMenuVisible}
                   onSelect={handleSelectFoodMedia}
@@ -1376,14 +1328,21 @@ export function DayTemplate<TData, TTotals>({
               ) : null}
             </View>
 
-            <View style={styles.dockRow}>
+            <Animated.View style={[styles.dockRow, dockRowStyle]}>
               <Animated.View style={[styles.dockFill, dockFillStyle]}>
                 <TotalsDock
                   items={dockItems}
                   compact={shrunk}
                   fill
                   onPress={onDockPress}
-                />
+                  onHeightChange={onDockHeightChange}
+                  expanded={!keyboardVisible && (foodGoalsVisible || workoutProgressVisible)}>
+                  {foodTotals ? (
+                    <FoodGoalsSheet totals={foodTotals} visible={foodGoalsVisible} date={date} embedded />
+                  ) : (
+                    <WorkoutProgressSheet date={date} entries={entries} visible={workoutProgressVisible} embedded />
+                  )}
+                </TotalsDock>
               </Animated.View>
 
               {/* Absolute, so the buttons never reserve layout width (no dead
@@ -1489,10 +1448,51 @@ export function DayTemplate<TData, TTotals>({
                   </Animated.View>
                 ) : null}
               </View>
-            </View>
+            </Animated.View>
           </View>
         </Animated.View>
-      </SafeAreaView>
+      }>
+      {(scrollInsets) => (
+        <View
+          style={styles.paddedBody}
+          onStartShouldSetResponderCapture={dismissStatsPanelResponder}
+        >
+          <NotesList
+            scrollInsets={scrollInsets}
+            entries={entries}
+            config={config}
+            keyboardVisible={keyboardVisible}
+            canAddEmpty={isFood && foodMediaDrafts.length > 0}
+            mediaDrafts={isFood ? foodMediaDrafts : undefined}
+            onChangeMediaDescription={(id, description) =>
+              setFoodMediaDrafts((current) =>
+                current.map((draft) =>
+                  draft.id === id ? { ...draft, description } : draft,
+                ),
+              )
+            }
+            onRemoveMediaDraft={(id) =>
+              setFoodMediaDrafts((current) =>
+                current.filter((draft) => draft.id !== id),
+              )
+            }
+            onAdd={handleAddEntry}
+            onAddMedia={isFood && featureCamera && Platform.OS === "web"
+              ? () => setFoodMediaMenuVisible((current) => !current)
+              : undefined}
+            onEdit={editEntry}
+            onDelete={handleDelete}
+            onRetry={retryEntry}
+            onTogglePlanned={isFood ? handleTogglePlannedEntry : undefined}
+            onSaveExercise={!isFood && featureSavedExercises ? handleSaveWorkoutExercise : undefined}
+            savedExerciseEntryIds={!isFood && featureSavedExercises ? savedExerciseEntryIds : undefined}
+            onOpenFoodDetails={isFood ? openFoodEntryDetails : undefined}
+            onOpenPantry={isFood && featurePantry ? openPantry : undefined}
+          />
+        </View>
+
+      )}
+      </DayScrollFrame>
 
       <AppModalHost
         domain={config.id}
@@ -1542,7 +1542,6 @@ const styles = StyleSheet.create({
   },
   paddedBody: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
   },
   footer: {
     paddingHorizontal: Spacing.four,

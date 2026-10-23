@@ -2,7 +2,7 @@ import { CameraView, scanFromURLAsync, useCameraPermissions, type BarcodeScannin
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 
 import { LoggedPressable } from '@/components/atoms/Logged';
 import { AppIcon } from '@/components/atoms/AppIcon';
@@ -10,7 +10,9 @@ import { AppText } from '@/components/atoms/AppText';
 import { GlassSurface } from '@/components/atoms/GlassSurface';
 import { Metrics, Radii, Spacing } from '@/constants/theme';
 import type { FoodMediaAction } from '@/core/types';
-import type { CapturedFoodPhoto } from '@/core/food/scan-photo';
+import { prepareFoodPhoto, type CapturedFoodPhoto } from '@/core/food/scan-photo';
+import { useFeature } from '@/core/dev/flags';
+import { log } from '@/core/log';
 import { useColors } from '@/hooks/use-colors';
 import { t } from '@/i18n';
 import { latestThumbnails } from './FoodMediaDraftTray';
@@ -56,6 +58,12 @@ export function FoodCameraBlock({
   drafts: { uri?: string }[];
 }) {
   const colors = useColors();
+  const cutoutsEnabled = useFeature('foodPhotoCutouts');
+  const [preparing, setPreparing] = useState(false);
+  const [prepareFailed, setPrepareFailed] = useState(false);
+  const photoWork = useRef(Promise.resolve());
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const cameraRef = useRef<CameraView | null>(null);
   const scannedRef = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
@@ -67,10 +75,23 @@ export function FoodCameraBlock({
   const isBarcode = mode === 'barcode';
   const kind = mode === 'menuPhoto' ? 'menuPhoto' : 'foodPhoto';
   const stagePhoto = useCallback((photo: CapturedFoodPhoto) => {
-    if (photo.kind !== 'foodPhoto') { onPhoto(photo); return; }
-    const reviewId = String(++photoSequence.current);
-    setReviewQueue((current) => [...current, { ...photo, reviewId }]);
-  }, [onPhoto]);
+    if (photo.kind === 'foodPhoto' && cutoutsEnabled) {
+      const reviewId = String(++photoSequence.current);
+      setReviewQueue((current) => [...current, { ...photo, reviewId }]);
+      return;
+    }
+    photoWork.current = photoWork.current.catch(() => {}).then(async () => {
+      if (!mounted.current) return;
+      setPreparing(true); setPrepareFailed(false);
+      try {
+        const prepared = await prepareFoodPhoto(photo);
+        if (mounted.current) onPhoto({ ...prepared, cutouts: undefined });
+      } catch {
+        log.media('photo.prepare.failed');
+        if (mounted.current) setPrepareFailed(true);
+      } finally { if (mounted.current) setPreparing(false); }
+    });
+  }, [cutoutsEnabled, onPhoto]);
 
   useEffect(() => {
     scannedRef.current = false;
@@ -222,6 +243,9 @@ export function FoodCameraBlock({
   return (
     <GlassSurface glass="regular" style={styles.panel}>
       {/* Camera fills the block edge-to-edge */}
+      {preparing || prepareFailed ? <View style={[styles.hint, { zIndex: 3 }]} pointerEvents="none">
+        {preparing ? <ActivityIndicator color={colors.accent} /> : <AppText color={colors.danger}>{t('media.prepareFailed')}</AppText>}
+      </View> : null}
       {permission?.granted ? (
         <>
           <CameraView

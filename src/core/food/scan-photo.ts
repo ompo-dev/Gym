@@ -7,6 +7,7 @@ import { resolveProviderCredential } from '@/core/enrich/providers';
 import { agentJsonTransport, availableAgentTransports } from '@/core/connect/agentTransport';
 import type { FoodPhotoCutout } from '@/core/types';
 import { useAppStore } from '@/store/useAppStore';
+import { log } from '@/core/log';
 
 import { foodPhotoCutoutSchema } from './photo-cutouts';
 
@@ -29,6 +30,7 @@ export type PreparedFoodPhoto = CapturedFoodPhoto & {
 };
 
 export async function prepareFoodPhoto(photo: CapturedFoodPhoto): Promise<PreparedFoodPhoto> {
+  const end = log.time('media', 'photo.prepare', { kind: photo.kind, width: photo.width, height: photo.height });
   const context = ImageManipulator.manipulate(photo.uri);
   const portrait = (photo.height ?? 0) > (photo.width ?? 0);
   if (!photo.width || !photo.height || Math.max(photo.width, photo.height) > 1280) {
@@ -39,8 +41,12 @@ export async function prepareFoodPhoto(photo: CapturedFoodPhoto): Promise<Prepar
     rendered = await context.renderAsync();
     const result = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.8, base64: true });
     if (!result.base64 || result.base64.length > 2_500_000) throw new Error('photoScan.failed');
+    end({ ok: true, width: result.width, height: result.height, bytes: result.base64.length });
     // Persist the normalized source once; picker blob/cache URIs do not survive reloads.
     return { ...photo, ...result, base64: result.base64, mimeType: 'image/jpeg', uri: `data:image/jpeg;base64,${result.base64}` };
+  } catch (error) {
+    end({ ok: false, reason: error instanceof Error ? error.message : 'media.prepareFailed' });
+    throw error;
   } finally {
     rendered?.release();
     context.release();

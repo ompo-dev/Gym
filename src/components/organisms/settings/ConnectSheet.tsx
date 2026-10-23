@@ -14,6 +14,7 @@ import { buildAgentSetupPrompt, importAgentConnection, toolTokenFor } from '@/co
 import { useColors } from '@/hooks/use-colors';
 import { getLang, t } from '@/i18n';
 import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
+import { useAgentSettingsStore } from '@/store/useAgentSettingsStore';
 
 import { SheetFrame } from '../SheetFrame';
 import { AgentAccountPanel } from './AgentAccountPanel';
@@ -52,11 +53,13 @@ export function ConnectSheet({ onClose, nested }: {
   const connection = useAgentConnectionStore((s) => s.connection);
   const status = useAgentConnectionStore((s) => s.status);
   const issue = useAgentConnectionStore((s) => s.issue);
+  const textAgent = useAgentSettingsStore((s) => s.text?.provider);
+  const pairedAgent = connection?.agent ?? textAgent ?? 'mcp';
   const [advanced, setAdvanced] = useState(false);
   const [accountVisible, setAccountVisible] = useState(false);
   const [hydrated, setHydrated] = useState(Platform.OS === 'web');
   const [toolToken, setToolToken] = useState('');
-  const [agent, setAgent] = useState<AgentId>('claude');
+  const [agent, setAgent] = useState<AgentId>(connection ? pairedAgent : 'claude');
   const [customURL, setURL] = useState<string | null>(null);
   const url = (advanced ? customURL : null) ?? connection?.url ?? 'ws://127.0.0.1:3847/app';
   const [draftToken, setToken] = useState(connection?.token ?? '');
@@ -82,7 +85,11 @@ export function ConnectSheet({ onClose, nested }: {
   useEffect(() => {
     let active = true;
     void useAgentConnectionStore.getState().hydrate().then(() => {
-      if (active) setHydrated(true);
+      if (active) {
+        const saved = useAgentConnectionStore.getState().connection;
+        if (saved) setAgent(saved.agent ?? useAgentSettingsStore.getState().text?.provider ?? 'mcp');
+        setHydrated(true);
+      }
     }).catch(() => { if (active) setError('common.error'); });
     return () => { active = false; };
   }, []);
@@ -109,11 +116,11 @@ export function ConnectSheet({ onClose, nested }: {
     if (working.current || !prompt) return false;
     working.current = true; setBusy(true); setError(null);
     try {
-      const next = connectionSchema.parse({ url, token, allowWrites });
+      const next = connectionSchema.parse({ url, token, allowWrites, agent });
       const current = useAgentConnectionStore.getState().connection;
       // Native must save before leaving for the agent; WebKit needs the clipboard within the gesture.
       if (Platform.OS === 'web') await Clipboard.setStringAsync(prompt);
-      if (!current || current.url !== next.url || current.token !== next.token || current.allowWrites !== next.allowWrites) {
+      if (!current || current.url !== next.url || current.token !== next.token || current.allowWrites !== next.allowWrites || current.agent !== next.agent) {
         await useAgentConnectionStore.getState().configure(next);
       }
       const saved = useAgentConnectionStore.getState().connection;
@@ -161,7 +168,7 @@ export function ConnectSheet({ onClose, nested }: {
     if (working.current) return;
     working.current = true; setBusy(true); setError(null);
     try {
-      await useAgentConnectionStore.getState().configure(connectionSchema.parse({ url, token, allowWrites }));
+      await useAgentConnectionStore.getState().configure(connectionSchema.parse({ url, token, allowWrites, agent }));
     } catch { if (mounted.current) setError('connect.invalid'); }
     finally { working.current = false; if (mounted.current) setBusy(false); }
   };
@@ -186,7 +193,7 @@ export function ConnectSheet({ onClose, nested }: {
           accessibilityRole="radio" accessibilityState={{ checked: item.id === agent }} accessibilityLabel={item.label}
           disabled={busy}
           onPress={() => { setAgent(item.id); setAccountVisible(false); }}
-          style={[styles.agent, { borderColor: item.id === agent ? colors.accent : colors.border,
+          style={[styles.agent, { borderColor: status === 'connected' && item.id === pairedAgent ? colors.success : item.id === agent ? colors.accent : colors.border,
             backgroundColor: colors.backgroundElement }]}>
           <AgentLogo agent={item.id} size={32} /><AppText variant="secondary" style={styles.grow}>{item.label}</AppText>
         </LoggedPressable>)}</View>

@@ -1,5 +1,6 @@
 export const FEATURE_FLAGS = [
   "camera",
+  "foodPhotoCutouts",
   "savedMeals",
   "savedExercises",
   "pantry",
@@ -19,6 +20,7 @@ export type FeatureFlags = Record<FeatureFlag, boolean>;
 
 export const DEFAULT_FLAGS: FeatureFlags = {
   camera: true,
+  foodPhotoCutouts: false,
   savedMeals: true,
   savedExercises: true,
   pantry: true,

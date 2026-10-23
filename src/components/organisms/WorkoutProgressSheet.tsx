@@ -20,12 +20,14 @@ interface WorkoutProgressSheetProps {
   date: string;
   entries: Entry[];
   visible: boolean;
+  embedded?: boolean;
 }
 
 export function WorkoutProgressSheet({
   date,
   entries,
   visible,
+  embedded = false,
 }: WorkoutProgressSheetProps) {
   const colors = useColors();
   const history = useRepositoryData<Entry[]>(
@@ -50,7 +52,8 @@ export function WorkoutProgressSheet({
     [date, entries, history],
   );
 
-  if (!visible) return null;
+  if (!visible && !embedded) return null;
+  const Panel = embedded ? View : GlassSurface;
 
   const wins = rows.filter((row) => row.tone === "pr").length;
   // Rows arrive sorted best-first, so the top one carries the panel and the
@@ -59,7 +62,7 @@ export function WorkoutProgressSheet({
   const [hero, ...rest] = rows;
 
   return (
-    <GlassSurface glass="regular" style={styles.panel}>
+    <Panel style={styles.panel}>
       <View style={styles.header}>
         <View style={styles.headerLabel}>
           <AppText variant="heading">{t("workout.progress.title")}</AppText>
@@ -130,7 +133,7 @@ export function WorkoutProgressSheet({
           {t("workout.progress.empty")}
         </AppText>
       ) : null}
-    </GlassSurface>
+    </Panel>
   );
 }
 

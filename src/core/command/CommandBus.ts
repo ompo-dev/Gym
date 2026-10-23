@@ -687,70 +687,76 @@ export class CommandBus {
         return;
       }
 
-      // Only food reaches here — onboarding and workout returned above. The
-      // fridge is read once and shared by both the split and the single meal.
-      const pantry = (await this.deps.getPantry?.()) ?? [];
-
-      // One note that was several actions. "comprei 3 e comi 4" comes back as
-      // `notes[]`, each its own note, exactly as a workout plan explodes into
-      // one note per exercise — one composite, so a single undo takes the whole
-      // thing back. Not cached: a split is a one-off reading of this exact text.
-      // Any `notes` wrapper explodes, even a single one: the alternative is a
-      // parse error, since the single shapes do not know the `notes` key.
-      const multi = foodMultiSchema.safeParse(res.data);
-      if (multi.success) {
-        const commands = multi.data.notes.flatMap((note) => {
-          const data =
-            'items' in note.data
-              ? { ...note.data, items: attachPantryProvenance(note.data.items, pantry) }
-              : note.data;
-          const text = stripPlanPrefix(note.text);
-          const cmd = this.createAddEntry(
-            text,
-            entry.domain,
-            undefined,
-            entry.date,
-            data,
-            splitNotePlannedMeta(note.text, entry.text, data, note.planned),
-          );
-          return cmd ? [cmd] : [];
-        });
-        if (commands.length) {
-          log.note('split note', {
-            from: entry.text.slice(0, 40),
-            into: multi.data.notes.map((n) => ('purchase' in n.data ? 'purchase' : 'meal')),
-          });
-          await this.run(
-            new CompositeCommand(`${commands.length} notes`, [
-              ...commands,
-              new DeleteEntryCommand(this, entry, false),
-            ]),
-          );
-          this.deps.onNoteReplaced?.();
-          return;
-        }
-      }
-
-      const parsed = schemaByDomain[entry.domain].safeParse(res.data);
-      if (!parsed.success) {
-        await this.setError(entry.domain, entry.id, ENRICH_ERROR.parse);
-        return;
-      }
-      // A meal is linked to the fridge it drew from and repriced with the real
-      // product; a purchase passes straight through. `attachPantryProvenance`
-      // is a no-op with an empty pantry, so a first-ever note behaves as before.
-      const parsedData = parsed.data as EnrichData;
-      const data =
-        'items' in parsedData
-          ? ({ ...parsedData, items: attachPantryProvenance(parsedData.items, pantry) } as FoodData)
-          : parsedData;
-      this.cache.set(key, data);
-      await this.applyResolved(entry, data, foodPlannedMeta(entry.text, data));
+      await this.resolveFood(entry, res.data, key);
     } catch {
       this.inflight.delete(key);
       if (this.cancelled.has(entry.id)) return;
       await this.retryLater(entry);
     }
+  }
+
+  /** Shared completion path for typed notes and whole-photo requests. */
+  async resolveFood(entry: Entry, result: unknown, cacheKey?: string): Promise<void> {
+    if (entry.domain !== 'food' || this.cancelled.has(entry.id)) return;
+  // Only food reaches here — onboarding and workout returned above. The
+  // fridge is read once and shared by both the split and the single meal.
+  const pantry = (await this.deps.getPantry?.()) ?? [];
+
+  // One note that was several actions. "comprei 3 e comi 4" comes back as
+  // `notes[]`, each its own note, exactly as a workout plan explodes into
+  // one note per exercise — one composite, so a single undo takes the whole
+  // thing back. Not cached: a split is a one-off reading of this exact text.
+  // Any `notes` wrapper explodes, even a single one: the alternative is a
+  // parse error, since the single shapes do not know the `notes` key.
+  const multi = foodMultiSchema.safeParse(result);
+  if (multi.success) {
+    const commands = multi.data.notes.flatMap((note, index) => {
+      const data =
+        'items' in note.data
+          ? { ...note.data, items: attachPantryProvenance(note.data.items, pantry) }
+          : note.data;
+      const text = stripPlanPrefix(note.text);
+      const cmd = this.createAddEntry(
+        text,
+        entry.domain,
+        index === 0 ? entry.media : undefined,
+        entry.date,
+        data,
+        splitNotePlannedMeta(note.text, entry.text, data, note.planned),
+      );
+      return cmd ? [cmd] : [];
+    });
+    if (commands.length) {
+      log.note('split note', {
+        from: entry.text.slice(0, 40),
+        into: multi.data.notes.map((n) => ('purchase' in n.data ? 'purchase' : 'meal')),
+      });
+      await this.run(
+        new CompositeCommand(`${commands.length} notes`, [
+          ...commands,
+          new DeleteEntryCommand(this, entry, false),
+        ]),
+      );
+      this.deps.onNoteReplaced?.();
+      return;
+    }
+  }
+
+  const parsed = schemaByDomain[entry.domain].safeParse(result);
+  if (!parsed.success) {
+    await this.setError(entry.domain, entry.id, ENRICH_ERROR.parse);
+    return;
+  }
+  // A meal is linked to the fridge it drew from and repriced with the real
+  // product; a purchase passes straight through. `attachPantryProvenance`
+  // is a no-op with an empty pantry, so a first-ever note behaves as before.
+  const parsedData = parsed.data as EnrichData;
+  const data =
+    'items' in parsedData
+      ? ({ ...parsedData, items: attachPantryProvenance(parsedData.items, pantry) } as FoodData)
+      : parsedData;
+  if (cacheKey) this.cache.set(cacheKey, data);
+  await this.applyResolved(entry, data, { ...foodPlannedMeta(entry.text, data), media: entry.media });
   }
 
   /** A request came back at all — ok, rejected key, or schema error — so the

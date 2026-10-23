@@ -14,7 +14,10 @@ const modelOutput = { items: [{ label: 'Cafe', description: 'Copo com leite', bo
 
 test('managed route uses the Gemini image key and returns validated independent contours', async () => {
   process.env.GEMINI_API_KEY = 'test-image-key';
-  const fetchMock = jest.fn(async () => Response.json({ output_text: JSON.stringify(modelOutput) }));
+  const fetchMock = jest.fn(async () => Response.json({ steps: [
+    { type: 'thought', content: [{ type: 'text', text: 'Never parse this' }] },
+    { type: 'model_output', content: [{ type: 'text', text: JSON.stringify(modelOutput) }] },
+  ] }));
   global.fetch = fetchMock as typeof fetch;
   const response = await POST(new Request('http://localhost/api/food-photo-scan', { method: 'POST', body: JSON.stringify(input) }));
   expect(response.status).toBe(200);

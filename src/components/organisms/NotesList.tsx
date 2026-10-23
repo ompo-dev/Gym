@@ -41,6 +41,7 @@ interface NotesListProps<TData, TTotals> {
   savedExerciseEntryIds?: Set<string>;
   onOpenFoodDetails?: (entry: Entry) => void;
   onOpenPantry?: () => void;
+  scrollInsets?: { top: number; bottom: number };
 }
 
 function getPreviousWorkoutEntryId(entries: Entry[], index: number): string | null {
@@ -142,6 +143,7 @@ export function NotesList<TData, TTotals>({
   savedExerciseEntryIds,
   onOpenFoodDetails,
   onOpenPantry,
+  scrollInsets,
 }: NotesListProps<TData, TTotals>) {
   const containerRef = useRef<View | null>(null);
   const listRef = useRef<FlatList<Entry> | null>(null);
@@ -424,7 +426,7 @@ export function NotesList<TData, TTotals>({
             onBlur={handleNewInputBlur}
           />
         }
-        contentContainerStyle={[styles.content, { paddingBottom: contentPaddingBottom }]}
+        contentContainerStyle={[styles.content, { paddingTop: scrollInsets?.top ?? 0, paddingBottom: contentPaddingBottom + (scrollInsets?.bottom ?? 0) }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
@@ -442,6 +444,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
+    paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.four,
   },
   newRow: {

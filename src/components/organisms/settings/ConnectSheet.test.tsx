@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { Platform } from 'react-native';
 
 import { t } from '@/i18n';
+import { Colors } from '@/constants/theme';
 import { useAgentConnectionStore } from '@/store/useAgentConnectionStore';
 import { ConnectSheet } from './ConnectSheet';
 
@@ -50,6 +51,19 @@ test('main flow has only the requested agents, a ready prompt and no address/key
   expect(screen.getByRole('button', { name: t('connect.copied') })).toBeTruthy();
 });
 
+test('the paired agent stays green while browsing others and reopening, until disconnected', async () => {
+  useAgentConnectionStore.setState({ connection: { url: 'ws://192.168.1.9:3847/app', token: 'a'.repeat(64), allowWrites: false, agent: 'codex' }, status: 'connected' });
+  const screen = await render(<ConnectSheet onClose={() => {}} />);
+  const connected = screen.getByRole('radio', { name: 'Codex' });
+  expect(connected).toHaveStyle({ borderColor: Colors.light.success });
+  await fireEvent.press(screen.getByRole('radio', { name: 'Gemini' }));
+  expect(connected).toHaveStyle({ borderColor: Colors.light.success });
+  await screen.rerender(<ConnectSheet key="reopened" onClose={() => {}} />);
+  expect(screen.getByRole('radio', { name: 'Codex' })).toHaveStyle({ borderColor: Colors.light.success });
+  await act(() => useAgentConnectionStore.setState({ status: 'offline' }));
+  expect(screen.getByRole('radio', { name: 'Codex' })).not.toHaveStyle({ borderColor: Colors.light.success });
+});
+
 test('late secure-store hydration reuses the iPhone invitation instead of creating another one', async () => {
   Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
   let finish!: () => void;
@@ -62,7 +76,7 @@ test('late secure-store hydration reuses the iPhone invitation instead of creati
     finish();
   });
   await fireEvent.press(screen.getByRole('button', { name: t('connect.copyPrompt') }));
-  expect(useAgentConnectionStore.getState().configure).not.toHaveBeenCalled();
+  expect(useAgentConnectionStore.getState().connection).toMatchObject(saved);
   expect(Clipboard.setStringAsync).toHaveBeenCalledWith(expect.stringContaining(`GYMNOTES_PAIRING_TOKEN=${saved.token}`));
   expect(Clipboard.setStringAsync).toHaveBeenCalledWith(expect.stringContaining('reading and creating notes'));
 });

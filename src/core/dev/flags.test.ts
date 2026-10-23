@@ -17,9 +17,13 @@ test("offlineForce defaults to false", () => {
 
 test("all other flags default to true", () => {
   for (const flag of FEATURE_FLAGS) {
-    if (flag === "offlineForce") continue;
+    if (flag === "offlineForce" || flag === 'foodPhotoCutouts') continue;
     expect(DEFAULT_FLAGS[flag]).toBe(true);
   }
+});
+
+test('food cutouts remain experimental and disabled by default', () => {
+  expect(DEFAULT_FLAGS.foodPhotoCutouts).toBe(false);
 });
 
 // ---- getScopeEnabled ----

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Image } from 'expo-image';
 import { ActivityIndicator, Animated, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,7 +19,7 @@ export function AppUpdateScreen({ phase, progress, onContinue, onRetry }: {
   const colors = useColors();
   const amount = typeof progress === 'number' && Number.isFinite(progress)
     ? Math.max(0, Math.min(1, progress)) : undefined;
-  const animatedProgress = useRef(new Animated.Value(amount ?? 0)).current;
+  const [animatedProgress] = useState(() => new Animated.Value(amount ?? 0));
   useEffect(() => {
     const animation = Animated.timing(animatedProgress, {
       toValue: phase === 'applying' ? 1 : amount ?? 0,
@@ -35,7 +35,7 @@ export function AppUpdateScreen({ phase, progress, onContinue, onRetry }: {
 
   return <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} accessibilityViewIsModal>
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content} bounces={false}>
-      <Image source={require('../../../assets/images/gym/ios-light.png')} style={styles.mark} contentFit="contain" accessibilityLabel="GymNotes" />
+      <Image source={require('../../../assets/images/gym/mark.svg')} style={styles.mark} contentFit="contain" accessibilityLabel="GymNotes" />
       <AppText variant="title" style={styles.title} accessibilityLiveRegion="polite">{title}</AppText>
       <View style={styles.progressArea}>
         {determinate ? <View style={[styles.track, { backgroundColor: colors.backgroundElement }]}
@@ -63,7 +63,7 @@ export function AppUpdateScreen({ phase, progress, onContinue, onRetry }: {
 const styles = StyleSheet.create({
   screen: { ...StyleSheet.absoluteFill, zIndex: 1000 },
   content: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 28, gap: 28 },
-  mark: { width: 112, height: 112, borderRadius: 24 },
+  mark: { width: 112, height: 112 },
   title: { textAlign: 'center', maxWidth: 360, fontSize: 22, letterSpacing: 0 },
   progressArea: { width: '100%', maxWidth: 280, minHeight: 44, alignItems: 'center', gap: 12 },
   track: { width: '100%', height: 5, borderRadius: 3, overflow: 'hidden' },

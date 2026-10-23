@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -29,6 +29,7 @@ interface FoodGoalsSheetProps {
   visible: boolean;
   /** Without a date the panel shows the declared target (onboarding, settings). */
   date?: string;
+  embedded?: boolean;
 }
 
 function progress(current: number, goal: number): number {
@@ -56,23 +57,25 @@ function MacroRing({
   displayValue,
   goal,
   label,
+  size,
 }: {
   color: string;
   current: number;
   displayValue?: string;
   goal: number;
   label: string;
+  size: number;
 }) {
   const colors = useColors();
 
   return (
     <View style={styles.macroItem}>
-      <View style={styles.ringWrap}>
+      <View style={[styles.ringWrap, { width: size, height: size }]}>
         <ProgressRing
           progress={progress(current, goal)}
           color={color}
           trackColor={colors.surfaceStrong}
-          size={76}
+          size={size}
           stroke={7}>
           <AnimatedValueText
             value={displayValue ?? `${Math.round(current)}`}
@@ -137,18 +140,20 @@ function AnimatedCaloriesBar({
   );
 }
 
-export function FoodGoalsSheet({ totals, visible, date }: FoodGoalsSheetProps) {
+export function FoodGoalsSheet({ totals, visible, date, embedded = false }: FoodGoalsSheetProps) {
   const colors = useColors();
   const goals = useFoodGoals(date);
   const profile = useAppStore((s) => s.onboardingProfile) ?? defaultOnboardingProfile();
   const activeMicros = enabledMicronutrients(profile);
   const microGoals = MICRO_GOALS.filter((item) => activeMicros.includes(item.key));
   const caloriesProgress = progress(totals.calories, goals.calories);
+  const [ringSize, setRingSize] = useState(56);
+  const Panel = embedded ? View : GlassSurface;
 
-  if (!visible) return null;
+  if (!visible && !embedded) return null;
 
   return (
-    <GlassSurface glass="regular" style={styles.panel}>
+    <Panel style={styles.panel}>
       <AppText variant="heading">{t('goals.title')}</AppText>
 
       <View style={styles.caloriesBlock}>
@@ -189,26 +194,30 @@ export function FoodGoalsSheet({ totals, visible, date }: FoodGoalsSheetProps) {
         ) : null}
       </View>
 
-      <View style={styles.macroRow}>
+      <View style={styles.macroRow} onLayout={({ nativeEvent }) => setRingSize(Math.min(76, Math.max(40, (nativeEvent.layout.width - Spacing.two * 3) / 4)))}>
         <MacroRing
+          size={ringSize}
           color={colors.protein}
           current={totals.protein}
           goal={goals.protein}
           label={t('goals.protein')}
         />
         <MacroRing
+          size={ringSize}
           color={colors.carbs}
           current={totals.carbs}
           goal={goals.carbs}
           label={t('goals.carbs')}
         />
         <MacroRing
+          size={ringSize}
           color={colors.fat}
           current={totals.fat}
           goal={goals.fat}
           label={t('goals.fat')}
         />
         <MacroRing
+          size={ringSize}
           color={colors.water}
           current={totals.waterMl}
           displayValue={formatWaterMl(totals.waterMl)}
@@ -238,7 +247,7 @@ export function FoodGoalsSheet({ totals, visible, date }: FoodGoalsSheetProps) {
           })}
         </View>
       ) : null}
-    </GlassSurface>
+    </Panel>
   );
 }
 
