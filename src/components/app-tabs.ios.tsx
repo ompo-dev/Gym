@@ -1,4 +1,5 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { useWindowDimensions, type ViewStyle } from 'react-native';
 
 import { useScopeEnabled } from '@/core/dev/flags';
 import { t } from '@/i18n';
@@ -14,18 +15,20 @@ export default function AppTabs() {
   useAppStore((s) => s.lang); // re-render labels when the language changes
   const food = useScopeEnabled('food');
   const workout = useScopeEnabled('workout');
+  const { height } = useWindowDimensions();
+  const contentStyle: ViewStyle = { minHeight: height };
 
   return (
     <NativeTabs>
       {food && (
-        <NativeTabs.Trigger name="index" disableAutomaticContentInsets>
+        <NativeTabs.Trigger name="index" disableAutomaticContentInsets contentStyle={contentStyle}>
           <Label>{t('diet.title')}</Label>
           <Icon sf={{ default: 'fork.knife', selected: 'fork.knife' }} />
         </NativeTabs.Trigger>
       )}
 
       {workout && (
-        <NativeTabs.Trigger name="workout" disableAutomaticContentInsets>
+        <NativeTabs.Trigger name="workout" disableAutomaticContentInsets contentStyle={contentStyle}>
           <Label>{t('workout.title')}</Label>
           <Icon sf={{ default: 'dumbbell', selected: 'dumbbell.fill' }} />
         </NativeTabs.Trigger>

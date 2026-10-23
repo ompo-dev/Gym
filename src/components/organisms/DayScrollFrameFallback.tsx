@@ -1,7 +1,7 @@
 import { BlurTargetView } from 'expo-blur';
 import { type ReactNode, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { SafeAreaView, useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SoftEdgeBlur } from '@/components/atoms/SoftEdgeBlur';
 import { useColors } from '@/hooks/use-colors';
 
@@ -15,15 +15,20 @@ export interface DayScrollFrameProps {
 /** Content scrolls behind the bars; padding keeps the first and last rows reachable. */
 export function DayScrollFrame({ header, footer, bottomEdgeHeight, children }: DayScrollFrameProps) {
   const safe = useSafeAreaInsets();
+  const frame = useSafeAreaFrame();
+  const window = useWindowDimensions();
+  const bottomExtension = Platform.OS === 'ios'
+    ? Math.max(0, window.height - frame.y - frame.height)
+    : 0;
   const colors = useColors();
   const target = useRef<View>(null);
   const [top, setTop] = useState(64);
   const [bottom, setBottom] = useState(safe.bottom + 100);
   const tint = colors.background === '#242424' ? 'systemMaterialDark' : 'light';
-  return <View style={styles.fill}>
+  return <View testID="day-scroll-frame" style={[styles.fill, Platform.OS === 'ios' && { flex: 0, height: frame.height + bottomExtension }]}>
     <BlurTargetView ref={target} style={styles.fill}>
       <View style={[styles.fill, { paddingLeft: safe.left, paddingRight: safe.right }]}>
-        {children({ top: safe.top + top, bottom })}
+        {children({ top: safe.top + top, bottom: bottom + bottomExtension })}
       </View>
     </BlurTargetView>
     <View pointerEvents="none" style={[styles.top, { height: safe.top + top + 24 }]}>
@@ -33,8 +38,8 @@ export function DayScrollFrame({ header, footer, bottomEdgeHeight, children }: D
     <View testID="day-bottom-edge" pointerEvents="none" style={[styles.bottom, { height: bottomEdgeHeight }]}>
       <SoftEdgeBlur edge="bottom" blurTarget={target} tint={tint} />
     </View>
-    {/* Insets protect the controls, while the scroll background and blur reach the screen edges. */}
-    <SafeAreaView pointerEvents="box-none" style={StyleSheet.absoluteFill} edges={['top', 'left', 'right']}>
+    {/* Extend only the background beneath native tabs; keep the controls at their original scene edge. */}
+    <SafeAreaView testID="day-scroll-controls" pointerEvents="box-none" style={[StyleSheet.absoluteFill, { bottom: bottomExtension }]} edges={['top', 'left', 'right']}>
       <View pointerEvents="box-none" style={styles.fill}>
         <View pointerEvents="box-none" style={styles.top}
           onLayout={({ nativeEvent }) => setTop(nativeEvent.layout.height)}>
